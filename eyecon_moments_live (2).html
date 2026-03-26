@@ -2184,7 +2184,8 @@ LOGGING:
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': helpApiKey,
-          'anthropic-version': '2023-06-01'
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
           model: 'claude-3-5-haiku-20241022',
@@ -11113,7 +11114,8 @@ Eyecon Moments`);
         const mediaType = compressed.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true' },
           body: JSON.stringify({
             model: 'claude-opus-4-5',
             max_tokens: 1024,
