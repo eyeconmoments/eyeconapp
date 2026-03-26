@@ -219,6 +219,8 @@ function EyeconMoments() {
   const [helpMessages, setHelpMessages] = useState([{ role:'assistant', content:'👋 Hi! I\'m your Eyecon Moments assistant. Ask me anything about using the app — clocking in, sharing itineraries, creating quotes, managing jobs, or anything else!' }]);
   const [helpLoading, setHelpLoading] = useState(false);
   const [helpApiKey, setHelpApiKey] = useState(() => localStorage.getItem('eyecon_ai_key') || '');
+  const helpBottomRef = React.useRef(null);
+  React.useEffect(() => { helpBottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
   const [showingModal, setShowingModal] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
   const [editingEmployee, setEditingEmployee] = useState(null);
@@ -2209,11 +2211,7 @@ LOGGING:
   };
 
   // Help Modal component
-  const HelpModal = () => {
-    const bottomRef = React.useRef(null);
-    React.useEffect(() => { bottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
-    if (!helpOpen) return null;
-    return (
+  const helpModalJSX = helpOpen ? (
       <div className="fixed inset-0 z-50 flex items-end justify-end p-4 pointer-events-none">
         <div className={`pointer-events-auto flex flex-col rounded-2xl shadow-2xl w-full max-w-sm ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-200'}`} style={{height:'80vh', maxHeight:'600px'}}>
           {/* Header */}
@@ -2250,7 +2248,7 @@ LOGGING:
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
+            <div ref={helpBottomRef} />
           </div>
           {/* Input */}
           <div className={`px-3 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -2273,8 +2271,7 @@ LOGGING:
           </div>
         </div>
       </div>
-    );
-  };
+  ) : null;
   const isSamUser = currentUser?.username?.toLowerCase() === 'sam';
   if ((currentView === 'employee-dashboard' || currentView === 'availability' || (currentView === 'files' && (currentUser?.role === 'employee' || currentUser?.role === 'manager'))) && !isSamUser && !(currentUser?.role === 'admin')) {
     const myJobs = getUserAssignedJobs(currentUser.id);
@@ -3362,7 +3359,7 @@ LOGGING:
             </div>
           );
         })()}
-        <HelpModal />
+        {helpModalJSX}
       </div>
     );
   }
