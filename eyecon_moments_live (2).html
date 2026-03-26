@@ -308,6 +308,7 @@ function EyeconMoments() {
   const [shiftsTab, setShiftsTab] = useState('today');
   const [minimizedJobs, setMinimizedJobs] = useState(new Set());
   const [collapsedItineraries, setCollapsedItineraries] = useState(new Set());
+  const [dashStatOpen, setDashStatOpen] = useState(null);
   const [parkedItineraries, setParkedItineraries] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_parked_itins') || '[]'); } catch(e) { return []; } });
   const [showParkedItins, setShowParkedItins] = useState(false);
   const [fileOverrideModal, setFileOverrideModal] = useState(null); // { jobId, locationIndex, drive, path, notes }
@@ -378,6 +379,7 @@ function EyeconMoments() {
   const [archivedJobIds, setArchivedJobIds] = useState([]);
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
+  const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [showAIJobModal, setShowAIJobModal] = useState(false);
   const [showManualJobModal, setShowManualJobModal] = useState(false);
@@ -846,6 +848,9 @@ function EyeconMoments() {
     await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, wageEntries: newWageEntries } : j));
   };
+
+  const archiveWageEntry = async (jobId, entryId) => { await updateWageEntry(jobId, entryId, { archived: true }); };
+  const unarchiveWageEntry = async (jobId, entryId) => { await updateWageEntry(jobId, entryId, { archived: false }); };
 
   const isJobFullyComplete = (job) => {
     const photoDone = !job.hasPhotos || job.photoStatus === 'completed';
@@ -3449,7 +3454,7 @@ LOGGING:
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-slate-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
 
         {/* Stage/Photo File Location Modal */}
         {stageFileModal && (
@@ -4460,18 +4465,88 @@ LOGGING:
             </div>
           )}
           <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white rounded-lg shadow p-4">
-              <p className="text-sm text-gray-600">Active Jobs</p>
-              <p className="text-3xl font-bold text-blue-600">{activeJobs.length}</p>
+            {/* Active Jobs */}
+            <div className="relative">
+              <button onClick={() => setDashStatOpen(dashStatOpen === 'active' ? null : 'active')}
+                className={`w-full text-left rounded-lg shadow p-4 transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-blue-50'} border-2 ${dashStatOpen === 'active' ? 'border-blue-400' : 'border-transparent'}`}>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Active Jobs</p>
+                <p className="text-3xl font-bold text-blue-600">{activeJobs.length}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Tap to view ▾</p>
+              </button>
+              {dashStatOpen === 'active' && (
+                <div className={`absolute left-0 right-0 top-full mt-1 z-50 rounded-lg shadow-xl border max-h-64 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+                  {activeJobs.length === 0 ? (
+                    <p className={`p-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No active jobs</p>
+                  ) : activeJobs.map(job => (
+                    <button key={job.id} onClick={() => { setCurrentView('jobs'); setDashStatOpen(null); }}
+                      className={`w-full text-left px-3 py-2 text-sm border-b last:border-b-0 hover:bg-blue-50 ${darkMode ? 'border-gray-700 hover:bg-gray-700 text-white' : 'border-gray-100 text-gray-800'}`}>
+                      <span className="font-medium">{job.jobName}</span>
+                      <span className={`ml-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <button onClick={() => setCurrentView('timeclock')} className="bg-white rounded-lg shadow p-4 text-left hover:bg-green-50 transition-colors cursor-pointer border-2 border-transparent hover:border-green-300">
-              <p className="text-sm text-gray-600">Currently Working</p>
-              <p className="text-3xl font-bold text-green-600">{activeTimeEntries.length}</p>
-              <p className="text-xs text-green-500 mt-1">Tap to manage →</p>
-            </button>
-            <div className="bg-white rounded-lg shadow p-4">
-              <p className="text-sm text-gray-600">Due This Week</p>
-              <p className="text-3xl font-bold text-yellow-600">{dueSoonJobs.length}</p>
+            {/* Currently Working */}
+            <div className="relative">
+              <button onClick={() => setDashStatOpen(dashStatOpen === 'working' ? null : 'working')}
+                className={`w-full text-left rounded-lg shadow p-4 transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-green-50'} border-2 ${dashStatOpen === 'working' ? 'border-green-400' : 'border-transparent'}`}>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Currently Working</p>
+                <p className="text-3xl font-bold text-green-600">{activeTimeEntries.length}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Tap to view ▾</p>
+              </button>
+              {dashStatOpen === 'working' && (
+                <div className={`absolute left-0 right-0 top-full mt-1 z-50 rounded-lg shadow-xl border max-h-64 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+                  {activeTimeEntries.length === 0 ? (
+                    <p className={`p-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nobody clocked in right now</p>
+                  ) : activeTimeEntries.map(entry => {
+                    const emp = editingEmployees.find(e => e.id === entry.employeeId);
+                    const job = editingJobs.find(j => j.id === entry.jobId);
+                    const sinceMs = new Date() - new Date(entry.clockIn);
+                    const sinceHrs = Math.floor(sinceMs / 3600000);
+                    const sinceMins = Math.floor((sinceMs % 3600000) / 60000);
+                    return (
+                      <div key={entry.id} className={`px-3 py-2 text-sm border-b last:border-b-0 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-100 text-gray-800'}`}>
+                        <div className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                          <span className="font-medium">{emp?.name || 'Unknown'}</span>
+                        </div>
+                        <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job?.jobName || 'Unknown job'} · {sinceHrs}h {sinceMins}m</span>
+                      </div>
+                    );
+                  })}
+                  <button onClick={() => { setCurrentView('timeclock'); setDashStatOpen(null); }}
+                    className={`w-full text-center py-2 text-xs font-semibold text-green-600 hover:bg-green-50 ${darkMode ? 'hover:bg-gray-700' : ''}`}>
+                    Manage timeclock →
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* Due This Week */}
+            <div className="relative">
+              <button onClick={() => setDashStatOpen(dashStatOpen === 'due' ? null : 'due')}
+                className={`w-full text-left rounded-lg shadow p-4 transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-yellow-50'} border-2 ${dashStatOpen === 'due' ? 'border-yellow-400' : 'border-transparent'}`}>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Due This Week</p>
+                <p className="text-3xl font-bold text-yellow-600">{dueSoonJobs.length}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>Tap to view ▾</p>
+              </button>
+              {dashStatOpen === 'due' && (
+                <div className={`absolute left-0 right-0 top-full mt-1 z-50 rounded-lg shadow-xl border max-h-64 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+                  {dueSoonJobs.length === 0 ? (
+                    <p className={`p-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No jobs due this week</p>
+                  ) : dueSoonJobs.map(job => {
+                    const days = getDaysUntilDeadline(job.deadline);
+                    return (
+                      <div key={job.id} className={`px-3 py-2 text-sm border-b last:border-b-0 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-100 text-gray-800'}`}>
+                        <div className="font-medium">{job.jobName}</div>
+                        <span className={`text-xs ${days <= 1 ? 'text-red-500 font-bold' : days <= 3 ? 'text-orange-500' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {days === 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : `Due in ${days} days`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -5141,7 +5216,7 @@ Capturing Your Special Day
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
 
         {/* Upcoming-specific AI modal */}
         {showUpcomingAIModal && (
@@ -5557,8 +5632,8 @@ Capturing Your Special Day
                   const usedItemIds = (itinerary.scheduleItems || []).map(i => i.id);
                   const unusedItems = allItems.filter(item => !usedItemIds.includes(item.id));
                   const scheduledCount = (itinerary.scheduleItems || []).length;
-                  const canMinimize = daysUntil > 7;
-                  const isMinimized = canMinimize && minimizedJobs.has(job.id);
+                  const canMinimize = true;
+                  const isMinimized = !minimizedJobs.has(job.id);
                   const toggleMinimize = () => setMinimizedJobs(prev => {
                     const next = new Set(prev);
                     if (next.has(job.id)) next.delete(job.id); else next.add(job.id);
@@ -5835,7 +5910,7 @@ Capturing Your Special Day
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
 
         {/* Stage/Photo File Location Modal */}
         {stageFileModal && (
@@ -6369,7 +6444,7 @@ Capturing Your Special Day
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4 space-y-4">
           {/* Toggle Pipeline/List View */}
           <div className="flex gap-2 mb-4">
@@ -7283,7 +7358,7 @@ Capturing Your Special Day
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4 space-y-4">
           
           {/* CRM Stats Dashboard */}
@@ -7644,6 +7719,12 @@ Eyecon Moments`);
                         {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
                       </select></div>}
 
+                    {quoteData.wantVideo && <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Video Coverage</label>
+                      <select value={quoteData.videoType || 'dual'} onChange={e => setQuoteData({...quoteData, videoType: e.target.value})} className={inp}>
+                        <option value="dual">Dual Videographer — £150/hr</option>
+                        <option value="single">Single Videographer — £125/hr</option>
+                      </select></div>}
+
                     {/* Number of days */}
                     <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Number of Days</label>
                       <select value={quoteData.numDays} onChange={e => {
@@ -7696,7 +7777,15 @@ Eyecon Moments`);
                       {quoteData.discount > 0 && <div className="flex justify-between text-sm py-1 text-yellow-500"><span>Discount</span><span>-£{quoteData.discount.toFixed(2)}</span></div>}
                       {(quoteData.adminPriceAdjustment || 0) !== 0 && <div className="flex justify-between text-sm py-1 text-orange-400"><span>🔒 Admin Adjustment</span><span>+£{(quoteData.adminPriceAdjustment||0).toFixed(2)}</span></div>}
                       <div className={`flex justify-between font-bold text-base pt-2 mt-1 border-t ${dm ? 'border-gray-700 text-white' : 'border-gray-300'}`}>
-                        <span>TOTAL</span><span className="text-green-500">£{finalTotal.toFixed(2)}</span>
+                        <span>TOTAL</span>
+                        <span className="text-right">
+                          {priceOverride > 0 && priceOverride < q.total - (quoteData.discount || 0) + (quoteData.adminPriceAdjustment || 0) && (
+                            <span className={`block text-sm line-through ${dm ? 'text-gray-400' : 'text-gray-500'}`}>£{(q.total - (quoteData.discount || 0) + (quoteData.adminPriceAdjustment || 0)).toFixed(2)}</span>
+                          )}
+                          <span className={`text-green-500 ${priceOverride > 0 && priceOverride < q.total - (quoteData.discount || 0) + (quoteData.adminPriceAdjustment || 0) ? 'text-sm' : ''}`}>
+                            {priceOverride > 0 && priceOverride < q.total - (quoteData.discount || 0) + (quoteData.adminPriceAdjustment || 0) ? `Discounted rate: £${finalTotal.toFixed(2)}` : `£${finalTotal.toFixed(2)}`}
+                          </span>
+                        </span>
                       </div>
                     </div>
 
@@ -7816,7 +7905,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
 
         {/* File Location Override Modal */}
         {fileOverrideModal && (
@@ -8103,7 +8192,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
 
         {/* Earnings Breakdown Modal */}
         {earningsBreakdownModal && (() => {
@@ -8548,7 +8637,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4 space-y-4">
           {/* Filters + Total */}
           <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
@@ -8906,7 +8995,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4 space-y-4">
           {/* Revenue Trend Line Graph */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
@@ -9647,10 +9736,10 @@ Eyecon Moments`);
 
     // Unified per-employee breakdown (shoots + editing combined)
     const allByEmployee = employees.map(emp => {
-      const shoots = allShootEntries.filter(e => e.employeeId === emp.id).map(e => ({ ...e, _kind: 'shoot', _sortKey: e.submittedAt || e.approvedAt || '' }));
-      const edits  = editingWageItems.filter(e => e.employeeId === emp.id).map(e => ({ ...e, _kind: 'edit',  _sortKey: e.completedAt || '' }));
+      const shoots = allShootEntries.filter(e => e.employeeId === emp.id && (showArchivedWages || !e.archived)).map(e => ({ ...e, _kind: 'shoot', _sortKey: e.submittedAt || e.approvedAt || '' }));
+      const edits  = editingWageItems.filter(e => e.employeeId === emp.id && (showArchivedWages || !e.archived)).map(e => ({ ...e, _kind: 'edit',  _sortKey: e.completedAt || '' }));
       const allItems = [...shoots, ...edits].sort((a, b) => new Date(b._sortKey || 0) - new Date(a._sortKey || 0));
-      const owed = shoots.filter(e => e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0)
+      const owed = shoots.filter(e => e.status === 'approved' && !e.archived).reduce((a, e) => a + (e.amount || 0), 0)
                  + edits.filter(e => e.status !== 'paid').reduce((a, e) => a + e.amount, 0);
       const paid = shoots.filter(e => e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0)
                  + edits.filter(e => e.status === 'paid').reduce((a, e) => a + e.amount, 0);
@@ -9702,7 +9791,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4 space-y-4">
 
           {/* Shoot Wage Modal */}
@@ -10014,6 +10103,7 @@ Eyecon Moments`);
           )}
 
           {/* ── MAIN WAGES LIST ── */}
+          <div className="flex justify-end mb-2"><button onClick={() => setShowArchivedWages(s => !s)} className={`text-xs px-3 py-1.5 rounded-lg border ${dm ? 'border-gray-600 text-gray-400 hover:text-white' : 'border-gray-300 text-gray-500 hover:text-gray-800'}`}>{showArchivedWages ? '👁️ Hide Archived' : '📦 Show Archived'}</button></div>
           {isAdmin ? (
             allByEmployee.length === 0 ? (
               <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-8 text-center`}>
@@ -10051,7 +10141,7 @@ Eyecon Moments`);
                         const jobHours = !isShoot ? timeEntries.filter(e => e.employeeId === item.employeeId && e.jobId === item.jobId).reduce((a, e) => a + (e.hoursWorked || 0), 0) : 0;
                         const hourlyRate = !isShoot && jobHours > 0 ? (item.amount / jobHours).toFixed(2) : null;
                         return (
-                          <div key={idx} className={`flex justify-between items-center px-3 py-2.5 ${dm ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}>
+                          <div key={idx} className={`flex justify-between items-center px-3 py-2.5 ${dm ? 'hover:bg-gray-750' : 'hover:bg-gray-50'} ${item.archived ? 'opacity-50' : ''}`}>
                             <div className="flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className={`text-xs font-semibold ${isShoot ? 'text-blue-500' : item.type === 'photo' ? 'text-pink-500' : 'text-purple-500'}`}>
@@ -10092,13 +10182,13 @@ Eyecon Moments`);
                                     {item.status === 'approved' && <button onClick={() => updateWageEntry(item.jobId, item.id, { status: 'paid', paidAt: new Date().toISOString() })} className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded">Mark Paid</button>}
                                     {item.status === 'paid' && <button onClick={() => updateWageEntry(item.jobId, item.id, { status: 'approved', paidAt: null })} className="text-xs px-2 py-0.5 bg-orange-400 text-white rounded">Mark Unpaid</button>}
                                     {item.status !== 'pending_approval' && item.status !== 'rejected' && <button onClick={() => setWageOverrideModal({ jobId: item.jobId, entryId: item.id, currentAmount: item.amount })} className={`text-xs px-2 py-0.5 rounded border ${dm ? 'border-gray-500 text-gray-300' : 'border-gray-300 text-gray-600'}`}>Edit</button>}
-                                    <button onClick={() => deleteWageEntry(item.jobId, item.id)} className="text-xs px-2 py-0.5 bg-red-500 text-white rounded">🗑</button>
+                                    <button onClick={() => item.archived ? unarchiveWageEntry(item.jobId, item.id) : archiveWageEntry(item.jobId, item.id)} className={`text-xs px-2 py-0.5 rounded ${item.archived ? 'bg-yellow-500' : 'bg-gray-500'} text-white`}>{item.archived ? 'Unarchive' : '📦'}</button>
                                   </>
                                 ) : (
                                   <>
                                     {item.status !== 'paid' && <button onClick={() => markEditingPaid(item)} className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded">Mark Paid</button>}
                                     {item.status === 'paid' && <button onClick={() => markEditingUnpaid(item)} className="text-xs px-2 py-0.5 bg-orange-400 text-white rounded">Mark Unpaid</button>}
-                                    {item.entryId && <button onClick={() => deleteWageEntry(item.jobId, item.entryId)} className="text-xs px-2 py-0.5 bg-red-500 text-white rounded">🗑</button>}
+                                    {item.entryId && <button onClick={() => item.archived ? unarchiveWageEntry(item.jobId, item.entryId) : archiveWageEntry(item.jobId, item.entryId)} className={`text-xs px-2 py-0.5 rounded ${item.archived ? 'bg-yellow-500' : 'bg-gray-500'} text-white`}>{item.archived ? 'Unarchive' : '📦'}</button>}
                                   </>
                                 )}
                               </div>
@@ -10691,7 +10781,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4 space-y-4">
 
           {/* Parked Quotes */}
@@ -11245,7 +11335,7 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
         {helpModalJSX}
-        <NavBar />
+        {NavBar()}
         <div className="p-4">
           <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>📋 Revision Logs</h2>
           <div className="flex gap-4 flex-col lg:flex-row">
