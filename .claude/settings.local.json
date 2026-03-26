@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l \"C:/Users/Rupon/Desktop/Web app/eyecon_moments_live \\(2\\).html\")",
+      "Bash(grep -v \"class\\\\|style\\\\|placeholder\\\\|text-\\\\|bg-\\\\|//.*£\")",
+      "Bash(awk -F: 'NR>=5 && NR<=10')",
+      "Bash(wc -l \"/c/Users/Rupon/Desktop/Web app/eyecon_moments_live \\(2\\).html\")",
+      "Bash(python3 -:*)",
+      "Bash(node -e \":*)",
+      "Bash(grep -n \"if \\(currentView === ''employee-dashboard''\\)\" \"/c/Users/Rupon/Desktop/Web app/eyecon_moments_live \\(2\\).html\")",
+      "Bash(wc -l \"C:\\\\Users\\\\Rupon\\\\Desktop\\\\Web app\\\\eyecon_moments_live \\(2\\).html\")"
+    ]
+  }
+}
