@@ -316,6 +316,7 @@ function EyeconMoments() {
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [availForm, setAvailForm] = useState({ startDate: '', endDate: '', reason: '' });
   const [liveItineraryJob, setLiveItineraryJob] = useState(null); // jobId for live itinerary view
+  const [myItinerariesOpen, setMyItinerariesOpen] = useState(false); // collapsed by default
   const [availCalMonth, setAvailCalMonth] = useState(new Date().getMonth());
   const [availCalYear, setAvailCalYear] = useState(new Date().getFullYear());
   const [upcomingCalMonth, setUpcomingCalMonth] = useState(new Date().getMonth());
@@ -3955,10 +3956,12 @@ If asked about something not in the app, suggest the closest existing feature or
             if (myItineraryJobs.length === 0) return null;
             return (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1">
+                <div className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50'} shadow`}
+                  onClick={() => setMyItinerariesOpen(o => !o)}>
                   <h3 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>📋 My Itineraries ({myItineraryJobs.length})</h3>
+                  <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{myItinerariesOpen ? '▲' : '▼'}</span>
                 </div>
-                {myItineraryJobs.map(job => {
+                {myItinerariesOpen && myItineraryJobs.map(job => {
                   const itin = job.itinerary;
                   const scheduleItems = itin.scheduleItems || [];
                   const isShared = !assignedIds.has(job.id) && itin?.sharedWith?.includes(currentUser.id);
