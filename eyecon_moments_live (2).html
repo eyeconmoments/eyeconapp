@@ -3776,7 +3776,10 @@ If asked about something not in the app, suggest the closest existing feature or
               const shootDate = new Date(job.shootDate);
               shootDate.setHours(0, 0, 0, 0);
               const daysUntil = Math.ceil((shootDate - todayDate) / (1000 * 60 * 60 * 24));
-              const hasItinerary = job.itinerary && job.itinerary.events && job.itinerary.events.length > 0;
+              const hasItinerary = job.itinerary && (
+                (job.itinerary.scheduleItems && job.itinerary.scheduleItems.length > 0) ||
+                (job.itinerary.slots && Object.keys(job.itinerary.slots).length > 0)
+              );
               return daysUntil >= 0 && daysUntil <= 9 && !hasItinerary && !archivedJobIds.includes(job.id);
             });
             
