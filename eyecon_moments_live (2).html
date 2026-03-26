@@ -6195,8 +6195,14 @@ Capturing Your Special Day
 
   // JOBS
   if (currentView === 'jobs') {
+    const _todayForJobsFilter = new Date(); _todayForJobsFilter.setHours(0, 0, 0, 0);
     const filteredJobs = editingJobs.filter(job => {
       if (!showArchived && archivedJobIds.includes(job.id)) return false;
+      // Exclude jobs whose shoot date is today or in the future (still in "upcoming")
+      if (job.shootDate) {
+        const shootDate = new Date(job.shootDate); shootDate.setHours(0, 0, 0, 0);
+        if (shootDate >= _todayForJobsFilter) return false;
+      }
       if (jobSearchQuery) {
         const query = jobSearchQuery.toLowerCase();
         return job.jobName.toLowerCase().includes(query) || job.customerName.toLowerCase().includes(query);
@@ -8565,23 +8571,27 @@ Eyecon Moments`);
 
   // ANALYTICS
   if (currentView === 'analytics') {
-    const totalJobs = editingJobs.length + archivedJobIds.length; // include archived so % doesn't drop when archiving
+    // Only include jobs whose shoot date has passed (not today or future) — upcoming jobs excluded from all stats
+    const _analyticsTodayMidnight = new Date(); _analyticsTodayMidnight.setHours(0, 0, 0, 0);
+    const pastJobs = editingJobs.filter(job => !job.shootDate || new Date(job.shootDate) < _analyticsTodayMidnight);
+
+    const totalJobs = pastJobs.length + archivedJobIds.length; // include archived so % doesn't drop when archiving
     const activeJobsCount = activeJobs.length;
     const archivedCount = archivedJobIds.length;
-    
+
     // Filter jobs based on profitability filter
     const getFilteredJobsForProfitability = () => {
       if (profitabilityFilter === 'all-time') {
-        return editingJobs;
+        return pastJobs;
       } else if (profitabilityFilter === 'year') {
-        return editingJobs.filter(job => new Date(job.shootDate).getFullYear() === selectedYear);
+        return pastJobs.filter(job => new Date(job.shootDate).getFullYear() === selectedYear);
       } else if (profitabilityFilter === 'month') {
-        return editingJobs.filter(job => {
+        return pastJobs.filter(job => {
           const date = new Date(job.shootDate);
           return date.getFullYear() === selectedYear && (date.getMonth() + 1) === selectedMonth;
         });
       }
-      return editingJobs;
+      return pastJobs;
     };
     
     const filteredJobsForProfit = getFilteredJobsForProfitability();
@@ -8595,12 +8605,12 @@ Eyecon Moments`);
     const avgProfitPerJob = filteredJobsForProfit.length > 0 ? (totalProfit / filteredJobsForProfit.length).toFixed(0) : 0;
     
     // Get available years from jobs
-    const availableYears = [...new Set(editingJobs.map(job => new Date(job.shootDate).getFullYear()))].sort((a, b) => b - a);
+    const availableYears = [...new Set(pastJobs.map(job => new Date(job.shootDate).getFullYear()))].sort((a, b) => b - a);
     
     // Monthly breakdown for selected year
     const monthlyProfitData = [];
     for (let month = 1; month <= 12; month++) {
-      const monthJobs = editingJobs.filter(job => {
+      const monthJobs = pastJobs.filter(job => {
         const date = new Date(job.shootDate);
         return date.getFullYear() === selectedYear && (date.getMonth() + 1) === month;
       });
@@ -8624,7 +8634,7 @@ Eyecon Moments`);
     
     // Yearly breakdown
     const yearlyProfitData = availableYears.map(year => {
-      const yearJobs = editingJobs.filter(job => new Date(job.shootDate).getFullYear() === year);
+      const yearJobs = pastJobs.filter(job => new Date(job.shootDate).getFullYear() === year);
       const yearRevenue = yearJobs.reduce((acc, job) => acc + calculateJobRevenue(job), 0);
       const yearCosts = yearJobs.reduce((acc, job) => acc + calculateJobCosts(job), 0);
       const yearProfit = yearRevenue - yearCosts;
@@ -8640,7 +8650,7 @@ Eyecon Moments`);
     });
     
     // Overall completion calculations
-    const activeJobsList = editingJobs.filter(job => !archivedJobIds.includes(job.id));
+    const activeJobsList = pastJobs.filter(job => !archivedJobIds.includes(job.id));
     
     // Photo completion
     const totalPhotoJobs = activeJobsList.filter(j => j.hasPhotos).length;
@@ -8718,13 +8728,13 @@ Eyecon Moments`);
       };
     }).filter(e => e.totalHours > 0).sort((a, b) => b.totalHours - a.totalHours);
     
-    const completedJobs = editingJobs.filter(job => {
+    const completedJobs = pastJobs.filter(job => {
       const allPhotosComplete = !job.hasPhotos || job.photoStatus === 'completed';
       const allVideoComplete = !job.hasVideo || job.stages.every(s => s.status === 'completed');
       return allPhotosComplete && allVideoComplete;
     }).length + archivedJobIds.length; // archived jobs count as completed
-    
-    const inProgressJobs = editingJobs.filter(job => {
+
+    const inProgressJobs = pastJobs.filter(job => {
       const hasPhotoInProgress = job.hasPhotos && job.photoStatus === 'in-progress';
       const hasVideoInProgress = job.hasVideo && job.stages.some(s => s.status === 'in-progress');
       return hasPhotoInProgress || hasVideoInProgress;
@@ -8768,9 +8778,9 @@ Eyecon Moments`);
     }).length;
     
     // Job type breakdown
-    const photoOnlyJobs = editingJobs.filter(j => j.jobType === 'photo-only').length;
-    const videoOnlyJobs = editingJobs.filter(j => j.jobType === 'video-only').length;
-    const photoVideoJobs = editingJobs.filter(j => j.jobType === 'photo-video').length;
+    const photoOnlyJobs = pastJobs.filter(j => j.jobType === 'photo-only').length;
+    const videoOnlyJobs = pastJobs.filter(j => j.jobType === 'video-only').length;
+    const photoVideoJobs = pastJobs.filter(j => j.jobType === 'photo-video').length;
     
     // Pipeline stages
     const stageStats = [
@@ -8779,7 +8789,7 @@ Eyecon Moments`);
       { name: 'Colouring & Checking', count: 0 },
       { name: 'Highlights Trailer & Intro', count: 0 }
     ];
-    editingJobs.forEach(job => {
+    pastJobs.forEach(job => {
       if (job.hasVideo) {
         job.stages.forEach(stage => {
           const stat = stageStats.find(s => s.name === stage.name);
@@ -8789,9 +8799,9 @@ Eyecon Moments`);
         });
       }
     });
-    
+
     // Time distribution by job
-    const jobTimeData = editingJobs.map(job => ({
+    const jobTimeData = pastJobs.map(job => ({
       name: job.jobName,
       hours: getJobHours(job.id),
       labor: getJobHours(job.id) * 20
@@ -9130,7 +9140,7 @@ Eyecon Moments`);
                     <span className={`font-bold ${darkMode ? 'text-white' : ''}`}>{stage.count} completed</span>
                   </div>
                   <div className={`w-full rounded-full h-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                    <div className="h-2 rounded-full" style={{width: `${editingJobs.filter(j => j.hasVideo).length > 0 ? (stage.count / editingJobs.filter(j => j.hasVideo).length * 100) : 0}%`, background: 'var(--gold)'}}>
+                    <div className="h-2 rounded-full" style={{width: `${pastJobs.filter(j => j.hasVideo).length > 0 ? (stage.count / pastJobs.filter(j => j.hasVideo).length * 100) : 0}%`, background: 'var(--gold)'}}>
                     </div>
                   </div>
                 </div>
@@ -9142,7 +9152,7 @@ Eyecon Moments`);
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
             <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>💎 Job Profitability</h3>
             <div className="space-y-3">
-              {editingJobs.map(job => {
+              {pastJobs.map(job => {
                 const revenue = calculateJobRevenue(job);
                 const costs = calculateJobCosts(job);
                 const profit = calculateJobProfit(job);
