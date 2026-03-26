@@ -6485,8 +6485,8 @@ Capturing Your Special Day
               <div className="overflow-x-auto">
                 <div className="flex gap-4 min-w-max pb-4">
                   {pipelineStages.map((stage, stageIdx) => {
-                    const jobsInStage = editingJobs.filter(job => {
-                      if (!job.hasVideo || archivedJobIds.includes(job.id)) return false;
+                    const jobsInStage = filteredJobs.filter(job => {
+                      if (!job.hasVideo) return false;
                       return getJobCurrentStage(job) === stageIdx;
                     });
                     const count = jobsInStage.length;
