@@ -3820,7 +3820,12 @@ If asked about something not in the app, suggest the closest existing feature or
 
           {/* Overall Job Completion Progress - AT TOP */}
           {(() => {
-            const activeJobsList = editingJobs.filter(job => !archivedJobIds.includes(job.id));
+            const _dashTodayMidnight = new Date(); _dashTodayMidnight.setHours(0, 0, 0, 0);
+            const activeJobsList = editingJobs.filter(job => {
+              if (archivedJobIds.includes(job.id)) return false;
+              if (job.shootDate) { const sd = new Date(job.shootDate); sd.setHours(0,0,0,0); if (sd >= _dashTodayMidnight) return false; }
+              return true;
+            });
             
             // Photo completion
             const totalPhotoJobs = activeJobsList.filter(j => j.hasPhotos).length;
