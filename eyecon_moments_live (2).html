@@ -7581,7 +7581,2670 @@ Eyecon Moments`);
               quoteData.dates.forEach((day, idx) => {
                 const s = new Date(`2025-01-01T${day.startTime}`), e = new Date(`2025-01-01T${day.endTime}`);
                 const h = (e - s) / (1000 * 60 * 60);
-                if (quoteData.wantVideo) {
+                if (quoteData.wantVideo) { const c = h * 150; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography (${h}h × £150/hr)`, cost: c }); }
+                if (quoteData.wantPhoto) { const photoRate = quoteData.numPhotographers >= 2 ? 150 : 125; const c = h * photoRate; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${quoteData.numPhotographers >= 2 ? ` — ${quoteData.numPhotographers} photographers` : ''})`, cost: c }); }
+                const dist = day.distance || 0;
+                if (dist > 0) { const c = calcMileage(dist); total += c; breakdown.push({ item: `Day ${idx+1} - Travel (${dist}mi × £0.45 × 2)`, cost: c }); }
+              });
+              return { total, breakdown };
+            };
+            const q = calcQuote();
+            const priceOverride = quoteData.priceOverride || 0;
+            const crmServiceBase = priceOverride > 0 ? priceOverride : (q.total - (quoteData.discount || 0) + (quoteData.adminPriceAdjustment || 0));
+            const finalTotal = crmServiceBase;
+            const sendEmailAndMarkQuoted = () => {
+              const firstName = (quoteData.clientName || '').split(' ')[0].split('&')[0].trim() || 'there';
+              const qType = quoteData.wantPhoto && quoteData.wantVideo ? 'Photography & Cinematography' : quoteData.wantPhoto ? 'Photography' : 'Cinematography';
+              const subject = encodeURIComponent(`${qType} Quote - Eyecon Moments`);
+              const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nI have attached the quote for your attention with a breakdown of the details for you to consider.\n\nIf you have any questions or would like to further discuss anything, please don't hesitate to contact. I look forward to hearing from you.\n\nKind Regards,\nEyecon Moments`);
+              window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${subject}&body=${body}`;
+              updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
+              setShowCRMQuoteModal(false);
+              setCrmQuoteInquiry(null);
+              alert('Gmail opened! Status updated to Quoted. Remember to attach the PDF.');
+            };
+            const dm = darkMode;
+            const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
+            const inpSm = `w-full mt-1 px-2 py-1 border rounded text-sm ${dm ? 'bg-gray-600 border-gray-500 text-white' : ''}`;
+            return (
+              <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-lg w-full max-h-[92vh] flex flex-col`}>
+                  <div className={`flex justify-between items-center p-4 border-b ${dm ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h2 className={`text-lg font-bold ${dm ? 'text-white' : ''}`}>💰 Quote — {crmQuoteInquiry.customerName}</h2>
+                    <button onClick={() => { setShowCRMQuoteModal(false); setCrmQuoteInquiry(null); }} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+                  </div>
+                  <div className="overflow-y-auto p-4 space-y-4 flex-1">
+
+                    {/* Client details */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Client Name *</label>
+                        <input type="text" value={quoteData.clientName} onChange={e => setQuoteData({...quoteData, clientName: e.target.value})} className={inp} /></div>
+                      <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Client Email *</label>
+                        <input type="email" value={quoteData.clientEmail} onChange={e => setQuoteData({...quoteData, clientEmail: e.target.value})} className={inp} /></div>
+                    </div>
+
+                    {/* Event type */}
+                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Event Type</label>
+                      <select value={quoteData.eventType} onChange={e => setQuoteData({...quoteData, eventType: e.target.value})} className={inp}>
+                        <option value="wedding">Wedding</option><option value="nikkah">Nikkah</option>
+                        <option value="mehndi">Mehndi</option><option value="engagement">Engagement</option>
+                        <option value="walima">Walima</option><option value="event">Other Event</option>
+                      </select></div>
+
+                    {/* Services */}
+                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Services Required</label>
+                      <div className="flex gap-6 mt-2">
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={quoteData.wantPhoto} onChange={e => setQuoteData({...quoteData, wantPhoto: e.target.checked})} className="w-4 h-4" /><span className={`text-sm ${dm ? 'text-gray-300' : ''}`}>📸 Photography</span></label>
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={quoteData.wantVideo} onChange={e => setQuoteData({...quoteData, wantVideo: e.target.checked})} className="w-4 h-4" /><span className={`text-sm ${dm ? 'text-gray-300' : ''}`}>🎥 Cinematography</span></label>
+                      </div></div>
+
+                    {/* Photographers */}
+                    {quoteData.wantPhoto && <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>No. of Photographers</label>
+                      <select value={quoteData.numPhotographers} onChange={e => setQuoteData({...quoteData, numPhotographers: parseInt(e.target.value)})} className={inp}>
+                        {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select></div>}
+
+                    {/* Number of days */}
+                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Number of Days</label>
+                      <select value={quoteData.numDays} onChange={e => {
+                        const days = parseInt(e.target.value);
+                        const nd = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0 });
+                        setQuoteData({...quoteData, numDays: days, dates: nd});
+                      }} className={inp}>
+                        {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
+                      </select></div>
+
+                    {/* Per-day details */}
+                    {quoteData.dates.map((day, dayIdx) => (
+                      <div key={dayIdx} className={`p-3 rounded-lg ${dm ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                        <p className={`font-semibold text-sm mb-3 ${dm ? 'text-white' : ''}`}>Day {dayIdx + 1}</p>
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                          <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Date</label>
+                            <input type="date" value={day.date} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],date:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                          <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Start</label>
+                            <input type="time" value={day.startTime} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],startTime:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                          <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>End</label>
+                            <input type="time" value={day.endTime} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],endTime:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Venue / Location</label>
+                            <input type="text" value={day.location || ''} placeholder="Venue name" onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],location:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                          <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Postcode</label>
+                            <input type="text" value={day.postcode || ''} placeholder="e.g. M1 1AA" onChange={e => { const pc=e.target.value.toUpperCase(); const dist=calcDistFromPostcode(pc); const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],postcode:pc,distance:dist}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Notes */}
+                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Additional Notes</label>
+                      <textarea value={quoteData.notes} rows={2} onChange={e => setQuoteData({...quoteData, notes: e.target.value})} className={inp} /></div>
+
+                    {/* Discount */}
+                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Discount (£)</label>
+                      <input type="number" value={quoteData.discount || ''} placeholder="0" onChange={e => setQuoteData({...quoteData, discount: parseFloat(e.target.value) || 0})} className={inp} /></div>
+
+                    {/* Quote summary */}
+                    <div className={`p-3 rounded-lg ${dm ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                      <p className={`font-semibold text-sm mb-2 ${dm ? 'text-white' : ''}`}>📋 Quote Summary</p>
+                      {q.breakdown.length === 0 && <p className={`text-xs italic ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Fill in services and times above to see pricing.</p>}
+                      {q.breakdown.map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-sm py-1">
+                          <span className={dm ? 'text-gray-300' : 'text-gray-700'}>{item.item}</span>
+                          <span className={`font-medium ${dm ? 'text-white' : ''}`}>£{item.cost.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      {quoteData.discount > 0 && <div className="flex justify-between text-sm py-1 text-yellow-500"><span>Discount</span><span>-£{quoteData.discount.toFixed(2)}</span></div>}
+                      {(quoteData.adminPriceAdjustment || 0) !== 0 && <div className="flex justify-between text-sm py-1 text-orange-400"><span>🔒 Admin Adjustment</span><span>+£{(quoteData.adminPriceAdjustment||0).toFixed(2)}</span></div>}
+                      <div className={`flex justify-between font-bold text-base pt-2 mt-1 border-t ${dm ? 'border-gray-700 text-white' : 'border-gray-300'}`}>
+                        <span>TOTAL</span><span className="text-green-500">£{finalTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* Admin Price Adjustment - hidden from customer PDF */}
+                    <div className={`mt-2 p-2 rounded ${dm ? 'bg-orange-900' : 'bg-orange-50'} border ${dm ? 'border-orange-700' : 'border-orange-200'}`}>
+                      <label className={`text-xs font-medium block mb-1 ${dm ? 'text-orange-300' : 'text-orange-700'}`}>🔒 Admin Price Adjustment (£) — hidden from customer</label>
+                      <input type="number" value={quoteData.adminPriceAdjustment || ''} placeholder="0" onChange={e => setQuoteData({...quoteData, adminPriceAdjustment: parseFloat(e.target.value) || 0})} className={`w-full px-2 py-1 border rounded text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+
+                    {/* Price Override */}
+                    <div className={`mt-2 p-2 rounded ${dm ? 'bg-purple-900' : 'bg-purple-50'} border ${dm ? 'border-purple-700' : 'border-purple-200'}`}>
+                      <label className={`text-xs font-medium block mb-1 ${dm ? 'text-purple-300' : 'text-purple-700'}`}>✏️ Price Override (£) — replaces calculated total</label>
+                      <input type="number" value={quoteData.priceOverride || ''} placeholder="Leave blank to use calculated total" onChange={e => setQuoteData({...quoteData, priceOverride: parseFloat(e.target.value) || 0})} className={`w-full px-2 py-1 border rounded text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <button onClick={() => { setShowCRMQuoteModal(false); setCrmQuoteInquiry(null); setCurrentView('quote'); }}
+                        className={`py-3 rounded-lg font-semibold text-sm ${dm ? 'bg-gray-600 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                        📄 Download PDF
+                      </button>
+                      <button onClick={sendEmailAndMarkQuoted} disabled={!quoteData.clientEmail}
+                        className={`py-3 rounded-lg font-semibold text-sm ${quoteData.clientEmail ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                        📧 Email & Mark Quoted
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {showCRMAIModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+                {!crmAIEditForm && <>
+                  <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : ''}`}>📸 Add from Instagram Screenshot</h2>
+                  <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload a screenshot of a message — AI will extract the name, phone, and email.</p>
+                  {!crmAIImage && !isExtractingCRM && (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center mb-4">
+                      <p className="text-4xl mb-2">📱</p>
+                      <input type="file" accept="image/*" onChange={handleCRMImageUpload} className="hidden" id="crmImgInput" />
+                      <label htmlFor="crmImgInput" className="px-4 py-2 bg-purple-500 text-white rounded-lg cursor-pointer">Choose Image</label>
+                    </div>
+                  )}
+                  {isExtractingCRM && <div className="text-center py-8"><p className="text-purple-600 font-semibold">🤖 Extracting contact details...</p></div>}
+                  {!crmAIImage && !isExtractingCRM && (
+                    <button onClick={() => setShowCRMAIModal(false)} className={`w-full py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
+                  )}
+                </>}
+
+                {crmAIEditForm && <>
+                  <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>✏️ Review Contact</h2>
+                  {crmAIImage && <img src={crmAIImage} alt="Screenshot" className="w-full rounded-lg mb-3 max-h-28 object-cover" />}
+                  <div className="space-y-3">
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Name *</label>
+                      <input type="text" value={crmAIEditForm.name} onChange={e => setCrmAIEditForm(p=>({...p,name:e.target.value}))}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Phone</label>
+                      <input type="text" value={crmAIEditForm.phone} onChange={e => setCrmAIEditForm(p=>({...p,phone:e.target.value}))}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email</label>
+                      <input type="email" value={crmAIEditForm.email} onChange={e => setCrmAIEditForm(p=>({...p,email:e.target.value}))}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Event Date</label>
+                      <input type="date" value={crmAIEditForm.eventDate} onChange={e => setCrmAIEditForm(p=>({...p,eventDate:e.target.value}))}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes</label>
+                      <textarea rows={2} value={crmAIEditForm.notes} onChange={e => setCrmAIEditForm(p=>({...p,notes:e.target.value}))}
+                        placeholder="Any notes..." className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <button onClick={() => { setCrmAIEditForm(null); setCrmAIImage(null); setCrmAIExtracted(null); }} className={`py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>← Back</button>
+                    <button onClick={saveCRMFromAI} className="py-2 rounded-lg bg-green-500 text-white font-semibold">✅ Add to CRM</button>
+                  </div>
+                </>}
+              </div>
+            </div>
+          )}
+      </div>
+    );
+  }
+  if (currentView === 'files') {
+    // Get all file locations from all jobs with original index
+    const allFileLocations = editingJobs.flatMap(job => 
+      job.fileLocations.map((loc, locIdx) => ({
+        ...loc,
+        jobId: job.id,
+        jobName: job.jobName,
+        customerName: job.customerName,
+        isArchived: archivedJobIds.includes(job.id),
+        originalIndex: locIdx // Store the original index
+      }))
+    );
+    
+    // Filter by search query
+    const filteredLocations = allFileLocations.filter(loc => {
+      if (!fileSearchQuery) return true;
+      const query = fileSearchQuery.toLowerCase();
+      return loc.jobName.toLowerCase().includes(query) ||
+             loc.customerName.toLowerCase().includes(query) ||
+             (loc.path && loc.path.toLowerCase().includes(query)) ||
+             hardwareLocations.find(h => h.id === loc.hardware)?.name.toLowerCase().includes(query) ||
+             loc.drive.toLowerCase().includes(query);
+    });
+    
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {helpModalJSX}
+        <NavBar />
+
+        {/* File Location Override Modal */}
+        {fileOverrideModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+              <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>✏️ Override File Location</h3>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>The current location will be saved to history</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
+                  <select value={fileOverrideModal.drive}
+                    onChange={e => setFileOverrideModal(p => ({ ...p, drive: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select drive...</option>
+                    {allDrives.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Folder Path (optional)</label>
+                  <input type="text" placeholder="e.g. /Weddings/2025/JobName/"
+                    value={fileOverrideModal.path}
+                    onChange={e => setFileOverrideModal(p => ({ ...p, path: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes (optional)</label>
+                  <textarea placeholder="Any notes..."
+                    value={fileOverrideModal.notes}
+                    onChange={e => setFileOverrideModal(p => ({ ...p, notes: e.target.value }))}
+                    rows={2}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button onClick={() => setFileOverrideModal(null)}
+                    className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button onClick={overrideFileLocation}
+                    disabled={!fileOverrideModal.drive}
+                    className={`py-2 rounded-lg font-semibold ${fileOverrideModal.drive ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                    💾 Save Override
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="p-4 space-y-4">
+          {/* Pipeline Movement Log */}
+          {currentUser?.role === 'admin' && pipelineLog.length > 0 && (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+              <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>🔄 Pipeline Movement Log</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {pipelineLog.map(entry => (
+                  <div key={entry.id} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-blue-50 border-blue-200'}`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{entry.jobName}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>✅ {entry.stageName.split(',')[0]} — completed by <strong>{entry.completedBy}</strong></p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>💿 {entry.hardware} → {entry.drive}{entry.path ? ` / ${entry.path}` : ''}</p>
+                        {entry.notes && <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📝 {entry.notes}</p>}
+                      </div>
+                      <p className={`text-xs whitespace-nowrap ml-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(entry.completedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* File Change History */}
+          {currentUser?.role === 'admin' && fileChangeHistory.filter(c => c.visible).length > 0 && (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📋 Recent File Changes</h3>
+                <button
+                  onClick={() => setShowChangeHistory(!showChangeHistory)}
+                  className={`text-sm px-3 py-1 rounded ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100'}`}
+                >
+                  {showChangeHistory ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              
+              {showChangeHistory && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {fileChangeHistory.filter(c => c.visible).slice(0, 20).map(change => (
+                    <div key={change.id} className={`border rounded p-3 ${darkMode ? 'bg-yellow-900 border-yellow-700' : 'bg-yellow-50'}`}>
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex-1">
+                          <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{change.jobName}</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            Changed by <span className="font-semibold">{change.changedBy}</span> • {new Date(change.changedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        <button onClick={() => hideChangeHistoryItem(change.id)} className="text-gray-400 hover:text-gray-600">
+                          <X />
+                        </button>
+                      </div>
+                      <div className="text-xs mt-2">
+                        <p className="text-red-500 line-through">{change.oldValue || '(empty)'}</p>
+                        <p className="text-green-500">→ {change.newValue || '(empty)'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Search bar */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={fileSearchQuery}
+                onChange={(e) => setFileSearchQuery(e.target.value)}
+                placeholder="Search by job name, customer, hardware, drive..."
+                className={`flex-1 px-4 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              />
+              {fileSearchQuery && (
+                <button onClick={() => setFileSearchQuery('')} className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100'}`}>
+                  Clear
+                </button>
+              )}
+            </div>
+            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {filteredLocations.length} file location{filteredLocations.length !== 1 ? 's' : ''} found
+            </p>
+          </div>
+
+          {/* Quick filter buttons */}
+          <div className="flex flex-wrap gap-2">
+            {hardwareLocations.map((hw) => {
+              const btnColors = {
+                'pc1': 'bg-blue-500 text-white',
+                'pc2': 'bg-purple-500 text-white',
+                'pc6': 'bg-green-500 text-white',
+                'laptop': 'bg-orange-500 text-white'
+              };
+              const activeColor = btnColors[hw.id] || 'bg-blue-500 text-white';
+              return (
+                <button key={hw.id} 
+                  onClick={() => setFileSearchQuery(fileSearchQuery === hw.name ? '' : hw.name)}
+                  className={`px-3 py-1 rounded text-sm font-medium ${fileSearchQuery === hw.name ? activeColor : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100'}`}>
+                  {hw.name}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* File locations grid */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>All File Locations</h3>
+
+            {filteredLocations.length === 0 ? (
+              <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {fileSearchQuery ? 'No matching file locations found' : 'No file locations saved yet'}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {filteredLocations.map((loc, idx) => {
+                  const job = editingJobs.find(j => j.id === loc.jobId);
+                  const locationIndex = loc.originalIndex;
+                  
+                  const photoEditor = job?.photoAssignedTo ? employees.find(e => e.id === job.photoAssignedTo)?.name : null;
+                  const currentStageEditor = job?.hasVideo ? (() => {
+                    for (let i = 0; i < job.stages.length; i++) {
+                      if (job.stages[i].status !== 'completed') {
+                        return job.stages[i].assignedTo ? employees.find(e => e.id === job.stages[i].assignedTo)?.name : null;
+                      }
+                    }
+                    return 'Complete';
+                  })() : null;
+                  
+                  // Color coding based on hardware
+                  const getHardwareColor = (hw) => {
+                    const colors = {
+                      'pc1': { bg: darkMode ? 'bg-blue-900 border-blue-600' : 'bg-blue-50 border-blue-300', badge: 'bg-blue-500' },
+                      'pc2': { bg: darkMode ? 'bg-purple-900 border-purple-600' : 'bg-purple-50 border-purple-300', badge: 'bg-purple-500' },
+                      'pc6': { bg: darkMode ? 'bg-green-900 border-green-600' : 'bg-green-50 border-green-300', badge: 'bg-green-500' },
+                      'laptop': { bg: darkMode ? 'bg-orange-900 border-orange-600' : 'bg-orange-50 border-orange-300', badge: 'bg-orange-500' }
+                    };
+                    return colors[hw] || { bg: darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-300', badge: 'bg-gray-500' };
+                  };
+                  
+                  const hwColor = getHardwareColor(loc.hardware);
+                  const hwName = hardwareLocations.find(h => h.id === loc.hardware)?.name || (loc.hardware ? loc.hardware : loc.drive) || 'Unknown';
+                  
+                  return (
+                    <div key={`${loc.jobId}-${locationIndex}`} className={`flex items-stretch gap-0 rounded-xl overflow-hidden border shadow-sm ${loc.isArchived ? 'opacity-50' : ''} ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      {/* Color strip */}
+                      <div className={`w-1.5 flex-shrink-0 ${hwColor.badge}`}></div>
+
+                      {/* Main content */}
+                      <div className={`flex-1 p-3 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        {/* Badges row */}
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          {loc.hardware && hardwareLocations.find(h => h.id === loc.hardware) && (
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${hwColor.badge}`}>{hwName}</span>
+                          )}
+                          {loc.drive && (
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${hwColor.badge}`}>{loc.drive}</span>
+                          )}
+                          {loc.locked && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>🔒 Locked</span>
+                          )}
+                        </div>
+
+                        {/* Job name + customer */}
+                        <p className={`font-bold text-sm leading-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>{loc.jobName}</p>
+                        <p className={`text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{loc.customerName}</p>
+
+                        {/* Filename */}
+                        {loc.filename && (
+                          <p className={`text-xs font-mono mt-1 px-1.5 py-0.5 rounded inline-block ${darkMode ? 'bg-gray-700 text-yellow-300' : 'bg-gray-100 text-gray-700'}`}>📄 {loc.filename}</p>
+                        )}
+
+                        {/* Notes / path */}
+                        {(loc.notes || loc.path) && (
+                          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{loc.notes || loc.path}</p>
+                        )}
+
+                        {/* Set by */}
+                        {loc.setBy && (
+                          <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            Set by {loc.setBy}{loc.setAt ? ` · ${new Date(loc.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}` : ''}
+                            {loc.stage ? ` · ${loc.stage}` : ''}
+                          </p>
+                        )}
+
+                        {/* History */}
+                        {loc.history && loc.history.length > 0 && (
+                          <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                            <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📋 Change History</p>
+                            <div className="space-y-1">
+                              {loc.history.map((h, hi) => (
+                                <div key={hi} className={`flex items-start gap-1.5 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  <span className="mt-0.5 shrink-0">↩</span>
+                                  <span>
+                                    <span className="font-medium">{h.drive || '?'}</span>
+                                    {h.path ? <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}> · {h.path}</span> : ''}
+                                    <span className={`mx-1 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>—</span>
+                                    {h.changedBy || h.setBy || '?'}
+                                    {(h.changedAt || h.setAt) ? <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}> · {new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}</span> : ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Override + Lock buttons */}
+                      <div className={`flex flex-col items-stretch border-l ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-gray-50'}`}>
+                        {!loc.locked && (
+                          <button
+                            onClick={() => setFileOverrideModal({ jobId: loc.jobId, locationIndex, drive: loc.drive || '', path: loc.path || '', notes: loc.notes || '' })}
+                            className={`flex-1 px-3 text-xs font-medium border-b transition-colors ${darkMode ? 'border-gray-700 text-orange-400 hover:bg-gray-700' : 'border-gray-100 text-orange-500 hover:bg-orange-50'}`}>
+                            ✏️ Override
+                          </button>
+                        )}
+                        {currentUser?.role === 'admin' && (
+                          <button onClick={() => toggleFileLock(loc.jobId, locationIndex)}
+                            title={loc.locked ? 'Unlock' : 'Lock'}
+                            className={`flex-1 px-3 text-xs font-medium transition-colors ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}>
+                            {loc.locked ? '🔓 Unlock' : '🔒 Lock'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // EMPLOYEES
+  if (currentView === 'employees') {
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {helpModalJSX}
+        <NavBar />
+
+        {/* Earnings Breakdown Modal */}
+        {earningsBreakdownModal && (() => {
+          const emp = employees.find(e => e.id === earningsBreakdownModal);
+          if (!emp) return null;
+          const earnedJobs = [];
+          editingJobs.forEach(job => {
+            if (job.hasVideo && job.stages) {
+              job.stages.forEach(stage => {
+                if (stage.assignedTo === emp.id && stage.status === 'completed') {
+                  const key = `${emp.id}|${job.id}|${stage.name}`;
+                  const amount = earningsOverrides[key] !== undefined ? earningsOverrides[key] : getStageRate(stage.name, job);
+                  earnedJobs.push({ key, jobName: job.jobName, label: stage.name, amount, defaultAmount: getStageRate(stage.name, job) });
+                }
+              });
+            }
+            if (job.hasPhotos && job.photoAssignedTo === emp.id && job.photoStatus === 'completed') {
+              const key = `${emp.id}|${job.id}|photos`;
+              const amount = earningsOverrides[key] !== undefined ? earningsOverrides[key] : getPhotoRate(job);
+              earnedJobs.push({ key, jobName: job.jobName, label: 'Photo Editing', amount, defaultAmount: getPhotoRate(job) });
+            }
+          });
+          const total = earnedJobs.reduce((a, b) => a + b.amount, 0);
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'} flex justify-between items-center`}>
+                  <div>
+                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>💰 {emp.name}'s Earnings</h3>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tap ✏️ to override an amount</p>
+                  </div>
+                  <span className="text-2xl font-bold text-green-500">£{total}</span>
+                </div>
+                <div className="overflow-y-auto flex-1 p-4 space-y-2">
+                  {earnedJobs.length === 0 && <p className={`text-center py-4 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No completed stages yet</p>}
+                  {earnedJobs.map((item, i) => (
+                    <div key={i} className={`p-2.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item.jobName}</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.label}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 ml-2">
+                          {editingEarningsKey === item.key ? (
+                            <>
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                              <input type="number" value={editingEarningsVal} onChange={e => setEditingEarningsVal(e.target.value)}
+                                className={`w-16 px-1.5 py-0.5 text-sm border rounded text-right ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'border-gray-300'}`}
+                                autoFocus />
+                              <button onClick={() => { saveEarningsOverride(item.key, editingEarningsVal); setEditingEarningsKey(null); }}
+                                className="px-2 py-0.5 bg-green-500 text-white text-xs rounded font-semibold">✓</button>
+                              <button onClick={() => setEditingEarningsKey(null)}
+                                className={`px-2 py-0.5 text-xs rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>✗</button>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`text-sm font-bold text-green-500`}>£{item.amount}</span>
+                              {item.amount !== item.defaultAmount && <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(was £{item.defaultAmount})</span>}
+                              <button onClick={() => { setEditingEarningsKey(item.key); setEditingEarningsVal(String(item.amount)); }}
+                                className={`text-xs px-1.5 py-0.5 rounded ${darkMode ? 'text-gray-400 hover:bg-gray-600' : 'text-gray-400 hover:bg-gray-200'}`}>✏️</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                  <button onClick={() => { setEarningsBreakdownModal(null); setEditingEarningsKey(null); }}
+                    className={`w-full py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Close</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        <div className="p-4 space-y-4">
+
+          {/* Add Employee Modal */}
+          {showAddEmployeeModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl w-full max-w-md max-h-screen overflow-y-auto`}>
+                <div className="p-4 border-b flex justify-between items-center">
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>➕ Add New Staff Member</h3>
+                  <button onClick={() => setShowAddEmployeeModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+                </div>
+                <div className="p-4 space-y-3">
+                  {[
+                    { label: 'Full Name *', key: 'name', type: 'text', placeholder: 'e.g. Sarah Ahmed' },
+                    { label: 'Username *', key: 'username', type: 'text', placeholder: 'e.g. sarah' },
+                    { label: 'Password *', key: 'password', type: 'text', placeholder: 'Login password' },
+                    { label: 'PIN * (4 digits)', key: 'pin', type: 'text', placeholder: 'e.g. 1234' },
+                    { label: 'Phone', key: 'phone', type: 'text', placeholder: '+44...' },
+                    { label: 'Emergency Contact Name', key: 'emergencyContact', type: 'text', placeholder: 'Contact name' },
+                    { label: 'Emergency Phone', key: 'emergencyPhone', type: 'text', placeholder: '+44...' },
+                    { label: 'Address', key: 'address', type: 'text', placeholder: 'Home address' },
+                  ].map(field => (
+                    <div key={field.key}>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{field.label}</label>
+                      <input type={field.type} placeholder={field.placeholder} value={newEmployeeForm[field.key]}
+                        onChange={e => setNewEmployeeForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                  ))}
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Role</label>
+                    <select value={newEmployeeForm.role} onChange={e => setNewEmployeeForm(prev => ({ ...prev, role: e.target.value }))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="employee">Employee</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Hourly Rate (£)</label>
+                    <input type="number" value={newEmployeeForm.hourlyRate}
+                      onChange={e => setNewEmployeeForm(prev => ({ ...prev, hourlyRate: e.target.value }))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="canBeAssigned" checked={newEmployeeForm.canBeAssigned}
+                      onChange={e => setNewEmployeeForm(prev => ({ ...prev, canBeAssigned: e.target.checked }))} />
+                    <label htmlFor="canBeAssigned" className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Can be assigned to jobs</label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button onClick={() => setShowAddEmployeeModal(false)}
+                      className={`py-3 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
+                    <button onClick={addEmployee} className="py-3 rounded-lg font-semibold bg-green-500 text-white hover:bg-green-600">Add Staff</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Staff Button */}
+          <button onClick={() => setShowAddEmployeeModal(true)}
+            className="w-full py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 text-lg">
+            ➕ Add New Staff Member
+          </button>
+
+          {/* Fix Sam's role if needed */}
+          {employees.some(e => e.username?.toLowerCase() === 'sam' && e.role !== 'admin') && (
+            <button onClick={async () => {
+              const sam = employees.find(e => e.username?.toLowerCase() === 'sam');
+              if (!sam) return;
+              await db.from('employees').update({ role: 'admin' }).eq('id', sam.id);
+              setEmployees(prev => prev.map(e => e.id === sam.id ? { ...e, role: 'admin' } : e));
+              alert('Sam\'s role updated to admin. She will get full access on next login.');
+            }} className="w-full py-3 bg-yellow-500 text-white rounded-lg font-semibold hover:bg-yellow-600">
+              🔧 Fix Sam's Access → Admin
+            </button>
+          )}
+
+          {/* Backup Section */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>💾 Data Backup</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={downloadBackup} className="bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600">
+                ⬇️ Download Backup
+              </button>
+              <label className="bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 text-center cursor-pointer">
+                ⬆️ Restore Backup
+                <input type="file" accept=".json" onChange={handleRestoreBackup} className="hidden" />
+              </label>
+            </div>
+            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Backups include all employees, jobs, time entries, and settings.
+            </p>
+          </div>
+
+
+          {/* Emergency Contact Change History */}
+          {emergencyContactHistory.length > 0 && (
+            <div className={`${darkMode ? 'bg-yellow-900' : 'bg-yellow-50'} border-2 border-yellow-300 rounded-lg p-4`}>
+              <h3 className={`font-bold mb-3 ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>📋 Emergency Contact Changes</h3>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {emergencyContactHistory.slice(-10).reverse().map((change, idx) => (
+                  <div key={idx} className={`text-xs p-2 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded`}>
+                    <p className={darkMode ? 'text-white' : ''}><strong>{change.employeeName}</strong> updated their {change.field}</p>
+                    <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+                      Old: {change.oldValue || 'None'} → New: {change.newValue}
+                    </p>
+                    <p className={darkMode ? 'text-gray-500' : 'text-gray-500'}>{new Date(change.timestamp).toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Employee Cards - two side by side */}
+          <div className="grid grid-cols-2 gap-3">
+          {employees.map(employee => {
+            const activeEntry = timeEntries.find(e => e.employeeId === employee.id && !e.clockOut);
+            const totalHours = getEmployeeHours(employee.id);
+            const assignedJobs = getUserAssignedJobs(employee.id);
+            
+            return (
+              <div key={employee.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : ''}`}>{employee.name}</h3>
+                    {employee.id !== currentUser.id ? (
+                      <div className="flex gap-1 mt-1">
+                        {['employee','manager','admin'].map(r => (
+                          <button key={r} onClick={async () => {
+                            await db.from('employees').update({ role: r }).eq('id', employee.id);
+                            setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, role: r } : emp));
+                          }} className={`text-xs px-2 py-1 rounded font-medium border ${employee.role === r ? 'bg-blue-500 text-white border-blue-500' : darkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+                            {r === 'admin' ? 'Admin' : r === 'manager' ? 'Mgr' : 'Emp'}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {employee.role === 'admin' ? 'Administrator' : employee.role === 'manager' ? 'Manager' : 'Employee'}
+                      </p>
+                    )}
+                    <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>@{employee.username}</p>
+                  </div>
+                  <button onClick={() => setEarningsBreakdownModal(employee.id)} className="text-right hover:opacity-80 transition-opacity">
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Earned <span className="text-xs opacity-60">↗</span></p>
+                    <p className="text-lg font-bold text-green-600">£{getEmployeeStageEarnings(employee.id)}</p>
+                  </button>
+                </div>
+                {activeEntry && (
+                  <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded">
+                    <p className="text-sm font-semibold text-green-700">Currently working: {getJobName(activeEntry.jobId)}</p>
+                    <p className="text-xs text-gray-600">{calculateElapsedTime(activeEntry.clockIn)}</p>
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className={`text-center p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Assigned</p>
+                    <p className="text-lg font-bold text-blue-600">{assignedJobs.length}</p>
+                  </div>
+                  <div className={`text-center p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Hours</p>
+                    <p className="text-lg font-bold text-purple-600">{totalHours}h</p>
+                  </div>
+                  <div className={`text-center p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded`}>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Eff. £/hr</p>
+                    <p className="text-lg font-bold text-green-600">{totalHours > 0 ? `£${(getEmployeeStageEarnings(employee.id) / totalHours).toFixed(2)}` : '—'}</p>
+                  </div>
+                </div>
+                
+                {/* Emergency Contact Section */}
+                <div className={`p-3 ${darkMode ? 'bg-gray-700' : 'bg-red-50'} rounded-lg mb-3`}>
+                  <h4 className={`font-semibold text-sm mb-2 ${darkMode ? 'text-red-300' : 'text-red-800'}`}>🚨 Emergency Contact</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Phone:</p>
+                      <p className={`font-medium ${darkMode ? 'text-white' : ''}`}>{employee.phone || 'Not set'}</p>
+                    </div>
+                    <div>
+                      <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Emergency Contact:</p>
+                      <p className={`font-medium ${darkMode ? 'text-white' : ''}`}>{employee.emergencyContact || 'Not set'}</p>
+                    </div>
+                    <div>
+                      <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Emergency Phone:</p>
+                      <p className={`font-medium ${darkMode ? 'text-white' : ''}`}>{employee.emergencyPhone || 'Not set'}</p>
+                    </div>
+                    <div>
+                      <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Address:</p>
+                      <p className={`font-medium ${darkMode ? 'text-white' : ''}`}>{employee.address || 'Not set'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {assignedJobs.length > 0 && (
+                  <div>
+                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-white' : ''}`}>Current Assignments:</p>
+                    {assignedJobs.map(job => <p key={job.id} className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>• {job.jobName}</p>)}
+                  </div>
+                )}
+                {currentUser?.role === 'admin' && employee.id !== currentUser.id &&
+                  !(currentUser.username?.toLowerCase() === 'sam' && employee.username?.toLowerCase() === 'rupon') && (
+                  <button onClick={() => deleteEmployee(employee.id)}
+                    className="mt-3 w-full py-2 rounded-lg text-sm font-semibold bg-red-100 text-red-700 hover:bg-red-200">
+                    🗑️ Remove Staff Member
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          </div>
+
+          {/* Staff Availability Calendar */}
+          {(() => {
+            const today = new Date();
+            const calMonth = availCalMonth;
+            const calYear = availCalYear;
+            const firstDay = new Date(calYear, calMonth, 1).getDay();
+            const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+            const monthName = new Date(calYear, calMonth).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+            const approvedRequests = availabilityRequests.filter(r => r.status === 'approved');
+            const pendingRequests = availabilityRequests.filter(r => r.status === 'pending');
+            const getOffStaffForDay = (day) => {
+              const date = new Date(calYear, calMonth, day);
+              const dateStr = date.toISOString().split('T')[0];
+              return approvedRequests.filter(r => dateStr >= r.startDate && dateStr <= r.endDate).map(r => r.employeeName);
+            };
+            const empColors = ['bg-blue-500','bg-purple-500','bg-green-500','bg-orange-500','bg-pink-500','bg-teal-500'];
+            const empColorMap = {};
+            employees.forEach((e, i) => { empColorMap[e.name] = empColors[i % empColors.length]; });
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📅 Staff Availability</h3>
+                  {currentUser?.role !== 'admin' && (
+                    <button onClick={() => setShowAvailabilityModal(true)}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
+                      + Request Day Off
+                    </button>
+                  )}
+                </div>
+
+                {/* Calendar grid */}
+                <div className="flex items-center justify-between mb-3">
+                  <button onClick={() => { if (calMonth === 0) { setAvailCalMonth(11); setAvailCalYear(y => y-1); } else setAvailCalMonth(m => m-1); }}
+                    className={`px-2 py-1 rounded text-sm ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>‹</button>
+                  <span className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{monthName}</span>
+                  <button onClick={() => { if (calMonth === 11) { setAvailCalMonth(0); setAvailCalYear(y => y+1); } else setAvailCalMonth(m => m+1); }}
+                    className={`px-2 py-1 rounded text-sm ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>›</button>
+                </div>
+                <div className="grid grid-cols-7 gap-1 mb-1">
+                  {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                    <div key={d} className={`text-center text-xs font-semibold py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({length: firstDay}).map((_, i) => <div key={`e${i}`} />)}
+                  {Array.from({length: daysInMonth}).map((_, i) => {
+                    const day = i + 1;
+                    const offStaff = getOffStaffForDay(day);
+                    const isToday = day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+                    return (
+                      <div key={day} className={`rounded p-1 min-h-[36px] ${isToday ? 'ring-2 ring-yellow-400' : ''} ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                        <p className={`text-xs text-center font-medium ${isToday ? 'text-yellow-400' : darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{day}</p>
+                        {offStaff.map((name, ni) => (
+                          <div key={ni} className={`text-white text-xs rounded px-0.5 mt-0.5 truncate ${empColorMap[name] || 'bg-gray-500'}`} style={{fontSize:'9px'}}>{name.split(' ')[0]}</div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Pending requests — admin approves/declines */}
+                {currentUser?.role === 'admin' && pendingRequests.length > 0 && (
+                  <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>🕐 Pending Requests ({pendingRequests.length})</p>
+                    <div className="space-y-2">
+                      {pendingRequests.map(req => (
+                        <div key={req.id} className={`flex items-center justify-between p-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-yellow-50'}`}>
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : ''}`}>{req.employeeName}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{req.startDate}{req.endDate !== req.startDate ? ` → ${req.endDate}` : ''}{req.reason ? ` · ${req.reason}` : ''}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={() => updateAvailabilityStatus(req.id, 'approved')}
+                              className="px-2 py-1 bg-green-500 text-white text-xs rounded font-semibold">✓</button>
+                            <button onClick={() => updateAvailabilityStatus(req.id, 'declined')}
+                              className="px-2 py-1 bg-red-500 text-white text-xs rounded font-semibold">✗</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* My requests — staff view */}
+                {currentUser?.role !== 'admin' && (
+                  <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>My Requests</p>
+                    {availabilityRequests.filter(r => r.employeeId === currentUser.id).length === 0
+                      ? <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No requests yet</p>
+                      : availabilityRequests.filter(r => r.employeeId === currentUser.id).map(req => (
+                        <div key={req.id} className={`flex items-center justify-between p-2 rounded-lg mb-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                          <div>
+                            <p className={`text-xs font-medium ${darkMode ? 'text-white' : ''}`}>{req.startDate}{req.endDate !== req.startDate ? ` → ${req.endDate}` : ''}</p>
+                            {req.reason && <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{req.reason}</p>}
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${req.status === 'approved' ? 'bg-green-500 text-white' : req.status === 'declined' ? 'bg-red-500 text-white' : 'bg-yellow-400 text-yellow-900'}`}>
+                            {req.status}
+                          </span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Request Day Off Modal */}
+          {showAvailabilityModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>📅 Request Time Off</h3>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>From Date *</label>
+                    <input type="date" value={availForm.startDate} onChange={e => setAvailForm(p => ({...p, startDate: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>To Date (leave blank for single day)</label>
+                    <input type="date" value={availForm.endDate} onChange={e => setAvailForm(p => ({...p, endDate: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Reason (optional)</label>
+                    <input type="text" placeholder="e.g. Holiday, appointment..." value={availForm.reason}
+                      onChange={e => setAvailForm(p => ({...p, reason: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button onClick={() => setShowAvailabilityModal(false)}
+                      className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                    <button onClick={submitAvailabilityRequest} disabled={!availForm.startDate}
+                      className={`py-2 rounded-lg font-semibold text-white ${availForm.startDate ? '' : 'opacity-50 cursor-not-allowed'}`} style={{background:'var(--gold)'}}>
+                      Submit Request
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    );
+  }
+
+  // TIMESHEETS
+  if (currentView === 'timesheets') {
+    const filteredEntries = getFilteredTimeEntries();
+    const totalHours = filteredEntries.reduce((acc, e) => acc + e.hoursWorked, 0);
+    
+    const dm = darkMode;
+    return (
+      <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {helpModalJSX}
+        <NavBar />
+        <div className="p-4 space-y-4">
+          {/* Filters + Total */}
+          <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <div className="flex gap-2 mb-4">
+              <select value={timesheetFilter} onChange={(e) => setTimesheetFilter(e.target.value)}
+                className={`flex-1 px-3 py-2 border rounded ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                <option value="this-week">This Week</option>
+                <option value="this-month">This Month</option>
+                <option value="this-year">This Year</option>
+                <option value="all">All Time</option>
+              </select>
+              <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)}
+                className={`flex-1 px-3 py-2 border rounded ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                <option value="all">All Employees</option>
+                {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+              </select>
+            </div>
+            <div className={`p-4 rounded-lg ${dm ? 'bg-blue-900' : 'bg-blue-50'}`}>
+              <p className={`text-sm ${dm ? 'text-blue-300' : 'text-gray-600'}`}>Total Hours</p>
+              <p className="text-3xl font-bold text-blue-500">{totalHours.toFixed(1)}h</p>
+            </div>
+          </div>
+
+          {/* Per-Job Staff Breakdown */}
+          {(() => {
+            const jobsWithTime = editingJobs.filter(job => filteredEntries.some(e => e.jobId === job.id));
+            if (jobsWithTime.length === 0) return null;
+            return (
+              <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
+                <div className={`p-4 border-b ${dm ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold ${dm ? 'text-white' : 'text-gray-800'}`}>👥 My Assignments &amp; Jobs — Staff Hours by Part</h3>
+                  <p className={`text-xs mt-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Hours each staff member spent on each job and which part they worked on</p>
+                </div>
+                <div className={`divide-y ${dm ? 'divide-gray-700' : ''}`}>
+                  {jobsWithTime.map(job => {
+                    const jobEntries = filteredEntries.filter(e => e.jobId === job.id);
+                    const staffOnJob = employees
+                      .map(emp => {
+                        const hrs = jobEntries.filter(e => e.employeeId === emp.id).reduce((acc, e) => acc + (e.hoursWorked || 0), 0);
+                        const parts = [];
+                        if (job.hasPhotos && job.photoAssignedTo === emp.id) parts.push('📸 Photo Editing');
+                        if (job.hasVideo) job.stages.filter(s => s.assignedTo === emp.id).forEach(s => parts.push('🎥 ' + s.name.split(',')[0]));
+                        return { name: emp.name, hours: hrs, parts };
+                      })
+                      .filter(e => e.hours > 0 || e.parts.length > 0);
+                    return (
+                      <div key={job.id} className="p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                          </div>
+                          <p className="text-sm font-bold text-blue-500">{jobEntries.reduce((a, e) => a + (e.hoursWorked || 0), 0).toFixed(1)}h total</p>
+                        </div>
+                        <div className="space-y-1">
+                          {staffOnJob.map(emp => (
+                            <div key={emp.name} className={`flex items-start justify-between text-sm rounded px-2 py-1 ${dm ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                              <div className="flex-1">
+                                <span className={`font-medium ${dm ? 'text-gray-200' : 'text-gray-800'}`}>{emp.name}</span>
+                                {emp.parts.length > 0 && <span className={`text-xs ml-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>— {emp.parts.join(', ')}</span>}
+                              </div>
+                              <span className={`ml-2 font-semibold text-xs ${emp.hours > 0 ? 'text-green-500' : (dm ? 'text-gray-500' : 'text-gray-400')}`}>
+                                {emp.hours > 0 ? `${emp.hours.toFixed(1)}h` : 'Assigned, 0h'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* All Time Entries */}
+          <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
+            <div className={`p-4 border-b ${dm ? 'border-gray-700' : ''}`}>
+              <h3 className={`font-bold ${dm ? 'text-white' : 'text-gray-800'}`}>Time Entries ({filteredEntries.length})</h3>
+            </div>
+            <div className={`divide-y ${dm ? 'divide-gray-700' : ''}`}>
+              {filteredEntries.map(entry => {
+                const employee = employees.find(e => e.id === entry.employeeId);
+                return (
+                  <div key={entry.id} className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>{employee?.name}</p>
+                        <p className={`text-sm ${dm ? 'text-gray-400' : 'text-gray-600'}`}>{getJobName(entry.jobId)}</p>
+                        <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{formatDate(entry.clockIn)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-green-500">{entry.hoursWorked}h</p>
+                        <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{formatTime(entry.clockIn)} - {formatTime(entry.clockOut)}</p>
+                      </div>
+                    </div>
+                    {employee && (() => {
+                      const job = editingJobs.find(j => j.id === entry.jobId);
+                      const stageEarnings = job ? (job.stages || []).filter(s => s.assignedTo === employee.id && s.status === 'completed').reduce((a, s) => a + getStageRate(s.name, job), 0) + (job.hasPhotos && job.photoAssignedTo === employee.id && job.photoStatus === 'completed' ? getPhotoRate(job) : 0) : 0;
+                      return stageEarnings > 0 ? <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Stage pay: £{stageEarnings}</p> : null;
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ANALYTICS
+  if (currentView === 'analytics') {
+    // Only include jobs whose shoot date has passed (not today or future) — upcoming jobs excluded from all stats
+    const _analyticsTodayMidnight = new Date(); _analyticsTodayMidnight.setHours(0, 0, 0, 0);
+    const pastJobs = editingJobs.filter(job => !job.shootDate || new Date(job.shootDate) < _analyticsTodayMidnight);
+
+    const totalJobs = pastJobs.length + archivedJobIds.length; // include archived so % doesn't drop when archiving
+    const activeJobsCount = activeJobs.length;
+    const archivedCount = archivedJobIds.length;
+
+    // Filter jobs based on profitability filter
+    const getFilteredJobsForProfitability = () => {
+      if (profitabilityFilter === 'all-time') {
+        return pastJobs;
+      } else if (profitabilityFilter === 'year') {
+        return pastJobs.filter(job => new Date(job.shootDate).getFullYear() === selectedYear);
+      } else if (profitabilityFilter === 'month') {
+        return pastJobs.filter(job => {
+          const date = new Date(job.shootDate);
+          return date.getFullYear() === selectedYear && (date.getMonth() + 1) === selectedMonth;
+        });
+      }
+      return pastJobs;
+    };
+    
+    const filteredJobsForProfit = getFilteredJobsForProfitability();
+    
+    // Profitability calculations
+    const totalRevenue = filteredJobsForProfit.reduce((acc, job) => acc + calculateJobRevenue(job), 0);
+    const totalCosts = filteredJobsForProfit.reduce((acc, job) => acc + calculateJobCosts(job), 0);
+    const totalProfit = totalRevenue - totalCosts;
+    const overallMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0;
+    const avgRevenuePerJob = filteredJobsForProfit.length > 0 ? (totalRevenue / filteredJobsForProfit.length).toFixed(0) : 0;
+    const avgProfitPerJob = filteredJobsForProfit.length > 0 ? (totalProfit / filteredJobsForProfit.length).toFixed(0) : 0;
+    
+    // Get available years from jobs
+    const availableYears = [...new Set(pastJobs.map(job => new Date(job.shootDate).getFullYear()))].sort((a, b) => b - a);
+    
+    // Monthly breakdown for selected year
+    const monthlyProfitData = [];
+    for (let month = 1; month <= 12; month++) {
+      const monthJobs = pastJobs.filter(job => {
+        const date = new Date(job.shootDate);
+        return date.getFullYear() === selectedYear && (date.getMonth() + 1) === month;
+      });
+      
+      if (monthJobs.length > 0) {
+        const monthRevenue = monthJobs.reduce((acc, job) => acc + calculateJobRevenue(job), 0);
+        const monthCosts = monthJobs.reduce((acc, job) => acc + calculateJobCosts(job), 0);
+        const monthProfit = monthRevenue - monthCosts;
+        
+        monthlyProfitData.push({
+          month: new Date(selectedYear, month - 1).toLocaleDateString('en-US', { month: 'short' }),
+          monthNumber: month,
+          jobs: monthJobs.length,
+          revenue: monthRevenue,
+          costs: monthCosts,
+          profit: monthProfit,
+          margin: monthRevenue > 0 ? ((monthProfit / monthRevenue) * 100).toFixed(1) : 0
+        });
+      }
+    }
+    
+    // Yearly breakdown
+    const yearlyProfitData = availableYears.map(year => {
+      const yearJobs = pastJobs.filter(job => new Date(job.shootDate).getFullYear() === year);
+      const yearRevenue = yearJobs.reduce((acc, job) => acc + calculateJobRevenue(job), 0);
+      const yearCosts = yearJobs.reduce((acc, job) => acc + calculateJobCosts(job), 0);
+      const yearProfit = yearRevenue - yearCosts;
+      
+      return {
+        year,
+        jobs: yearJobs.length,
+        revenue: yearRevenue,
+        costs: yearCosts,
+        profit: yearProfit,
+        margin: yearRevenue > 0 ? ((yearProfit / yearRevenue) * 100).toFixed(1) : 0
+      };
+    });
+    
+    // Overall completion calculations
+    const activeJobsList = pastJobs.filter(job => !archivedJobIds.includes(job.id));
+    
+    // Photo completion
+    const totalPhotoJobs = activeJobsList.filter(j => j.hasPhotos).length;
+    const completedPhotoJobs = activeJobsList.filter(j => j.hasPhotos && j.photoStatus === 'completed').length;
+    const photoCompletionRate = totalPhotoJobs > 0 ? ((completedPhotoJobs / totalPhotoJobs) * 100).toFixed(0) : 0;
+    
+    // Video completion (by stages)
+    let totalVideoStages = 0;
+    let completedVideoStages = 0;
+    activeJobsList.forEach(job => {
+      if (job.hasVideo && job.stages) {
+        totalVideoStages += job.stages.length;
+        completedVideoStages += job.stages.filter(s => s.status === 'completed').length;
+      }
+    });
+    const videoCompletionRate = totalVideoStages > 0 ? ((completedVideoStages / totalVideoStages) * 100).toFixed(0) : 0;
+    
+    // Overall completion
+    const totalTasks = totalPhotoJobs + totalVideoStages;
+    const completedTasks = completedPhotoJobs + completedVideoStages;
+    const overallCompletionRate = totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(0) : 0;
+    
+    // Time tracking per job
+    const jobTimeBreakdown = editingJobs.map(job => {
+      const jobEntries = timeEntries.filter(e => e.jobId === job.id && e.hoursWorked);
+      const employeeBreakdown = {};
+      let totalHours = 0;
+      
+      jobEntries.forEach(entry => {
+        const emp = employees.find(e => e.id === entry.employeeId);
+        if (emp) {
+          if (!employeeBreakdown[emp.name]) {
+            employeeBreakdown[emp.name] = 0;
+          }
+          employeeBreakdown[emp.name] += entry.hoursWorked;
+          totalHours += entry.hoursWorked;
+        }
+      });
+      
+      return {
+        jobId: job.id,
+        jobName: job.jobName,
+        employeeBreakdown,
+        totalHours,
+        estimatedHours: (job.videoEditHours || 0) + (job.photoEditHours || 0),
+        efficiency: ((job.videoEditHours || 0) + (job.photoEditHours || 0)) > 0 ? 
+          (totalHours / ((job.videoEditHours || 0) + (job.photoEditHours || 0)) * 100).toFixed(0) : 0
+      };
+    }).filter(j => j.totalHours > 0).sort((a, b) => b.totalHours - a.totalHours);
+    
+    // Employee time tracking
+    const employeeTimeBreakdown = employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => {
+      const empEntries = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked);
+      const jobBreakdown = {};
+      let totalHours = 0;
+      
+      empEntries.forEach(entry => {
+        const job = editingJobs.find(j => j.id === entry.jobId);
+        if (job) {
+          if (!jobBreakdown[job.jobName]) {
+            jobBreakdown[job.jobName] = 0;
+          }
+          jobBreakdown[job.jobName] += entry.hoursWorked;
+          totalHours += entry.hoursWorked;
+        }
+      });
+      
+      return {
+        employeeId: emp.id,
+        employeeName: emp.name,
+        jobBreakdown,
+        totalHours,
+        avgHoursPerJob: Object.keys(jobBreakdown).length > 0 ? 
+          (totalHours / Object.keys(jobBreakdown).length).toFixed(1) : 0
+      };
+    }).filter(e => e.totalHours > 0).sort((a, b) => b.totalHours - a.totalHours);
+    
+    const completedJobs = pastJobs.filter(job => {
+      const allPhotosComplete = !job.hasPhotos || job.photoStatus === 'completed';
+      const allVideoComplete = !job.hasVideo || job.stages.every(s => s.status === 'completed');
+      return allPhotosComplete && allVideoComplete;
+    }).length + archivedJobIds.length; // archived jobs count as completed
+
+    const inProgressJobs = pastJobs.filter(job => {
+      const hasPhotoInProgress = job.hasPhotos && job.photoStatus === 'in-progress';
+      const hasVideoInProgress = job.hasVideo && job.stages.some(s => s.status === 'in-progress');
+      return hasPhotoInProgress || hasVideoInProgress;
+    }).length;
+    
+    const totalHours = timeEntries.filter(e => e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
+    const totalLabor = employees.reduce((acc, emp) => acc + getEmployeeStageEarnings(emp.id), 0);
+
+    const avgHoursPerJob = totalJobs > 0 ? (totalHours / totalJobs).toFixed(1) : 0;
+    const completionRate = totalJobs > 0 ? ((completedJobs / totalJobs) * 100).toFixed(0) : 0;
+
+    // Employee performance — stage-based pay
+    const employeeStats = employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => {
+      const hours = getEmployeeHours(emp.id);
+      const jobsAssigned = getUserAssignedJobs(emp.id).length;
+      const earnings = getEmployeeStageEarnings(emp.id);
+      const breakdown = getEmployeeStageBreakdown(emp.id);
+      const effectiveHourlyRate = hours > 0 ? (earnings / hours) : 0;
+      return { ...emp, hours, jobsAssigned, earnings, breakdown, effectiveHourlyRate };
+    }).sort((a, b) => b.earnings - a.earnings);
+
+    // Average effective hourly wage — uses shoot entries (have hoursWorked) + editing entries (via time clock)
+    const avgHourlyWage = (() => {
+      const rates = [];
+      employees.forEach(emp => {
+        const shootEntries = editingJobs.flatMap(j => (j.wageEntries || []).filter(e => e.type === 'shoot' && e.employeeId === emp.id && e.hoursWorked > 0));
+        const shootHours = shootEntries.reduce((a, e) => a + e.hoursWorked, 0);
+        const shootWages = shootEntries.reduce((a, e) => a + (e.amount || 0), 0);
+        const editHours = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked).reduce((a, e) => a + e.hoursWorked, 0);
+        const editWages = getEmployeeStageEarnings(emp.id);
+        const totalHours = shootHours + editHours;
+        const totalWages = shootWages + editWages;
+        if (totalHours > 0) rates.push(totalWages / totalHours);
+      });
+      return rates.length > 0 ? rates.reduce((a, r) => a + r, 0) / rates.length : 0;
+    })();
+    const ratesCount = employees.filter(emp => {
+      const shootHours = editingJobs.flatMap(j => (j.wageEntries || []).filter(e => e.type === 'shoot' && e.employeeId === emp.id && e.hoursWorked > 0)).reduce((a, e) => a + e.hoursWorked, 0);
+      const editHours = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked).reduce((a, e) => a + e.hoursWorked, 0);
+      return (shootHours + editHours) > 0;
+    }).length;
+    
+    // Job type breakdown
+    const photoOnlyJobs = pastJobs.filter(j => j.jobType === 'photo-only').length;
+    const videoOnlyJobs = pastJobs.filter(j => j.jobType === 'video-only').length;
+    const photoVideoJobs = pastJobs.filter(j => j.jobType === 'photo-video').length;
+    
+    // Pipeline stages
+    const stageStats = [
+      { name: 'Cutting, Syncing & Organising', count: 0 },
+      { name: 'Music, Nesting & Sorting', count: 0 },
+      { name: 'Colouring & Checking', count: 0 },
+      { name: 'Highlights Trailer & Intro', count: 0 }
+    ];
+    pastJobs.forEach(job => {
+      if (job.hasVideo) {
+        job.stages.forEach(stage => {
+          const stat = stageStats.find(s => s.name === stage.name);
+          if (stat) {
+            if (stage.status === 'completed') stat.count++;
+          }
+        });
+      }
+    });
+
+    // Time distribution by job
+    const jobTimeData = pastJobs.map(job => ({
+      name: job.jobName,
+      hours: getJobHours(job.id),
+      labor: getJobHours(job.id) * 20
+    })).sort((a, b) => b.hours - a.hours);
+    
+    // Recent activity (last 7 days)
+    const sevenDaysAgo = new Date(currentTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const recentEntries = timeEntries.filter(e => e.hoursWorked && new Date(e.clockIn) >= sevenDaysAgo);
+    const recentHours = recentEntries.reduce((acc, e) => acc + e.hoursWorked, 0);
+
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {helpModalJSX}
+        <NavBar />
+        <div className="p-4 space-y-4">
+          {/* Revenue Trend Line Graph */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>📈 Revenue Trend (Month-over-Month)</h2>
+            <div className="overflow-x-auto">
+              <div className="flex items-end gap-2 h-48 pb-8">
+                {monthlyProfitData.length > 0 ? monthlyProfitData.map((month, idx) => {
+                  const maxRevenue = Math.max(...monthlyProfitData.map(m => m.revenue), 1);
+                  const revenueHeight = (month.revenue / maxRevenue) * 100;
+                  
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center min-w-12">
+                      <div className="w-full flex flex-col items-center h-40 justify-end">
+                        <div 
+                          className="w-full bg-gradient-to-t from-green-600 to-green-400 rounded-t relative group cursor-pointer"
+                          style={{ height: `${revenueHeight}%`, minHeight: '4px' }}
+                        >
+                          <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
+                            £{month.revenue.toFixed(0)} ({month.jobs} jobs)
+                          </div>
+                        </div>
+                      </div>
+                      <span className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{month.month}</span>
+                    </div>
+                  );
+                }) : (
+                  <p className={`text-center w-full py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No data for {selectedYear}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Key Metrics */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h2 className="text-lg font-bold mb-4">📊 Key Metrics</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <p className="text-xs text-gray-600">Total Jobs</p>
+                <p className="text-3xl font-bold text-blue-600">{totalJobs}</p>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <p className="text-xs text-gray-600">Completed</p>
+                <p className="text-3xl font-bold text-green-600">{completedJobs}</p>
+              </div>
+              <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                <p className="text-xs text-gray-600">In Progress</p>
+                <p className="text-3xl font-bold text-yellow-600">{inProgressJobs}</p>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <p className="text-xs text-gray-600">Archived</p>
+                <p className="text-3xl font-bold text-purple-600">{archivedCount}</p>
+              </div>
+              <div className="col-span-2 text-center p-3 bg-orange-50 rounded-lg">
+                <p className="text-xs text-gray-600">Avg Effective Hourly Wage</p>
+                <p className="text-3xl font-bold text-orange-600">{avgHourlyWage > 0 ? `£${avgHourlyWage.toFixed(2)}/hr` : '—'}</p>
+                <p className="text-xs text-gray-400 mt-1">across {ratesCount} staff with logged hours</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Overall Completion Chart */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">📊 Overall Completion</h3>
+            
+            {/* Overall */}
+            <div className="mb-4 p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg">
+              <p className="text-sm opacity-90 mb-2">Total Progress</p>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <div className="w-full bg-white bg-opacity-30 rounded-full h-6">
+                    <div className="bg-white h-6 rounded-full flex items-center justify-center text-xs font-bold text-blue-600" 
+                         style={{width: `${overallCompletionRate}%`}}>
+                      {overallCompletionRate}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs opacity-90 mt-2">{completedTasks} of {totalTasks} tasks completed</p>
+            </div>
+
+            {/* Photo Editing */}
+            <div className="mb-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-semibold">📸 Photo Editing</span>
+                <span className="text-sm font-bold text-purple-600">{photoCompletionRate}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-4">
+                <div className="bg-purple-500 h-4 rounded-full transition-all" 
+                     style={{width: `${photoCompletionRate}%`}}>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{completedPhotoJobs} of {totalPhotoJobs} photo jobs completed</p>
+            </div>
+
+            {/* Video Editing */}
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-semibold">🎥 Video Editing</span>
+                <span className="text-sm font-bold text-blue-600">{videoCompletionRate}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-4">
+                <div className="bg-blue-500 h-4 rounded-full transition-all" 
+                     style={{width: `${videoCompletionRate}%`}}>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{completedVideoStages} of {totalVideoStages} video stages completed</p>
+            </div>
+          </div>
+
+          {/* Profitability Overview */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">💰 Profitability Overview</h3>
+            
+            {/* Filter Controls */}
+            <div className="mb-4 space-y-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setProfitabilityFilter('all-time')}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                    profitabilityFilter === 'all-time' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  All Time
+                </button>
+                <button
+                  onClick={() => setProfitabilityFilter('year')}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                    profitabilityFilter === 'year' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  By Year
+                </button>
+                <button
+                  onClick={() => setProfitabilityFilter('month')}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                    profitabilityFilter === 'month' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  By Month
+                </button>
+              </div>
+              
+              {(profitabilityFilter === 'year' || profitabilityFilter === 'month') && (
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              )}
+              
+              {profitabilityFilter === 'month' && (
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(month => (
+                    <option key={month} value={month}>
+                      {new Date(selectedYear, month - 1).toLocaleDateString('en-US', { month: 'long' })}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
+            <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-600">Showing data for:</p>
+              <p className="font-semibold">
+                {profitabilityFilter === 'all-time' ? 'All Time' : 
+                 profitabilityFilter === 'year' ? `Year ${selectedYear}` :
+                 `${new Date(selectedYear, selectedMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`}
+              </p>
+              <p className="text-xs text-gray-500">{filteredJobsForProfit.length} jobs</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <p className="text-xs text-gray-600">Total Revenue</p>
+                <p className="text-2xl font-bold text-green-600">£{totalRevenue.toFixed(0)}</p>
+              </div>
+              <div className="text-center p-3 bg-red-50 rounded-lg">
+                <p className="text-xs text-gray-600">Total Costs</p>
+                <p className="text-2xl font-bold text-red-600">£{totalCosts.toFixed(0)}</p>
+              </div>
+            </div>
+            <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg mb-3">
+              <p className="text-xs opacity-90">Total Profit</p>
+              <p className="text-3xl font-bold">£{totalProfit.toFixed(0)}</p>
+              <p className="text-sm opacity-90">{overallMargin}% margin</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <p className="text-xs text-gray-600">Avg Revenue/Job</p>
+                <p className="text-xl font-bold text-blue-600">£{avgRevenuePerJob}</p>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <p className="text-xs text-gray-600">Avg Profit/Job</p>
+                <p className="text-xl font-bold text-purple-600">£{avgProfitPerJob}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Time Analytics */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">⏰ Time Analytics</h3>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <p className="text-xs text-gray-600">Total Hours</p>
+                <p className="text-2xl font-bold text-purple-600">{totalHours.toFixed(1)}h</p>
+              </div>
+              <div className="text-center p-3 bg-pink-50 rounded-lg">
+                <p className="text-xs text-gray-600">Avg Hours/Job</p>
+                <p className="text-2xl font-bold text-pink-600">{avgHoursPerJob}h</p>
+              </div>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600">Last 7 Days</p>
+              <p className="text-xl font-bold text-gray-800">{recentHours.toFixed(1)} hours logged</p>
+              <p className="text-xs text-gray-500">{recentEntries.length} time entries</p>
+            </div>
+          </div>
+
+          {/* Completion Rate */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">✅ Completion Rate</h3>
+            <div className="mb-2">
+              <div className="flex justify-between text-sm mb-1">
+                <span>Progress</span>
+                <span className="font-bold">{completionRate}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-4">
+                <div className="bg-green-500 h-4 rounded-full" style={{width: `${completionRate}%`}}></div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">{completedJobs} of {totalJobs} jobs completed ({archivedCount} archived)</p>
+          </div>
+
+          {/* Job Type Breakdown */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">📹 Job Type Distribution</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                  <span className="text-sm">Photo + Video</span>
+                </div>
+                <span className="font-bold text-blue-600">{photoVideoJobs}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-purple-500 rounded"></div>
+                  <span className="text-sm">Photo Only</span>
+                </div>
+                <span className="font-bold text-purple-600">{photoOnlyJobs}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-500 rounded"></div>
+                  <span className="text-sm">Video Only</span>
+                </div>
+                <span className="font-bold text-green-600">{videoOnlyJobs}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Employee Performance */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <div className="flex justify-between items-center mb-1">
+              <h3 className={`font-bold ${darkMode ? 'text-white' : ''}`}>👥 Staff Earnings</h3>
+              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>per completed stage</span>
+            </div>
+            <div className={`text-xs mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              Cutting £50/70/90 (1/2/3 cam) · Music £50 · Colouring £25 · Highlights £20 · Photos £40/60 (1/2 cam)
+            </div>
+            <div className="space-y-4">
+              {employeeStats.length === 0 && <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No completed stages yet</p>}
+              {employeeStats.map(emp => (
+                <div key={emp.id} className={`border-b pb-4 ${darkMode ? 'border-gray-700' : ''}`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`font-semibold ${darkMode ? 'text-white' : ''}`}>{emp.name}</span>
+                    <div className="text-right">
+                      <span className="text-lg font-bold text-green-600">£{emp.earnings.toFixed(0)}</span>
+                      {emp.hours > 0 && <span className={`block text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>≈ £{emp.effectiveHourlyRate.toFixed(2)}/hr effective</span>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                    <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
+                      <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Hours logged</p>
+                      <p className={`font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{emp.hours.toFixed(1)}h</p>
+                    </div>
+                    <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-purple-50'}`}>
+                      <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Stages done</p>
+                      <p className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{Object.values(emp.breakdown).reduce((a,b) => a + b.count, 0)}</p>
+                    </div>
+                  </div>
+                  {Object.keys(emp.breakdown).length > 0 && (
+                    <div className="space-y-1">
+                      {Object.entries(emp.breakdown).map(([stageName, info]) => (
+                        <div key={stageName} className="flex justify-between items-center">
+                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{stageName} ×{info.count}</span>
+                          <span className={`text-xs font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>£{info.total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Pipeline Progress */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>🎬 Video Pipeline Progress</h3>
+            <div className="space-y-3">
+              {stageStats.map((stage, idx) => (
+                <div key={idx}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className={`text-xs ${darkMode ? 'text-gray-300' : ''}`}>{stage.name}</span>
+                    <span className={`font-bold ${darkMode ? 'text-white' : ''}`}>{stage.count} completed</span>
+                  </div>
+                  <div className={`w-full rounded-full h-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                    <div className="h-2 rounded-full" style={{width: `${pastJobs.filter(j => j.hasVideo).length > 0 ? (stage.count / pastJobs.filter(j => j.hasVideo).length * 100) : 0}%`, background: 'var(--gold)'}}>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Job Profitability Analysis */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>💎 Job Profitability</h3>
+            <div className="space-y-3">
+              {pastJobs.map(job => {
+                const revenue = calculateJobRevenue(job);
+                const costs = calculateJobCosts(job);
+                const profit = calculateJobProfit(job);
+                const margin = calculateJobMargin(job);
+                const isCustomPrice = job.customPrice !== null && job.customPrice !== undefined && job.customPrice > 0;
+                
+                return (
+                  <div key={job.id} className={`border rounded-lg p-3 ${darkMode ? 'border-gray-700' : ''}`}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{job.jobName}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job.customerName}</p>
+                        {isCustomPrice && <span className={`text-xs px-2 py-1 rounded mt-1 inline-block ${darkMode ? 'bg-yellow-900 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}>Custom Price</span>}
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        margin >= 60 ? darkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700' :
+                        margin >= 40 ? darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700' :
+                        margin >= 20 ? darkMode ? 'bg-yellow-900 text-yellow-300' : 'bg-yellow-100 text-yellow-700' :
+                        darkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {margin}% margin
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>
+                        <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Revenue</p>
+                        <p className="font-bold text-green-500">£{revenue.toFixed(0)}</p>
+                      </div>
+                      <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-red-50'}`}>
+                        <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Costs</p>
+                        <p className="font-bold text-red-500">£{costs.toFixed(0)}</p>
+                      </div>
+                      <div className={`text-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
+                        <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Profit</p>
+                        <p className="font-bold text-blue-400">£{profit.toFixed(0)}</p>
+                      </div>
+                    </div>
+                    <div className={`mt-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                      <p>Shoot: {job.shootHours}h × {(job.numVideographers || 0) + (job.numPhotographers || 0)} staff = £{((job.shootHours || 0) * ((job.numVideographers || 0) + (job.numPhotographers || 0)) * 13).toFixed(0)}</p>
+                      {job.hasVideo && (
+                        <p>Video stages: {job.stages.map(s => s.status === 'completed' ? `£${getStageRate(s.name, job)}` : null).filter(Boolean).join(' + ') || 'None completed'}</p>
+                      )}
+                      {job.hasPhotos && (
+                        <p>Photo edit: {job.photoStatus === 'completed' ? '£60' : '£0 (not completed)'}</p>
+                      )}
+                      <p>Staff pay: {(() => { const stageTotal = job.stages?.filter(s => s.status === 'completed').reduce((a, s) => a + getStageRate(s.name, job), 0) || 0; const photoTotal = job.hasPhotos && job.photoStatus === 'completed' ? getPhotoRate(job) : 0; return `£${stageTotal + photoTotal}`; })()} in completed stages</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Yearly Breakdown */}
+          {profitabilityFilter === 'all-time' && yearlyProfitData.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-bold mb-4">📅 Yearly Breakdown</h3>
+              <div className="space-y-3">
+                {yearlyProfitData.map((yearData) => (
+                  <div key={yearData.year} className="border rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <div>
+                        <p className="font-bold text-lg">{yearData.year}</p>
+                        <p className="text-xs text-gray-600">{yearData.jobs} jobs</p>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        yearData.margin >= 60 ? 'bg-green-100 text-green-700' :
+                        yearData.margin >= 40 ? 'bg-blue-100 text-blue-700' :
+                        yearData.margin >= 20 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {yearData.margin}% margin
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-2 bg-green-50 rounded text-xs">
+                        <p className="text-gray-600">Revenue</p>
+                        <p className="font-bold text-green-600">£{yearData.revenue.toFixed(0)}</p>
+                      </div>
+                      <div className="text-center p-2 bg-red-50 rounded text-xs">
+                        <p className="text-gray-600">Costs</p>
+                        <p className="font-bold text-red-600">£{yearData.costs.toFixed(0)}</p>
+                      </div>
+                      <div className="text-center p-2 bg-blue-50 rounded text-xs">
+                        <p className="text-gray-600">Profit</p>
+                        <p className="font-bold text-blue-600">£{yearData.profit.toFixed(0)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Monthly Breakdown */}
+          {profitabilityFilter === 'year' && monthlyProfitData.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-bold mb-4">📊 Monthly Breakdown - {selectedYear}</h3>
+              <div className="space-y-3">
+                {monthlyProfitData.map((monthData) => (
+                  <div key={monthData.monthNumber} className="border rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <div>
+                        <p className="font-bold">{monthData.month}</p>
+                        <p className="text-xs text-gray-600">{monthData.jobs} jobs</p>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        monthData.margin >= 60 ? 'bg-green-100 text-green-700' :
+                        monthData.margin >= 40 ? 'bg-blue-100 text-blue-700' :
+                        monthData.margin >= 20 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {monthData.margin}% margin
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-2 bg-green-50 rounded text-xs">
+                        <p className="text-gray-600">Revenue</p>
+                        <p className="font-bold text-green-600">£{monthData.revenue.toFixed(0)}</p>
+                      </div>
+                      <div className="text-center p-2 bg-red-50 rounded text-xs">
+                        <p className="text-gray-600">Costs</p>
+                        <p className="font-bold text-red-600">£{monthData.costs.toFixed(0)}</p>
+                      </div>
+                      <div className="text-center p-2 bg-blue-50 rounded text-xs">
+                        <p className="text-gray-600">Profit</p>
+                        <p className="font-bold text-blue-600">£{monthData.profit.toFixed(0)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming Jobs from Calendar */}
+          {isGoogleSignedIn && upcomingJobs.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-bold mb-4">📅 Upcoming Jobs ({upcomingJobs.length})</h3>
+              <div className="space-y-2">
+                {upcomingJobs.slice(0, 10).map(event => {
+                  const eventDate = new Date(event.start.dateTime || event.start.date);
+                  const daysUntil = Math.ceil((eventDate - new Date()) / (1000 * 60 * 60 * 24));
+                  
+                  return (
+                    <div key={event.id} className="flex justify-between items-center p-2 bg-blue-50 rounded text-sm">
+                      <div>
+                        <p className="font-semibold">{event.summary}</p>
+                        <p className="text-xs text-gray-600">
+                          {eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <span className="text-xs text-blue-600 font-semibold">
+                        {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil}d`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Status Overview */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">📈 Status Overview</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 bg-red-50 rounded">
+                <span className="text-sm">Overdue</span>
+                <span className="font-bold text-red-600">{overdueJobs.length}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-yellow-50 rounded">
+                <span className="text-sm">Due This Week</span>
+                <span className="font-bold text-yellow-600">{dueSoonJobs.length}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-blue-50 rounded">
+                <span className="text-sm">Active</span>
+                <span className="font-bold text-blue-600">{activeJobsCount}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-green-50 rounded">
+                <span className="text-sm">Currently Working</span>
+                <span className="font-bold text-green-600">{activeTimeEntries.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Time Tracking by Job */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">⏱️ Time Tracking by Job</h3>
+            {jobTimeBreakdown.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No time entries logged yet</p>
+            ) : (
+              <div className="space-y-3">
+                {jobTimeBreakdown.map((job, idx) => (
+                  <div key={idx} className="border rounded-lg p-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">{job.jobName}</p>
+                        <p className="text-xs text-gray-500">{job.estimatedHours}h estimated</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-blue-600">{job.totalHours.toFixed(1)}h</p>
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          job.efficiency <= 100 ? 'bg-green-100 text-green-700' :
+                          job.efficiency <= 150 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {job.efficiency}% of estimate
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {Object.entries(job.employeeBreakdown).map(([empName, hours], i) => (
+                        <div key={i} className="flex justify-between text-xs bg-gray-50 p-2 rounded">
+                          <span className="text-gray-700">{empName}</span>
+                          <span className="font-semibold text-gray-800">{hours.toFixed(1)}h</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Time Tracking by Employee */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-bold mb-4">👤 Time Tracking by Employee</h3>
+            {employeeTimeBreakdown.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No time entries logged yet</p>
+            ) : (
+              <div className="space-y-3">
+                {employeeTimeBreakdown.map((emp, idx) => (
+                  <div key={idx} className="border rounded-lg p-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <p className="font-semibold">{emp.employeeName}</p>
+                        <p className="text-xs text-gray-500">Avg {emp.avgHoursPerJob}h per job</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-purple-600">{emp.totalHours.toFixed(1)}h</p>
+                        <p className="text-xs text-gray-500">{Object.keys(emp.jobBreakdown).length} jobs</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {Object.entries(emp.jobBreakdown).map(([jobName, hours], i) => (
+                        <div key={i} className="flex justify-between text-xs bg-gray-50 p-2 rounded">
+                          <span className="text-gray-700">{jobName}</span>
+                          <span className="font-semibold text-gray-800">{hours.toFixed(1)}h</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── WAGES ────────────────────────────────────────────────────────────────────
+  if (currentView === 'wages') {
+    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+    const dm = darkMode;
+
+    const statusBadge = (status) => {
+      const styles = { approved: 'bg-green-100 text-green-700', pending_approval: 'bg-orange-100 text-orange-700', rejected: 'bg-red-100 text-red-700', paid: 'bg-blue-100 text-blue-700' };
+      const labels = { approved: 'Approved', pending_approval: 'Pending', rejected: 'Rejected', paid: 'Paid' };
+      return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[status] || ''}`}>{labels[status] || status}</span>;
+    };
+
+    // ── Shoot wages (stored wageEntries type='shoot') ──────────────────────────
+    const allShootEntries = editingJobs.flatMap(j =>
+      (j.wageEntries || []).filter(e => e.type === 'shoot').map(e => ({ ...e, jobId: j.id, jobName: j.jobName, customerName: j.customerName, shootDate: j.shootDate }))
+    );
+    const visibleShootEntries = isAdmin ? allShootEntries : allShootEntries.filter(e => e.employeeId === currentUser?.id);
+    const shootOwed = visibleShootEntries.filter(e => e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0);
+    const shootPaid = visibleShootEntries.filter(e => e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0);
+    const shootPending = allShootEntries.filter(e => e.status === 'pending_approval');
+
+    // Pull shoot wages from Google Calendar
+    const pullShootWagesFromCalendar = async () => {
+      if (!isGoogleSignedIn) { alert('Please connect Google Calendar first (use the Sync button on the Jobs page).'); return; }
+      try {
+        const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const response = await window.gapi.client.calendar.events.list({
+          calendarId: 'primary', timeMin: thirtyDaysAgo.toISOString(), timeMax: new Date().toISOString(),
+          showDeleted: false, singleEvents: true, orderBy: 'startTime'
+        });
+        const events = response.result.items || [];
+        let created = 0;
+        for (const event of events) {
+          const eventDate = new Date(event.start?.dateTime || event.start?.date);
+          const matchedJob = editingJobs.find(j =>
+            j.calendarEventId === event.id ||
+            (j.shootDate && Math.abs(new Date(j.shootDate) - eventDate) < 24 * 60 * 60 * 1000 &&
+              j.jobName.toLowerCase().includes((event.summary || '').toLowerCase().split(' ')[0]))
+          );
+          if (!matchedJob) continue;
+          const jobTimeEntries = timeEntries.filter(t => t.jobId === matchedJob.id);
+          const empIds = [...new Set(jobTimeEntries.map(t => t.employeeId))];
+          for (const empId of empIds) {
+            const alreadyLogged = (matchedJob.wageEntries || []).some(e => e.type === 'shoot' && e.employeeId === empId && e.calendarEventId === event.id);
+            if (alreadyLogged) continue;
+            const emp = employees.find(e => e.id === empId);
+            const empTimeEntries = jobTimeEntries.filter(t => t.employeeId === empId);
+            const clockedHours = empTimeEntries.reduce((a, t) => a + (t.hoursWorked || 0), 0);
+            let scheduledStart = '10:00', scheduledEnd = '22:00';
+            if (event.start?.dateTime) { const s = new Date(event.start.dateTime); scheduledStart = `${String(s.getHours()).padStart(2,'0')}:${String(s.getMinutes()).padStart(2,'0')}`; }
+            if (event.end?.dateTime) { const en = new Date(event.end.dateTime); scheduledEnd = `${String(en.getHours()).padStart(2,'0')}:${String(en.getMinutes()).padStart(2,'0')}`; }
+            const calHours = (() => { const s = new Date(`2000-01-01T${scheduledStart}`); const en = new Date(`2000-01-01T${scheduledEnd}`); return Math.max(0, (en - s) / 3600000); })();
+            const hours = clockedHours > 0 ? clockedHours : calHours;
+            await logWageEntry(matchedJob, {
+              id: Date.now() + empId, employeeId: empId, employeeName: emp?.name || 'Unknown',
+              type: 'shoot', stageName: 'Shoot',
+              amount: parseFloat((hours * SHOOT_HOURLY_RATE).toFixed(2)),
+              defaultAmount: parseFloat((hours * SHOOT_HOURLY_RATE).toFixed(2)),
+              scheduledStart, scheduledEnd,
+              actualStart: scheduledStart, actualEnd: scheduledEnd,
+              hoursWorked: parseFloat(hours.toFixed(2)),
+              status: 'approved', isOverride: false, overrideReason: '',
+              calendarEventId: event.id,
+              submittedAt: new Date().toISOString(), approvedAt: new Date().toISOString(), approvedBy: 'calendar'
+            });
+            created++;
+          }
+        }
+        alert(created > 0 ? `Imported ${created} shoot wage ${created === 1 ? 'entry' : 'entries'} from Google Calendar.` : 'No new shoot wages to import (all already logged or no matching jobs found).');
+      } catch (err) {
+        console.error(err);
+        alert('Failed to pull from Google Calendar.');
+      }
+    };
+
+    // ── Editing wages (live from pipeline) ────────────────────────────────────
+    const editingWageItems = [];
+    editingJobs.forEach(job => {
+      if (job.hasVideo && job.stages) {
+        job.stages.forEach(stage => {
+          if (stage.status === 'completed' && stage.assignedTo) {
+            if (!isAdmin && stage.assignedTo !== currentUser?.id) return;
+            const emp = employees.find(e => e.id === stage.assignedTo);
+            const amount = getStageRate(stage.name, job);
+            if (amount === 0) return;
+            const entry = (job.wageEntries || []).find(e => e.type === 'video_stage' && e.stageName === stage.name && e.employeeId === stage.assignedTo);
+            editingWageItems.push({
+              jobId: job.id, jobName: job.jobName, customerName: job.customerName, shootDate: job.shootDate,
+              employeeId: stage.assignedTo, employeeName: emp?.name || 'Unknown',
+              type: 'video_stage', stageName: stage.name,
+              amount, status: entry?.status || 'approved', entryId: entry?.id || null,
+              camCount: job.numVideographers || 2,
+              completedAt: stage.completedAt || entry?.submittedAt || null
+            });
+          }
+        });
+      }
+      if (job.hasPhotos && job.photoStatus === 'completed' && job.photoAssignedTo) {
+        if (isAdmin || job.photoAssignedTo === currentUser?.id) {
+          const emp = employees.find(e => e.id === job.photoAssignedTo);
+          const amount = getPhotoRate(job);
+          const entry = (job.wageEntries || []).find(e => e.type === 'photo' && e.employeeId === job.photoAssignedTo);
+          editingWageItems.push({
+            jobId: job.id, jobName: job.jobName, customerName: job.customerName, shootDate: job.shootDate,
+            employeeId: job.photoAssignedTo, employeeName: emp?.name || 'Unknown',
+            type: 'photo', stageName: 'Photo Editing',
+            amount, status: entry?.status || 'approved', entryId: entry?.id || null,
+            camCount: job.numPhotographers || 1,
+            completedAt: entry?.submittedAt || null
+          });
+        }
+      }
+    });
+
+    const editingOwed = editingWageItems.filter(e => e.status !== 'paid').reduce((a, e) => a + e.amount, 0);
+    const editingPaid = editingWageItems.filter(e => e.status === 'paid').reduce((a, e) => a + e.amount, 0);
+
+    const markEditingPaid = async (item) => {
+      const job = editingJobs.find(j => j.id === item.jobId);
+      if (!job) return;
+      if (item.entryId) {
+        await updateWageEntry(item.jobId, item.entryId, { status: 'paid', paidAt: new Date().toISOString() });
+      } else {
+        const emp = employees.find(e => e.id === item.employeeId);
+        await logWageEntry(job, {
+          id: Date.now(), employeeId: item.employeeId, employeeName: emp?.name || item.employeeName,
+          type: item.type, stageName: item.stageName,
+          amount: item.amount, defaultAmount: item.amount,
+          status: 'paid', isOverride: false, overrideReason: '',
+          submittedAt: new Date().toISOString(), approvedAt: new Date().toISOString(), approvedBy: currentUser.name,
+          paidAt: new Date().toISOString()
+        });
+      }
+    };
+
+    const markEditingUnpaid = async (item) => {
+      if (!item.entryId) return;
+      await updateWageEntry(item.jobId, item.entryId, { status: 'approved', paidAt: null });
+    };
+
+    // Unified per-employee breakdown (shoots + editing combined)
+    const allByEmployee = employees.map(emp => {
+      const shoots = allShootEntries.filter(e => e.employeeId === emp.id).map(e => ({ ...e, _kind: 'shoot', _sortKey: e.submittedAt || e.approvedAt || '' }));
+      const edits  = editingWageItems.filter(e => e.employeeId === emp.id).map(e => ({ ...e, _kind: 'edit',  _sortKey: e.completedAt || '' }));
+      const allItems = [...shoots, ...edits].sort((a, b) => new Date(b._sortKey || 0) - new Date(a._sortKey || 0));
+      const owed = shoots.filter(e => e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0)
+                 + edits.filter(e => e.status !== 'paid').reduce((a, e) => a + e.amount, 0);
+      const paid = shoots.filter(e => e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0)
+                 + edits.filter(e => e.status === 'paid').reduce((a, e) => a + e.amount, 0);
+      return { ...emp, allItems, owed, paid };
+    }).filter(e => e.allItems.length > 0);
+
+    // Payment request helpers
+    const savePaymentRequests = (reqs) => { setPaymentRequests(reqs); localStorage.setItem('eyecon_payment_requests', JSON.stringify(reqs)); };
+    const submitPaymentRequest = () => {
+      if (!paymentRequestModal) return;
+      const { jobName, notes, amount } = paymentRequestModal;
+      if (!jobName.trim()) { alert('Please enter the job name.'); return; }
+      const emp = employees.find(e => e.id === currentUser.id) || currentUser;
+      const req = { id: Date.now(), employeeId: currentUser.id, employeeName: emp?.name || currentUser.name, jobName: jobName.trim(), notes: notes || '', amount: parseFloat(amount) || 0, status: 'pending', requestedAt: new Date().toISOString() };
+      savePaymentRequests([...paymentRequests, req]);
+      setPaymentRequestModal(null);
+      alert('Payment request sent to admin.');
+    };
+    const pendingPayRequests = isAdmin ? paymentRequests.filter(r => r.status === 'pending') : [];
+
+    // Shared pay scale panel renderer
+    const PayScalePanel = ({ emp }) => (
+      <div className={`px-3 py-3 border-b text-xs ${dm ? 'bg-gray-900 border-gray-700' : 'bg-blue-50 border-gray-200'}`}>
+        <p className={`font-semibold mb-2 uppercase tracking-wide text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Pay Scale — {emp.name}</p>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Shoot (on-site)</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£{SHOOT_HOURLY_RATE}/hr</span>
+          <span className={`col-span-2 border-t mt-1 pt-1 font-medium ${dm ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-200'}`}>Editing (per stage)</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Cutting — 1 cam</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£50</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Cutting — 2 cam</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£70</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Cutting — 3 cam</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£90</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Music, Nesting & Sorting</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£50</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Colouring & Checking</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£25</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Highlights Trailer & Intro</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£20</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Photos — 1 cam</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£40</span>
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>Photos — 2 cam</span>
+          <span className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>£60</span>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {helpModalJSX}
+        <NavBar />
+        <div className="p-4 space-y-4">
+
+          {/* Shoot Wage Modal */}
+          {wageSubmitModal && (() => {
+            const modal = wageSubmitModal;
+            const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
+            const myShootJobs = editingJobs.filter(j => !j.archived && timeEntries.some(t => t.employeeId === currentUser.id && t.jobId === j.id));
+            const selectedJob = modal.selectedJobId ? editingJobs.find(j => j.id === modal.selectedJobId) : null;
+            const getScheduled = (job) => {
+              if (!job) return { start: '', end: '' };
+              if (job.itinerary && job.itinerary.length > 0) { const first = job.itinerary[0]; return { start: first.startTime || '10:00', end: first.endTime || '22:00' }; }
+              return { start: '10:00', end: '22:00' };
+            };
+            const scheduled = getScheduled(selectedJob);
+            const calcHours = (start, end) => { if (!start || !end) return 0; const s = new Date(`2000-01-01T${start}`), e = new Date(`2000-01-01T${end}`); return Math.max(0, (e - s) / 3600000); };
+            const actualStart = modal.actualStart || scheduled.start;
+            const actualEnd = modal.actualEnd || scheduled.end;
+            const hours = calcHours(actualStart, actualEnd);
+            const amount = modal.overrideAmount > 0 ? modal.overrideAmount : hours * SHOOT_HOURLY_RATE;
+            const isOverride = modal.isOverride || modal.overrideAmount > 0;
+            const submitShootWage = async () => {
+              if (!modal.selectedJobId && !modal.customJobName) { alert('Please select a job or enter a job name.'); return; }
+              if (hours <= 0 && !modal.overrideAmount) { alert('Please enter valid start and end times.'); return; }
+              const emp = employees.find(e => e.id === currentUser.id) || currentUser;
+              const entry = {
+                id: Date.now(), employeeId: currentUser.id, employeeName: emp?.name || currentUser.name,
+                type: 'shoot', stageName: 'Shoot',
+                amount: parseFloat(amount.toFixed(2)), defaultAmount: parseFloat((hours * SHOOT_HOURLY_RATE).toFixed(2)),
+                scheduledStart: scheduled.start, scheduledEnd: scheduled.end,
+                actualStart, actualEnd, hoursWorked: parseFloat(hours.toFixed(2)),
+                status: isOverride ? 'pending_approval' : 'approved',
+                isOverride, overrideReason: modal.overrideReason || '',
+                customJobName: modal.customJobName || '',
+                notes: modal.notes || '',
+                submittedAt: new Date().toISOString(),
+                approvedAt: isOverride ? '' : new Date().toISOString(),
+                approvedBy: isOverride ? '' : 'auto'
+              };
+              if (modal.selectedJobId) {
+                const job = editingJobs.find(j => j.id === modal.selectedJobId);
+                if (job) await logWageEntry(job, entry);
+              } else {
+                const adhoc = JSON.parse(localStorage.getItem('eyecon_adhoc_wages') || '[]');
+                adhoc.push(entry);
+                localStorage.setItem('eyecon_adhoc_wages', JSON.stringify(adhoc));
+              }
+              setWageSubmitModal(null);
+              alert(isOverride ? 'Submitted — waiting for admin approval.' : 'Shoot wage logged successfully.');
+            };
+            return (
+              <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+                  <div className={`flex justify-between items-center p-4 border-b ${dm ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h2 className={`text-lg font-bold ${dm ? 'text-white' : ''}`}>📷 Log Shoot Wage</h2>
+                    <button onClick={() => setWageSubmitModal(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Select Job</label>
+                      <select value={modal.selectedJobId || ''} onChange={e => {
+                        const job = editingJobs.find(j => j.id === parseInt(e.target.value));
+                        const sched = getScheduled(job);
+                        setWageSubmitModal({ ...modal, selectedJobId: parseInt(e.target.value) || null, actualStart: sched.start, actualEnd: sched.end, isOverride: false, customJobName: '' });
+                      }} className={inp}>
+                        <option value="">— Choose a job —</option>
+                        {myShootJobs.map(j => <option key={j.id} value={j.id}>{j.jobName} — {j.customerName}</option>)}
+                      </select>
+                      <p className={`text-xs mt-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Don't see your job? Enter it below.</p>
+                    </div>
+                    {!modal.selectedJobId && (
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Job Name (not listed)</label>
+                        <input type="text" value={modal.customJobName || ''} onChange={e => setWageSubmitModal({ ...modal, customJobName: e.target.value })} placeholder="e.g. Smith Wedding — 15 Mar" className={inp} />
+                      </div>
+                    )}
+                    {selectedJob && (
+                      <div className={`p-3 rounded-lg text-sm ${dm ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                        <p className={`text-xs font-medium mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Scheduled Times (from calendar)</p>
+                        <p className={`font-semibold ${dm ? 'text-white' : ''}`}>{scheduled.start} – {scheduled.end} ({calcHours(scheduled.start, scheduled.end).toFixed(1)}h{(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? ` = £${(calcHours(scheduled.start, scheduled.end) * SHOOT_HOURLY_RATE).toFixed(2)}` : ''})</p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={`block text-xs font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Actual Start</label>
+                        <input type="time" value={actualStart} onChange={e => { const isOvr = selectedJob && (e.target.value !== scheduled.start || actualEnd !== scheduled.end); setWageSubmitModal({ ...modal, actualStart: e.target.value, isOverride: isOvr }); }} className={inp} />
+                      </div>
+                      <div>
+                        <label className={`block text-xs font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Actual End</label>
+                        <input type="time" value={actualEnd} onChange={e => { const isOvr = selectedJob && (actualStart !== scheduled.start || e.target.value !== scheduled.end); setWageSubmitModal({ ...modal, actualEnd: e.target.value, isOverride: isOvr }); }} className={inp} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Override Amount (£) — optional</label>
+                      <input type="number" value={modal.overrideAmount || ''} placeholder={`Calculated: £${amount.toFixed(2)}`} onChange={e => setWageSubmitModal({ ...modal, overrideAmount: parseFloat(e.target.value) || 0 })} className={inp} />
+                    </div>
+                    {isOverride && (
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-orange-500">Reason for override *</label>
+                        <textarea value={modal.overrideReason || ''} rows={2} onChange={e => setWageSubmitModal({ ...modal, overrideReason: e.target.value })} placeholder="e.g. Shoot ran over by 2 hours" className={inp} />
+                        <p className="text-xs text-orange-500 mt-1">This will be sent to admin for approval.</p>
+                      </div>
+                    )}
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Notes <span className={`font-normal ${dm ? 'text-gray-400' : 'text-gray-500'}`}>(optional)</span></label>
+                      <textarea value={modal.notes || ''} rows={2} onChange={e => setWageSubmitModal({ ...modal, notes: e.target.value })} placeholder="e.g. 2nd camera, ceremony + reception, travel notes…" className={inp} />
+                    </div>
+                    <div className={`p-3 rounded-lg ${dm ? 'bg-gray-900' : 'bg-green-50'}`}>
+                      <div className="flex justify-between">
+                        <span className={`text-sm ${dm ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Hours: {hours.toFixed(1)}h{(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? ` @ £${SHOOT_HOURLY_RATE}/hr` : ''}
+                        </span>
+                        <span className="font-bold text-green-600">£{amount.toFixed(2)}</span>
+                      </div>
+                      {isOverride && <p className="text-xs text-orange-500 mt-1">⚠ Requires admin approval</p>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => setWageSubmitModal(null)} className={`py-2 rounded-lg ${dm ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                      <button onClick={submitShootWage} className="py-2 rounded-lg bg-green-500 text-white font-semibold">Submit</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Amount Override Modal */}
+          {wageOverrideModal && (() => {
+            const { jobId, entryId, currentAmount } = wageOverrideModal;
+            return (
+              <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-sm w-full p-5`}>
+                  <h3 className={`font-bold mb-3 ${dm ? 'text-white' : ''}`}>Override Amount</h3>
+                  <p className={`text-sm mb-2 ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Current: £{currentAmount}</p>
+                  <input type="number" id="wageOverrideAmt" defaultValue={currentAmount} className={`w-full px-3 py-2 border rounded-lg mb-2 ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  <textarea id="wageOverrideReason" placeholder="Reason for override *" rows={2} className={`w-full px-3 py-2 border rounded-lg mb-3 text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setWageOverrideModal(null)} className={`py-2 rounded-lg ${dm ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
+                    <button onClick={async () => {
+                      const newAmt = parseFloat(document.getElementById('wageOverrideAmt').value);
+                      const reason = document.getElementById('wageOverrideReason').value.trim();
+                      if (!reason) { alert('Please enter a reason for the override.'); return; }
+                      await updateWageEntry(jobId, entryId, { amount: newAmt, isOverride: true, overrideReason: reason, status: 'pending_approval', approvedAt: '', approvedBy: '' });
+                      setWageOverrideModal(null);
+                    }} className="py-2 rounded-lg bg-orange-500 text-white font-semibold">Submit for Approval</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── HEADER ── */}
+          <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div>
+                <h2 className={`text-xl font-bold ${dm ? 'text-white' : 'text-gray-800'}`}>💷 Payments</h2>
+                <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>All shoot & editing wages — newest first</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {isAdmin && (
+                  <button onClick={pullShootWagesFromCalendar} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold ${isGoogleSignedIn ? 'bg-green-500 text-white' : dm ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}>
+                    📅 Pull Calendar
+                  </button>
+                )}
+                <button onClick={() => setWageSubmitModal({ selectedJobId: null, customJobName: '', actualStart: '', actualEnd: '', isOverride: false, overrideReason: '', overrideAmount: 0, notes: '' })}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${dm ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
+                  + Log Shoot
+                </button>
+                {!isAdmin && (
+                  <button onClick={() => setPaymentRequestModal({ jobName: '', notes: '', amount: '' })}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-purple-500 text-white">
+                    📬 Request Payment
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── PAYMENT REQUEST MODAL (staff) ── */}
+          {paymentRequestModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+              <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-md w-full`}>
+                <div className={`flex justify-between items-center p-4 border-b ${dm ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <h2 className={`text-lg font-bold ${dm ? 'text-white' : ''}`}>📬 Request Payment</h2>
+                  <button onClick={() => setPaymentRequestModal(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Job Name *</label>
+                    <input type="text" value={paymentRequestModal.jobName} onChange={e => setPaymentRequestModal({ ...paymentRequestModal, jobName: e.target.value })} placeholder="e.g. Smith Wedding — 14 Jun" className={`w-full px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Description of work done</label>
+                    <textarea value={paymentRequestModal.notes} rows={3} onChange={e => setPaymentRequestModal({ ...paymentRequestModal, notes: e.target.value })} placeholder="e.g. Shot ceremony & reception, 2nd camera, 9am–10pm" className={`w-full px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Amount expected (£) <span className={`font-normal ${dm ? 'text-gray-400' : 'text-gray-500'}`}>— optional</span></label>
+                    <input type="number" value={paymentRequestModal.amount} onChange={e => setPaymentRequestModal({ ...paymentRequestModal, amount: e.target.value })} placeholder="Leave blank if unsure" className={`w-full px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button onClick={() => setPaymentRequestModal(null)} className={`py-2 rounded-lg ${dm ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                    <button onClick={submitPaymentRequest} className="py-2 rounded-lg bg-purple-500 text-white font-semibold">Send Request</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── ADMIN: PENDING APPROVALS & PAYMENT REQUESTS ── */}
+          {isAdmin && (shootPending.length > 0 || pendingPayRequests.length > 0) && (
+            <div className={`rounded-lg shadow p-4 border-2 ${dm ? 'bg-orange-900 border-orange-600' : 'bg-orange-50 border-orange-300'}`}>
+              <h3 className={`font-bold mb-3 ${dm ? 'text-orange-200' : 'text-orange-800'}`}>⚠ Pending ({shootPending.length + pendingPayRequests.length})</h3>
+              <div className="space-y-3">
+                {shootPending.map(e => (
+                  <div key={e.id} className={`p-3 rounded-lg ${dm ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                    <div className="flex justify-between items-start mb-1">
+                      <div>
+                        <p className={`text-xs font-medium uppercase tracking-wide ${dm ? 'text-blue-300' : 'text-blue-600'}`}>📷 Shoot Override</p>
+                        <p className={`font-semibold text-sm ${dm ? 'text-white' : ''}`}>{e.employeeName} — {e.jobName || e.customJobName || 'Ad-hoc'}</p>
+                        <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Scheduled: {e.scheduledStart}–{e.scheduledEnd} → Actual: {e.actualStart}–{e.actualEnd} ({e.hoursWorked}h)</p>
+                        {e.overrideReason && <p className={`text-xs italic mt-1 ${dm ? 'text-orange-300' : 'text-orange-700'}`}>"{e.overrideReason}"</p>}
+                      </div>
+                      <span className="text-green-600 font-bold">£{(e.amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => updateWageEntry(e.jobId, e.id, { status: 'approved', approvedAt: new Date().toISOString(), approvedBy: currentUser.name })} className="flex-1 py-1 text-xs bg-green-500 text-white rounded font-semibold">✓ Approve</button>
+                      <button onClick={() => updateWageEntry(e.jobId, e.id, { status: 'rejected', approvedAt: new Date().toISOString(), approvedBy: currentUser.name })} className="flex-1 py-1 text-xs bg-red-500 text-white rounded font-semibold">✗ Reject</button>
+                    </div>
+                  </div>
+                ))}
+                {pendingPayRequests.map(r => (
+                  <div key={r.id} className={`p-3 rounded-lg ${dm ? 'bg-gray-800' : 'bg-white'} shadow`}>
+                    <div className="flex justify-between items-start mb-1">
+                      <div>
+                        <p className={`text-xs font-medium uppercase tracking-wide ${dm ? 'text-purple-300' : 'text-purple-600'}`}>📬 Payment Request</p>
+                        <p className={`font-semibold text-sm ${dm ? 'text-white' : ''}`}>{r.employeeName} — {r.jobName}</p>
+                        {r.notes && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-300' : 'text-gray-600'}`}>{r.notes}</p>}
+                        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Requested {formatDate(r.requestedAt)}</p>
+                      </div>
+                      {r.amount > 0 && <span className="text-green-600 font-bold">£{r.amount.toFixed(2)}</span>}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => { const updated = paymentRequests.map(x => x.id === r.id ? { ...x, status: 'approved', resolvedAt: new Date().toISOString() } : x); savePaymentRequests(updated); }} className="flex-1 py-1 text-xs bg-green-500 text-white rounded font-semibold">✓ Acknowledge</button>
+                      <button onClick={() => { const updated = paymentRequests.map(x => x.id === r.id ? { ...x, status: 'declined', resolvedAt: new Date().toISOString() } : x); savePaymentRequests(updated); }} className="flex-1 py-1 text-xs bg-red-500 text-white rounded font-semibold">✗ Decline</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── SUMMARY TOTALS ── */}
+          {(() => {
+            const totalOwed = (isAdmin ? allByEmployee.reduce((a, e) => a + e.owed, 0) : (allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0) + editingWageItems.filter(e => e.employeeId === currentUser?.id && e.status !== 'paid').reduce((a, e) => a + e.amount, 0)));
+            const totalPaid = (isAdmin ? allByEmployee.reduce((a, e) => a + e.paid, 0) : (allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0) + editingWageItems.filter(e => e.employeeId === currentUser?.id && e.status === 'paid').reduce((a, e) => a + e.amount, 0)));
+            const allEditItems = isAdmin ? editingWageItems : editingWageItems.filter(e => e.employeeId === currentUser?.id);
+            const paidItems = allEditItems.filter(e => e.status === 'paid' && e.amount > 0);
+            const shootItems = isAdmin ? allShootEntries.filter(e => e.status === 'paid' && e.hoursWorked > 0) : allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'paid' && e.hoursWorked > 0);
+            const avgHourly = (() => {
+              const totalHoursShoot = shootItems.reduce((a, e) => a + (e.hoursWorked || 0), 0);
+              const totalEarnedShoot = shootItems.reduce((a, e) => a + (e.amount || 0), 0);
+              const totalHoursEdit = paidItems.reduce((a, e) => {
+                const h = timeEntries.filter(t => t.employeeId === e.employeeId && t.jobId === e.jobId).reduce((s, t) => s + (t.hoursWorked || 0), 0);
+                return a + h;
+              }, 0);
+              const totalEarnedEdit = paidItems.reduce((a, e) => a + e.amount, 0);
+              const totalH = totalHoursShoot + totalHoursEdit;
+              return totalH > 0 ? (totalEarnedShoot + totalEarnedEdit) / totalH : 0;
+            })();
+            return (
+              <div className="grid grid-cols-3 gap-3">
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
+                  <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Total Owed</p>
+                  <p className="text-xl font-bold text-green-600">£{totalOwed.toFixed(2)}</p>
+                </div>
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
+                  <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Total Paid</p>
+                  <p className="text-xl font-bold text-blue-500">£{totalPaid.toFixed(2)}</p>
+                </div>
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
+                  <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Avg. Hourly Rate</p>
+                  <p className={`text-xl font-bold ${dm ? 'text-yellow-400' : 'text-yellow-600'}`}>{avgHourly > 0 ? `£${avgHourly.toFixed(2)}/hr` : '—'}</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── STAFF: OWN PAYMENT REQUESTS ── */}
+          {!isAdmin && paymentRequests.filter(r => r.employeeId === currentUser?.id).length > 0 && (
+            <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+              <h3 className={`font-semibold mb-2 ${dm ? 'text-white' : 'text-gray-800'}`}>📬 Your Payment Requests</h3>
+              <div className="space-y-2">
+                {paymentRequests.filter(r => r.employeeId === currentUser?.id).sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt)).map(r => (
+                  <div key={r.id} className={`p-3 rounded-lg border text-sm ${dm ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className={`font-semibold ${dm ? 'text-white' : ''}`}>{r.jobName}</p>
+                        {r.notes && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{r.notes}</p>}
+                        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Sent {formatDate(r.requestedAt)}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.status === 'pending' ? 'bg-orange-100 text-orange-700' : r.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {r.status === 'pending' ? 'Pending' : r.status === 'approved' ? '✓ Acknowledged' : '✗ Declined'}
+                      </span>
+                    </div>
+                    {r.amount > 0 && <p className={`text-xs mt-1 font-medium text-green-600`}>£{parseFloat(r.amount).toFixed(2)} requested</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── MAIN WAGES LIST ── */}
+          {isAdmin ? (
+            allByEmployee.length === 0 ? (
+              <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-8 text-center`}>
+                <p className={`text-sm ${dm ? 'text-gray-400' : 'text-gray-500'}`}>No wages logged yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {allByEmployee.map(emp => (
+                  <div key={emp.id} className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-hidden`}>
+                    {/* Employee header — click to collapse/expand */}
+                    <div
+                      onClick={() => setWagesCollapsed(prev => ({ ...prev, [emp.id]: !prev[emp.id] }))}
+                      className={`flex justify-between items-center p-3 cursor-pointer select-none ${dm ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm transition-transform ${wagesCollapsed[emp.id] ? '' : 'rotate-90'} ${dm ? 'text-gray-400' : 'text-gray-500'}`}>▶</span>
+                        <p className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>{emp.name}</p>
+                        <span className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>({emp.allItems.length} entr{emp.allItems.length === 1 ? 'y' : 'ies'})</span>
+                      </div>
+                      <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+                        <div className="text-right">
+                          {emp.owed > 0 && <span className="text-green-600 font-bold text-sm">£{emp.owed.toFixed(2)} owed</span>}
+                          {emp.paid > 0 && <span className={`text-xs ml-2 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>£{emp.paid.toFixed(2)} paid</span>}
+                        </div>
+                        <button onClick={() => setPayScaleOpen(prev => ({ ...prev, [emp.id]: !prev[emp.id] }))}
+                          className={`text-xs px-2 py-1 rounded border font-medium ${payScaleOpen[emp.id] ? 'bg-blue-500 text-white border-blue-500' : dm ? 'border-gray-500 text-gray-300' : 'border-gray-300 text-gray-600'}`}>
+                          £ Scale {payScaleOpen[emp.id] ? '▲' : '▼'}
+                        </button>
+                      </div>
+                    </div>
+                    {!wagesCollapsed[emp.id] && payScaleOpen[emp.id] && <PayScalePanel emp={emp} />}
+                    {/* Combined entries — hidden when collapsed */}
+                    {!wagesCollapsed[emp.id] && <div className={`divide-y ${dm ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                      {emp.allItems.map((item, idx) => {
+                        const isShoot = item._kind === 'shoot';
+                        const jobHours = !isShoot ? timeEntries.filter(e => e.employeeId === item.employeeId && e.jobId === item.jobId).reduce((a, e) => a + (e.hoursWorked || 0), 0) : 0;
+                        const hourlyRate = !isShoot && jobHours > 0 ? (item.amount / jobHours).toFixed(2) : null;
+                        return (
+                          <div key={idx} className={`flex justify-between items-center px-3 py-2.5 ${dm ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-xs font-semibold ${isShoot ? 'text-blue-500' : item.type === 'photo' ? 'text-pink-500' : 'text-purple-500'}`}>
+                                  {isShoot ? '📷 Shoot' : item.type === 'photo' ? '🖼 Photos' : `🎬 ${item.stageName}`}
+                                </span>
+                                {statusBadge(item.status)}
+                                {!isShoot && item.type !== 'photo' && <span className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{item.camCount} cam{item.camCount > 1 ? 's' : ''}</span>}
+                                {!isShoot && item.type === 'photo' && (
+                                  <span className="flex gap-1 items-center">
+                                    {[1, 2].map(n => (
+                                      <button key={n} onClick={() => updateJobCameras(item.jobId, 'numPhotographers', n)}
+                                        className={`text-xs px-1.5 py-0.5 rounded font-medium ${item.camCount === n ? 'bg-purple-500 text-white' : dm ? 'bg-gray-600 text-gray-300' : 'bg-white text-gray-600 border border-gray-300'}`}>
+                                        {n === 1 ? '1 cam' : '2 cam'}
+                                      </button>
+                                    ))}
+                                  </span>
+                                )}
+                                {isShoot && item.calendarEventId && <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">📅 cal</span>}
+                                {isShoot && item.isOverride && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">override</span>}
+                              </div>
+                              <p className={`text-sm font-medium mt-0.5 ${dm ? 'text-white' : 'text-gray-800'}`}>{item.jobName || item.customJobName || 'Ad-hoc'}{item.customerName ? ` — ${item.customerName}` : ''}</p>
+                              <div className={`flex flex-wrap items-center gap-x-2 text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {isShoot && item.shootDate && <span>📆 {formatDate(item.shootDate)}</span>}
+                                {isShoot && <span>⏱ {item.actualStart}–{item.actualEnd} ({item.hoursWorked}h)</span>}
+                                {!isShoot && item.completedAt && <span>✓ Completed {formatDate(item.completedAt)}</span>}
+                                {!isShoot && jobHours > 0 && <span>· ⏱ {jobHours.toFixed(1)}h · £{hourlyRate}/hr</span>}
+                                {item.confirmedAt && <span className="text-green-500 font-medium">· ✓ Received {formatDate(item.confirmedAt)}</span>}
+                              </div>
+                              {isShoot && item.notes && <p className={`text-xs mt-0.5 italic ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{item.notes}</p>}
+                              {isShoot && item.paidAt && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Paid on {formatDate(item.paidAt)}</p>}
+                              {!isShoot && item.paidAt && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Paid on {formatDate(item.paidAt)}</p>}
+                            </div>
+                            <div className="text-right ml-3 shrink-0">
+                              <p className={`font-bold ${item.status === 'paid' ? (dm ? 'text-gray-500' : 'text-gray-400') : 'text-green-600'}`}>£{(item.amount || 0).toFixed(2)}</p>
+                              <div className="flex gap-1 mt-1 justify-end flex-wrap">
+                                {isShoot ? (
+                                  <>
+                                    {item.status === 'approved' && <button onClick={() => updateWageEntry(item.jobId, item.id, { status: 'paid', paidAt: new Date().toISOString() })} className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded">Mark Paid</button>}
+                                    {item.status === 'paid' && <button onClick={() => updateWageEntry(item.jobId, item.id, { status: 'approved', paidAt: null })} className="text-xs px-2 py-0.5 bg-orange-400 text-white rounded">Mark Unpaid</button>}
+                                    {item.status !== 'pending_approval' && item.status !== 'rejected' && <button onClick={() => setWageOverrideModal({ jobId: item.jobId, entryId: item.id, currentAmount: item.amount })} className={`text-xs px-2 py-0.5 rounded border ${dm ? 'border-gray-500 text-gray-300' : 'border-gray-300 text-gray-600'}`}>Edit</button>}
+                                    <button onClick={() => deleteWageEntry(item.jobId, item.id)} className="text-xs px-2 py-0.5 bg-red-500 text-white rounded">🗑</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {item.status !== 'paid' && <button onClick={() => markEditingPaid(item)} className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded">Mark Paid</button>}
+                                    {item.status === 'paid' && <button onClick={() => markEditingUnpaid(item)} className="text-xs px-2 py-0.5 bg-orange-400 text-white rounded">Mark Unpaid</button>}
+                                    {item.entryId && <button onClick={() => deleteWageEntry(item.jobId, item.entryId)} className="text-xs px-2 py-0.5 bg-red-500 text-white rounded">🗑</button>}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>}
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            // ── STAFF: combined wages ──
+            (() => {
+              const myShootWages = allShootEntries.filter(e => e.employeeId === currentUser?.id).map(e => ({ ...e, _kind: 'shoot', _sortKey: e.submittedAt || '' }));
+              const myEditWages  = editingWageItems.filter(e => e.employeeId === currentUser?.id).map(e => ({ ...e, _kind: 'edit', _sortKey: e.completedAt || '' }));
+              const myAll = [...myShootWages, ...myEditWages].sort((a, b) => new Date(b._sortKey || 0) - new Date(a._sortKey || 0));
+              if (myAll.length === 0) return (
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-8 text-center`}>
+                  <p className={`text-sm ${dm ? 'text-gray-400' : 'text-gray-500'}`}>No wages logged yet.</p>
+                </div>
+              );
+              return (
+                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-hidden`}>
+                  <div className={`divide-y ${dm ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                    {myAll.map((item, idx) => {
+                      const isShoot = item._kind === 'shoot';
+                      const jobHours = !isShoot ? timeEntries.filter(e => e.employeeId === item.employeeId && e.jobId === item.jobId).reduce((a, e) => a + (e.hoursWorked || 0), 0) : 0;
+                      return (
+                        <div key={idx} className={`px-3 py-3 ${dm ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-xs font-semibold ${isShoot ? 'text-blue-500' : item.type === 'photo' ? 'text-pink-500' : 'text-purple-500'}`}>
+                                  {isShoot ? '📷 Shoot' : item.type === 'photo' ? '🖼 Photos' : `🎬 ${item.stageName}`}
+                                </span>
+                                {statusBadge(item.status)}
+                                {!isShoot && <span className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{item.camCount} cam{item.camCount > 1 ? 's' : ''}</span>}
+                              </div>
+                              <p className={`text-sm font-semibold mt-0.5 ${dm ? 'text-white' : ''}`}>{item.jobName || item.customJobName || 'Ad-hoc'}{item.customerName ? ` — ${item.customerName}` : ''}</p>
+                              <div className={`flex flex-wrap items-center gap-x-2 text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {isShoot && item.shootDate && <span>📆 {formatDate(item.shootDate)}</span>}
+                                {isShoot && <span>⏱ {item.actualStart}–{item.actualEnd} ({item.hoursWorked}h)</span>}
+                                {!isShoot && item.completedAt && <span>✓ Completed {formatDate(item.completedAt)}</span>}
+                                {!isShoot && jobHours > 0 && <span>· ⏱ {jobHours.toFixed(1)}h</span>}
+                              </div>
+                              {isShoot && item.notes && <p className={`text-xs mt-0.5 italic ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{item.notes}</p>}
+                              {item.paidAt && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Paid on {formatDate(item.paidAt)}</p>}
+                              {item.confirmedAt && <p className="text-xs text-green-500 font-medium mt-0.5">✓ Confirmed received {formatDate(item.confirmedAt)}</p>}
+                              {item.status === 'paid' && !item.confirmedAt && (
+                                <button onClick={() => {
+                                  if (isShoot) updateWageEntry(item.jobId, item.id, { confirmedAt: new Date().toISOString() });
+                                  else if (item.entryId) updateWageEntry(item.jobId, item.entryId, { confirmedAt: new Date().toISOString() });
+                                }} className="mt-1 text-xs px-3 py-1 bg-green-500 text-white rounded font-semibold">✓ Confirm I've been paid</button>
+                              )}
+                            </div>
+                            <p className={`font-bold ml-3 shrink-0 ${item.status === 'paid' ? (dm ? 'text-gray-500' : 'text-gray-400') : 'text-green-600'}`}>£{(item.amount || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()
+          )}
+
+        </div>
+      </div>
+    );
+  }
+
+  // QUOTE CALCULATOR
+  if (currentView === 'quote' && (currentUser?.role === 'admin' || currentUser?.role === 'manager')) {
+    const BASE_POSTCODE = 'BB1 6NG';
+    
+    // Approximate distance calculation based on UK postcodes (simplified)
+    const calculateDistanceFromPostcode = (destPostcode) => {
+      if (!destPostcode) return 0;
+      // Simplified UK postcode distance estimation
+      // In reality, you'd use Google Maps API or similar
+      const postcodeDistances = {
+        'BB1': 0, 'BB': 3, 'PR': 15, 'BL': 10, 'M': 25, 'OL': 20, 'WN': 18,
+        'L': 40, 'WA': 30, 'SK': 35, 'HD': 40, 'HX': 35, 'BD': 30,
+        'LS': 45, 'S': 55, 'DN': 70, 'HU': 90, 'YO': 80, 'DL': 60,
+        'TS': 85, 'NE': 110, 'SR': 105, 'DH': 100, 'CA': 80,
+        'LA': 50, 'FY': 25, 'LE': 90, 'NG': 85, 'DE': 75, 'ST': 60,
+        'WV': 70, 'B': 80, 'CV': 95, 'NN': 120, 'MK': 140, 'LU': 160,
+        'AL': 170, 'WD': 175, 'EN': 180, 'N': 200, 'E': 205, 'SE': 210,
+        'SW': 210, 'W': 205, 'NW': 200, 'EC': 205, 'WC': 205,
+        'BR': 215, 'DA': 220, 'RM': 210, 'IG': 205, 'CM': 190,
+        'SS': 200, 'CO': 180, 'IP': 170, 'NR': 180, 'PE': 140,
+        'CB': 150, 'SG': 160, 'HP': 155, 'OX': 160, 'RG': 180,
+        'SL': 185, 'UB': 190, 'TW': 195, 'KT': 200, 'SM': 205,
+        'CR': 210, 'GU': 200, 'RH': 210, 'BN': 230, 'PO': 240,
+        'SO': 220, 'SP': 200, 'BA': 190, 'BS': 170, 'GL': 140,
+        'SN': 175, 'DT': 210, 'BH': 220, 'EX': 250, 'TQ': 260,
+        'PL': 280, 'TR': 300, 'TA': 200, 'CF': 170, 'NP': 160,
+        'SA': 180, 'LL': 80, 'SY': 100, 'LD': 110, 'HR': 130,
+        'WR': 110, 'DY': 85, 'TF': 80, 'CW': 45, 'CH': 50
+      };
+      
+      const clean = destPostcode.toUpperCase().replace(/[^A-Z]/g, '');
+      const prefix = clean.substring(0, 2);
+      const singlePrefix = clean.substring(0, 1);
+      if (postcodeDistances[prefix] !== undefined) return postcodeDistances[prefix];
+      if (postcodeDistances[singlePrefix] !== undefined) return postcodeDistances[singlePrefix];
+      return 50;
+    };
+    
+    const calculateMileageCost = (miles) => miles * 0.45 * 2;
+
+
+    
+    // Calculate costs (for profit calculation)
+    const calculateCosts = () => {
+      let costs = 0;
+      quoteData.dates.forEach((day) => {
+        const start = new Date(`2025-01-01T${day.startTime}`);
+        const end = new Date(`2025-01-01T${day.endTime}`);
+        const hours = (end - start) / (1000 * 60 * 60);
+        
+        // Staff costs at £13/hour
+        if (quoteData.wantVideo) costs += hours * 13;
+        if (quoteData.wantPhoto) costs += hours * quoteData.numPhotographers * 13;
+      });
+      // Add travel costs (per day)
+      quoteData.dates.forEach(day => {
+        const dist = day.distance || 0;
+        if (dist > 0) costs += calculateMileageCost(dist);
+      });
+      return costs;
+    };
+    
+    const calculateQuote = () => {
+      let serviceTotal = 0;
+      let travelTotal = 0;
+      let breakdown = [];
+
+      quoteData.dates.forEach((day, idx) => {
+        const start = new Date(`2025-01-01T${day.startTime}`);
+        const end = new Date(`2025-01-01T${day.endTime}`);
+        const hours = (end - start) / (1000 * 60 * 60);
+
+        if (quoteData.wantVideo) {
           const videoRate = quoteData.videoType === 'single' ? 125 : 150;
           const videoLabel = quoteData.videoType === 'single' ? 'Single Videographer' : 'Dual Videographer';
           const videoCost = hours * videoRate;
