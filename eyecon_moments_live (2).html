@@ -215,6 +215,7 @@ function EyeconMoments() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginPin, setLoginPin] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
+  const [helpInput, setHelpInput] = useState('');
   const [helpMessages, setHelpMessages] = useState([{ role:'assistant', content:'👋 Hi! I\'m your Eyecon Moments assistant. Ask me anything about using the app — clocking in, sharing itineraries, creating quotes, managing jobs, or anything else!' }]);
   const [helpLoading, setHelpLoading] = useState(false);
   const [helpApiKey, setHelpApiKey] = useState(() => localStorage.getItem('eyecon_ai_key') || '');
@@ -2089,8 +2090,7 @@ DARK MODE: on by default. Toggle with ☀️/🌙 button in nav.
 If asked about something not in the app, suggest the closest existing feature or say it's not currently available.`;
 
   const sendHelp = async () => {
-    const inputEl = document.getElementById('eyecon-help-input');
-    const q = (inputEl?.value || '').trim();
+    const q = helpInput.trim();
     if (!q || helpLoading) return;
     if (!helpApiKey) {
       const key = window.prompt('Enter your Anthropic API key (stored locally, never sent anywhere else):\nGet one at console.anthropic.com');
@@ -2100,8 +2100,7 @@ If asked about something not in the app, suggest the closest existing feature or
     }
     const userMsg = { role: 'user', content: q };
     setHelpMessages(prev => [...prev, userMsg]);
-    const inputEl2 = document.getElementById('eyecon-help-input');
-    if (inputEl2) inputEl2.value = '';
+    setHelpInput('');
     setHelpLoading(true);
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2183,8 +2182,9 @@ If asked about something not in the app, suggest the closest existing feature or
           <div className={`px-3 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex gap-2">
               <input
-                id="eyecon-help-input"
                 type="text"
+                value={helpInput}
+                onChange={e => setHelpInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendHelp()}
                 placeholder="Ask a question…"
                 className={`flex-1 px-3 py-2 rounded-xl text-sm outline-none ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-700' : 'bg-gray-100 text-gray-800 placeholder-gray-400'}`}
