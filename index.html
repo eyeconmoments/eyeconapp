@@ -2991,6 +2991,7 @@ LOGGING:
               if (next.has(k)) next.delete(k); else next.add(k); return next;
             });
             const shootDate = job.shootDate ? new Date(job.shootDate) : null;
+            if (shootDate) shootDate.setHours(0,0,0,0);
             const daysUntil = shootDate ? Math.ceil((shootDate - new Date().setHours(0,0,0,0)) / 86400000) : null;
             const isToday = daysUntil === 0, isTomorrow = daysUntil === 1;
             const borderCol = isToday ? 'border-red-500' : isTomorrow ? 'border-orange-500' : 'border-yellow-600';
@@ -4333,7 +4334,7 @@ LOGGING:
                 </div>
                 <div className="space-y-2">
                   {upcomingJobs.map(job => {
-                    const shootDate = new Date(job.shootDate);
+                    const shootDate = new Date(job.shootDate); shootDate.setHours(0,0,0,0);
                     const daysUntil = Math.ceil((shootDate - today) / (1000 * 60 * 60 * 24));
                     const isToday = daysUntil === 0;
                     const isTomorrow = daysUntil === 1;
@@ -5623,7 +5624,7 @@ Capturing Your Special Day
             ) : (
               <div className="space-y-6">
                 {upcomingJobsList.map(job => {
-                  const shootDate = new Date(job.shootDate);
+                  const shootDate = new Date(job.shootDate); shootDate.setHours(0,0,0,0);
                   const daysUntil = Math.ceil((shootDate - today) / (1000 * 60 * 60 * 24));
                   const isToday = daysUntil === 0;
                   const isTomorrow = daysUntil === 1;
