@@ -4640,7 +4640,7 @@ LOGGING:
                   {activeTimeEntries.length === 0 ? (
                     <p className={`p-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nobody clocked in right now</p>
                   ) : activeTimeEntries.map(entry => {
-                    const emp = editingEmployees.find(e => e.id === entry.employeeId);
+                    const emp = employees.find(e => e.id === entry.employeeId);
                     const job = editingJobs.find(j => j.id === entry.jobId);
                     const sinceMs = new Date() - new Date(entry.clockIn);
                     const sinceHrs = Math.floor(sinceMs / 3600000);
@@ -9826,7 +9826,8 @@ Eyecon Moments`);
               type: 'video_stage', stageName: stage.name,
               amount, status: entry?.status || 'approved', entryId: entry?.id || null,
               camCount: job.numVideographers || 2,
-              completedAt: stage.completedAt || entry?.submittedAt || null
+              completedAt: stage.completedAt || entry?.submittedAt || null,
+              confirmedAt: entry?.confirmedAt || null, paidAt: entry?.paidAt || null
             });
           }
         });
@@ -9842,7 +9843,8 @@ Eyecon Moments`);
             type: 'photo', stageName: 'Photo Editing',
             amount, status: entry?.status || 'approved', entryId: entry?.id || null,
             camCount: job.numPhotographers || 1,
-            completedAt: entry?.submittedAt || null
+            completedAt: entry?.submittedAt || null,
+            confirmedAt: entry?.confirmedAt || null, paidAt: entry?.paidAt || null
           });
         }
       }
