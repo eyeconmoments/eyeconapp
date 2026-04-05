@@ -9805,7 +9805,7 @@ Eyecon Moments`);
             const selectedJob = modal.selectedJobId ? editingJobs.find(j => j.id === modal.selectedJobId) : null;
             const getScheduled = (job) => {
               if (!job) return { start: '', end: '' };
-              if (job.itinerary && job.itinerary.length > 0) { const first = job.itinerary[0]; return { start: first.startTime || '10:00', end: first.endTime || '22:00' }; }
+              if (job.itinerary && job.itinerary.startTime) { return { start: job.itinerary.startTime, end: job.itinerary.endTime || '22:00' }; }
               return { start: '10:00', end: '22:00' };
             };
             const scheduled = getScheduled(selectedJob);
