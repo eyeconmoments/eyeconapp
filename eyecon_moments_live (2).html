@@ -9800,7 +9800,7 @@ Eyecon Moments`);
             const modal = wageSubmitModal;
             const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
             const twoWeeksAgo = new Date(); twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-            const myShootJobs = editingJobs.filter(j => !j.archived && j.shootDate && j.shootDate >= twoWeeksAgo && j.shootDate <= new Date() && timeEntries.some(t => t.employeeId === currentUser.id && t.jobId === j.id));
+            const myShootJobs = editingJobs.filter(j => !j.archived && timeEntries.some(t => t.employeeId === currentUser.id && t.jobId === j.id && new Date(t.clockIn) >= twoWeeksAgo));
             const selectedJob = modal.selectedJobId ? editingJobs.find(j => j.id === modal.selectedJobId) : null;
             const getScheduled = (job) => {
               if (!job) return { start: '', end: '' };
