@@ -10240,9 +10240,24 @@ Eyecon Moments`);
                               {item.paidAt && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Paid on {formatDate(item.paidAt)}</p>}
                               {item.confirmedAt && <p className="text-xs text-green-500 font-medium mt-0.5">✓ Received {formatDate(item.confirmedAt)}</p>}
                               {item.status === 'approved' && !item.confirmedAt && (
-                                <button onClick={() => {
-                                  if (isShoot) updateWageEntry(item.jobId, item.id, { confirmedAt: new Date().toISOString() });
-                                  else if (item.entryId) updateWageEntry(item.jobId, item.entryId, { confirmedAt: new Date().toISOString() });
+                                <button onClick={async () => {
+                                  const now = new Date().toISOString();
+                                  if (isShoot) {
+                                    await updateWageEntry(item.jobId, item.id, { confirmedAt: now });
+                                  } else {
+                                    const job = editingJobs.find(j => String(j.id) === String(item.jobId));
+                                    if (!job) return;
+                                    let entryId = item.entryId;
+                                    if (!entryId) {
+                                      entryId = Date.now();
+                                      const newEntry = { id: entryId, employeeId: item.employeeId, employeeName: item.employeeName, type: item.type, stageName: item.stageName, amount: item.amount, defaultAmount: item.amount, status: 'approved', confirmedAt: now, submittedAt: now, approvedAt: now, approvedBy: 'auto' };
+                                      const newWageEntries = [...(job.wageEntries || []), newEntry];
+                                      await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', job.id);
+                                      setEditingJobs(prev => prev.map(j => String(j.id) === String(item.jobId) ? { ...j, wageEntries: newWageEntries } : j));
+                                    } else {
+                                      await updateWageEntry(item.jobId, entryId, { confirmedAt: now });
+                                    }
+                                  }
                                 }} className="mt-1 text-xs px-3 py-1 bg-green-500 text-white rounded font-semibold">✓ Mark as received</button>
                               )}
                             </div>
