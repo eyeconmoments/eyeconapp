@@ -9876,6 +9876,17 @@ Eyecon Moments`);
       await updateWageEntry(item.jobId, item.entryId, { status: 'approved', paidAt: null });
     };
 
+    const payAllForEmployee = async (emp) => {
+      const unpaidShoots = emp.allItems.filter(i => i._kind === 'shoot' && i.status === 'approved');
+      const unpaidEdits  = emp.allItems.filter(i => i._kind === 'edit'  && i.status !== 'paid');
+      const total = unpaidShoots.reduce((a, i) => a + (i.amount || 0), 0) + unpaidEdits.reduce((a, i) => a + i.amount, 0);
+      if (total === 0) return;
+      if (!window.confirm(`Pay all outstanding wages for ${emp.name}?\n\nTotal: £${total.toFixed(2)}\n(${unpaidShoots.length + unpaidEdits.length} entries)`)) return;
+      const now = new Date().toISOString();
+      for (const item of unpaidShoots) await updateWageEntry(item.jobId, item.id, { status: 'paid', paidAt: now });
+      for (const item of unpaidEdits)  await markEditingPaid(item);
+    };
+
     // Unified per-employee breakdown (shoots + editing combined)
     const allByEmployee = employees.map(emp => {
       const shoots = allShootEntries.filter(e => e.employeeId === emp.id && (showArchivedWages || !e.archived)).map(e => ({ ...e, _kind: 'shoot', _sortKey: e.submittedAt || e.approvedAt || '' }));
@@ -10272,6 +10283,12 @@ Eyecon Moments`);
                           {emp.owed > 0 && <span className="text-green-600 font-bold text-sm">£{emp.owed.toFixed(2)} owed</span>}
                           {emp.paid > 0 && <span className={`text-xs ml-2 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>£{emp.paid.toFixed(2)} paid</span>}
                         </div>
+                        {emp.owed > 0 && (
+                          <button onClick={() => payAllForEmployee(emp)}
+                            className="text-xs px-3 py-1 rounded font-semibold bg-green-500 hover:bg-green-600 text-white">
+                            💰 Pay All £{emp.owed.toFixed(2)}
+                          </button>
+                        )}
                         <button onClick={() => setPayScaleOpen(prev => ({ ...prev, [emp.id]: !prev[emp.id] }))}
                           className={`text-xs px-2 py-1 rounded border font-medium ${payScaleOpen[emp.id] ? 'bg-blue-500 text-white border-blue-500' : dm ? 'border-gray-500 text-gray-300' : 'border-gray-300 text-gray-600'}`}>
                           £ Scale {payScaleOpen[emp.id] ? '▲' : '▼'}
