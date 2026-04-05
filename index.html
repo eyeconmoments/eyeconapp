@@ -383,6 +383,8 @@ function EyeconMoments() {
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
+  const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
+  const [wagesPeriodFilter, setWagesPeriodFilter] = useState('all');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [showAIJobModal, setShowAIJobModal] = useState(false);
   const [showManualJobModal, setShowManualJobModal] = useState(false);
@@ -10200,11 +10202,30 @@ Eyecon Moments`);
 
           {/* ── SUMMARY TOTALS ── */}
           {(() => {
-            const totalOwed = (isAdmin ? allByEmployee.reduce((a, e) => a + e.owed, 0) : (allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0) + editingWageItems.filter(e => e.employeeId === currentUser?.id && e.status !== 'paid').reduce((a, e) => a + e.amount, 0)));
-            const totalPaid = (isAdmin ? allByEmployee.reduce((a, e) => a + e.paid, 0) : (allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0) + editingWageItems.filter(e => e.employeeId === currentUser?.id && e.status === 'paid').reduce((a, e) => a + e.amount, 0)));
-            const allEditItems = isAdmin ? editingWageItems : editingWageItems.filter(e => e.employeeId === currentUser?.id);
-            const paidItems = allEditItems.filter(e => e.status === 'paid' && e.amount > 0);
-            const shootItems = isAdmin ? allShootEntries.filter(e => e.status === 'paid' && e.hoursWorked > 0) : allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'paid' && e.hoursWorked > 0);
+            // Period filter helper
+            const now = new Date();
+            const inPeriod = (dateStr) => {
+              if (wagesPeriodFilter === 'all' || !dateStr) return true;
+              const d = new Date(dateStr);
+              if (wagesPeriodFilter === 'this_month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+              if (wagesPeriodFilter === 'last_month') { const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1); return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear(); }
+              if (wagesPeriodFilter === 'this_year') return d.getFullYear() === now.getFullYear();
+              return true;
+            };
+            const empMatch = (empId) => wagesEmpFilter === 'all' || String(empId) === String(wagesEmpFilter);
+
+            const filteredShoots = allShootEntries.filter(e => empMatch(e.employeeId) && inPeriod(e.paidAt || e.submittedAt || e.approvedAt));
+            const filteredEdits  = editingWageItems.filter(e => empMatch(e.employeeId) && inPeriod(e.paidAt || e.completedAt));
+
+            const totalOwed = isAdmin
+              ? filteredShoots.filter(e => e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0) + filteredEdits.filter(e => e.status !== 'paid').reduce((a, e) => a + e.amount, 0)
+              : allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'approved').reduce((a, e) => a + (e.amount || 0), 0) + editingWageItems.filter(e => e.employeeId === currentUser?.id && e.status !== 'paid').reduce((a, e) => a + e.amount, 0);
+            const totalPaid = isAdmin
+              ? filteredShoots.filter(e => e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0) + filteredEdits.filter(e => e.status === 'paid').reduce((a, e) => a + e.amount, 0)
+              : allShootEntries.filter(e => e.employeeId === currentUser?.id && e.status === 'paid').reduce((a, e) => a + (e.amount || 0), 0) + editingWageItems.filter(e => e.employeeId === currentUser?.id && e.status === 'paid').reduce((a, e) => a + e.amount, 0);
+
+            const paidItems = filteredEdits.filter(e => e.status === 'paid' && e.amount > 0);
+            const shootItems = filteredShoots.filter(e => e.status === 'paid' && e.hoursWorked > 0);
             const avgHourly = (() => {
               const totalHoursShoot = shootItems.reduce((a, e) => a + (e.hoursWorked || 0), 0);
               const totalEarnedShoot = shootItems.reduce((a, e) => a + (e.amount || 0), 0);
@@ -10216,19 +10237,37 @@ Eyecon Moments`);
               const totalH = totalHoursShoot + totalHoursEdit;
               return totalH > 0 ? (totalEarnedShoot + totalEarnedEdit) / totalH : 0;
             })();
+
+            const selectCls = `text-xs rounded px-2 py-1 border ${dm ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`;
             return (
-              <div className="grid grid-cols-3 gap-3">
-                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
-                  <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Total Owed</p>
-                  <p className="text-xl font-bold text-green-600">£{totalOwed.toFixed(2)}</p>
-                </div>
-                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
-                  <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Total Paid</p>
-                  <p className="text-xl font-bold text-blue-500">£{totalPaid.toFixed(2)}</p>
-                </div>
-                <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
-                  <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Avg. Hourly Rate</p>
-                  <p className={`text-xl font-bold ${dm ? 'text-yellow-400' : 'text-yellow-600'}`}>{avgHourly > 0 ? `£${avgHourly.toFixed(2)}/hr` : '—'}</p>
+              <div className="space-y-2">
+                {isAdmin && (
+                  <div className="flex gap-2 flex-wrap">
+                    <select value={wagesEmpFilter} onChange={e => setWagesEmpFilter(e.target.value)} className={selectCls}>
+                      <option value="all">All staff</option>
+                      {employees.filter(e => e.canBeAssigned).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                    <select value={wagesPeriodFilter} onChange={e => setWagesPeriodFilter(e.target.value)} className={selectCls}>
+                      <option value="all">All time</option>
+                      <option value="this_month">This month</option>
+                      <option value="last_month">Last month</option>
+                      <option value="this_year">This year</option>
+                    </select>
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
+                    <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Total Owed</p>
+                    <p className="text-xl font-bold text-green-600">£{totalOwed.toFixed(2)}</p>
+                  </div>
+                  <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
+                    <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Total Paid</p>
+                    <p className="text-xl font-bold text-blue-500">£{totalPaid.toFixed(2)}</p>
+                  </div>
+                  <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 text-center`}>
+                    <p className={`text-xs mb-1 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Avg. Hourly Rate</p>
+                    <p className={`text-xl font-bold ${dm ? 'text-yellow-400' : 'text-yellow-600'}`}>{avgHourly > 0 ? `£${avgHourly.toFixed(2)}/hr` : '—'}</p>
+                  </div>
                 </div>
               </div>
             );
