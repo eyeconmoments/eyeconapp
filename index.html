@@ -9903,9 +9903,10 @@ Eyecon Moments`);
                     <div>
                       <label className={`block text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Select Job</label>
                       <select value={modal.selectedJobId || ''} onChange={e => {
-                        const job = editingJobs.find(j => j.id === parseInt(e.target.value));
+                        const val = e.target.value;
+                        const job = editingJobs.find(j => String(j.id) === String(val));
                         const sched = getScheduled(job);
-                        setWageSubmitModal({ ...modal, selectedJobId: parseInt(e.target.value) || null, actualStart: sched.start || '10:00', actualEnd: sched.end || '22:00', isOverride: false, customJobName: '' });
+                        setWageSubmitModal({ ...modal, selectedJobId: val || null, actualStart: sched.start || '10:00', actualEnd: sched.end || '22:00', isOverride: false, customJobName: '' });
                       }} className={inp}>
                         <option value="">— Choose a job —</option>
                         {myShootJobs.map(j => <option key={j.id} value={j.id}>{j.jobName} — {j.customerName}</option>)}
