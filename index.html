@@ -834,11 +834,11 @@ function EyeconMoments() {
   };
 
   const updateWageEntry = async (jobId, entryId, updates) => {
-    const job = editingJobs.find(j => j.id === jobId);
+    const job = editingJobs.find(j => String(j.id) === String(jobId));
     if (!job) return;
-    const newWageEntries = (job.wageEntries || []).map(e => e.id === entryId ? { ...e, ...updates } : e);
-    await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', jobId);
-    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, wageEntries: newWageEntries } : j));
+    const newWageEntries = (job.wageEntries || []).map(e => String(e.id) === String(entryId) ? { ...e, ...updates } : e);
+    await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', job.id);
+    setEditingJobs(prev => prev.map(j => String(j.id) === String(jobId) ? { ...j, wageEntries: newWageEntries } : j));
   };
 
   const deleteWageEntry = async (jobId, entryId) => {
