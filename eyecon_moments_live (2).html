@@ -9857,7 +9857,7 @@ Eyecon Moments`);
                       <select value={modal.selectedJobId || ''} onChange={e => {
                         const job = editingJobs.find(j => j.id === parseInt(e.target.value));
                         const sched = getScheduled(job);
-                        setWageSubmitModal({ ...modal, selectedJobId: parseInt(e.target.value) || null, actualStart: sched.start, actualEnd: sched.end, isOverride: false, customJobName: '' });
+                        setWageSubmitModal({ ...modal, selectedJobId: parseInt(e.target.value) || null, actualStart: sched.start || '10:00', actualEnd: sched.end || '22:00', isOverride: false, customJobName: '' });
                       }} className={inp}>
                         <option value="">— Choose a job —</option>
                         {myShootJobs.map(j => <option key={j.id} value={j.id}>{j.jobName} — {j.customerName}</option>)}
