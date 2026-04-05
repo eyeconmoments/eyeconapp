@@ -10290,12 +10290,12 @@ Eyecon Moments`);
                               </div>
                               {isShoot && item.notes && <p className={`text-xs mt-0.5 italic ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{item.notes}</p>}
                               {item.paidAt && <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Paid on {formatDate(item.paidAt)}</p>}
-                              {item.confirmedAt && <p className="text-xs text-green-500 font-medium mt-0.5">✓ Confirmed received {formatDate(item.confirmedAt)}</p>}
-                              {item.status === 'paid' && !item.confirmedAt && (
+                              {item.confirmedAt && <p className="text-xs text-green-500 font-medium mt-0.5">✓ Received {formatDate(item.confirmedAt)}</p>}
+                              {item.status === 'approved' && !item.confirmedAt && (
                                 <button onClick={() => {
                                   if (isShoot) updateWageEntry(item.jobId, item.id, { confirmedAt: new Date().toISOString() });
                                   else if (item.entryId) updateWageEntry(item.jobId, item.entryId, { confirmedAt: new Date().toISOString() });
-                                }} className="mt-1 text-xs px-3 py-1 bg-green-500 text-white rounded font-semibold">✓ Confirm I've been paid</button>
+                                }} className="mt-1 text-xs px-3 py-1 bg-green-500 text-white rounded font-semibold">✓ Mark as received</button>
                               )}
                             </div>
                             <p className={`font-bold ml-3 shrink-0 ${item.status === 'paid' ? (dm ? 'text-gray-500' : 'text-gray-400') : 'text-green-600'}`}>£{(item.amount || 0).toFixed(2)}</p>
