@@ -251,6 +251,8 @@ function EyeconMoments() {
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [expandedAvailableJobs, setExpandedAvailableJobs] = useState({});
   const [stageFileModal, setStageFileModal] = useState(null); // { jobId, stageId, stageName, isPhoto }
+  const [backupModal, setBackupModal] = useState(null); // { jobId }
+  const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '' });
   const [stageFileForm, setStageFileForm] = useState({ drive: '', path: '', notes: '', filename: '' });
   const [assignedJobsCollapsed, setAssignedJobsCollapsed] = useState(false);
   const [addPhotoModal, setAddPhotoModal] = useState(null); // jobId to add photo editing to
@@ -3501,7 +3503,100 @@ LOGGING:
           </div>
         )}
 
+        {/* Backup Modal */}
+        {backupModal && (() => {
+          const job = editingJobs.find(j => String(j.id) === String(backupModal.jobId));
+          const saveBackup = async () => {
+            if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
+            const newLoc = { drive: backupForm.drive, path: backupForm.path, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true };
+            const newLocs = [...(job.fileLocations || []), newLoc];
+            await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
+            setEditingJobs(prev => prev.map(j => String(j.id) === String(backupModal.jobId) ? { ...j, fileLocations: newLocs } : j));
+            setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '' });
+          };
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                <div className="p-4 border-b border-gray-700">
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>💾 Log Backup</h3>
+                  <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job?.jobName} — {job?.customerName}</p>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive *</label>
+                    <select value={backupForm.drive} onChange={e => setBackupForm(p => ({...p, drive: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="">Select drive...</option>
+                      {allDrives.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Folder Path (optional)</label>
+                    <input type="text" placeholder="e.g. /Weddings/2026/" value={backupForm.path}
+                      onChange={e => setBackupForm(p => ({...p, path: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Backed up by *</label>
+                    <select value={backupForm.backedUpBy} onChange={e => setBackupForm(p => ({...p, backedUpBy: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="">Select person...</option>
+                      {employees.filter(e => e.canBeAssigned).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes (optional)</label>
+                    <textarea placeholder="e.g. Raw + exports backed up" value={backupForm.notes}
+                      onChange={e => setBackupForm(p => ({...p, notes: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} rows={2} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '' }); }}
+                      className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Skip</button>
+                    <button onClick={saveBackup} className="py-2 rounded-lg font-semibold bg-blue-500 text-white">💾 Save Backup</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="p-4 space-y-4">
+          {/* Backup prompts — lapsed jobs with no backup logged */}
+          {(() => {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const needsBackup = editingJobs.filter(j => {
+              if (j.archived) return false;
+              if (!j.shootDate) return false;
+              const shootDay = new Date(j.shootDate); shootDay.setHours(0,0,0,0);
+              if (shootDay > today) return false; // hasn't happened yet
+              const hasBackup = (j.fileLocations || []).some(l => l.isBackup || l.drive);
+              return !hasBackup;
+            }).sort((a, b) => new Date(b.shootDate) - new Date(a.shootDate));
+            if (needsBackup.length === 0) return null;
+            return (
+              <div className="rounded-lg border-l-4 border-blue-500 bg-blue-900/20 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">💾</span>
+                  <p className="font-semibold text-blue-400">Backup needed — {needsBackup.length} job{needsBackup.length > 1 ? 's' : ''} with no storage logged</p>
+                </div>
+                <div className="space-y-1.5">
+                  {needsBackup.map(j => (
+                    <div key={j.id} className="flex justify-between items-center">
+                      <div>
+                        <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{j.jobName}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : ''}</p>
+                      </div>
+                      <button onClick={() => { setBackupModal({ jobId: j.id }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '' }); }}
+                        className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg font-semibold shrink-0">
+                        💾 Log Backup
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* Revision deadline reminders */}
           {(() => {
             const today = new Date(); today.setHours(0,0,0,0);
