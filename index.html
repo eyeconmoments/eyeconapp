@@ -10678,6 +10678,18 @@ Eyecon Moments`);
         doc.text(mfl, cx - mw/2, yCentre + sz/2 + 5);
       };
 
+      // Add a new light-grey content page and return the starting y
+      const addContentPage = () => {
+        doc.addPage();
+        doc.setFillColor(...LGRAY); doc.rect(0,0,W,H,'F');
+        return 32;
+      };
+      // If adding `needed` mm from y would hit the logo/footer area, flush page and return new y
+      const overflowCheck = (y, needed) => {
+        if (y + needed > H - 45) { drawLogo(H - 20); return addContentPage(); }
+        return y;
+      };
+
       const eventLabel = 'A   Q U O T E   F O R';
       const hasPhoto = quoteData.wantPhoto, hasVideo = quoteData.wantVideo;
       const typeSpaced = hasPhoto && hasVideo
@@ -10815,12 +10827,14 @@ Eyecon Moments`);
       ].forEach(p => { y = cPara(p, y, 152); y += 5; });
 
       if (hasVideo) {
+        y = overflowCheck(y, 80); // heading + 5 items ≈ 75mm
         y += 6; ctu('Cinematography', y, {size:11, style:'bold'}); y += 11;
         ['1 or 2 Videographers (as appropriate)','A full-length cinematic film recorded in 4k',
          'A cinematic trailer',"A highlights reel of the day's events",'A personalised engraved memory stick'
         ].forEach(item => { ct(item, y, {size:9.5}); y += 6.5; });
       }
       if (hasPhoto) {
+        y = overflowCheck(y, 55); // heading + 3 items ≈ 50mm
         y += 8; ctu('Photography', y, {size:11, style:'bold'}); y += 11;
         const np = quoteData.numPhotographers||1;
         [np+' Photographer'+(np>1?'s':''),'Unlimited photos','All photos are edited and returned digitally'
@@ -10867,6 +10881,7 @@ Eyecon Moments`);
       });
       y += 14;
 
+      y = overflowCheck(y, 100); // payment terms + links + final text ≈ 95mm
       ct('PAYMENT TERMS', y, {size:12, style:'bold'}); y += 14;
       ct('50% deposit to secure booking', y, {size:9.5}); y += 8;
       ct('50% balance to be paid prior to the event', y, {size:9.5}); y += 10;
