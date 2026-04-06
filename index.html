@@ -10940,10 +10940,18 @@ Eyecon Moments`);
     // Email Quote - Opens Gmail compose + saves to CRM
     const emailQuote = async () => {
       const firstName = (quoteData.clientName || '').split(' ')[0].split('&')[0].trim() || 'there';
-      const subject = encodeURIComponent(`${quoteType} Quote - Eyecon Moments`);
-      const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nI have attached the quote for your attention with a breakdown of the details for you to consider.\n\nIf you have any questions or would like to further discuss anything, please don't hesitate to contact. I look forward to hearing from you.\n\nKind Regards,\nEyecon Moments`);
-      const gmailUrl = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${subject}&body=${body}`;
-      window.location.href = gmailUrl;
+      const subjectText = `${quoteType} Quote - Eyecon Moments`;
+      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nI have attached the quote for your attention with a breakdown of the details for you to consider.\n\nIf you have any questions or would like to further discuss anything, please don't hesitate to contact. I look forward to hearing from you.\n\nKind Regards,\nEyecon Moments`;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        // On mobile, mailto: triggers the native mail app
+        const gmailUrl = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
+        window.location.href = gmailUrl;
+      } else {
+        // On desktop, open Gmail web compose in a new tab
+        const gmailWebUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(quoteData.clientEmail)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
+        window.open(gmailWebUrl, '_blank');
+      }
 
       // Save to CRM
       try {
