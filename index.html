@@ -253,7 +253,7 @@ function EyeconMoments() {
   const [stageFileModal, setStageFileModal] = useState(null); // { jobId, stageId, stageName, isPhoto }
   const [backupModal, setBackupModal] = useState(null); // { jobId }
   const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '' });
-  const [stageFileForm, setStageFileForm] = useState({ drive: '', path: '', notes: '', filename: '' });
+  const [stageFileForm, setStageFileForm] = useState({ hardware: '', drive: '', path: '', notes: '', filename: '' });
   const [assignedJobsCollapsed, setAssignedJobsCollapsed] = useState(false);
   const [addPhotoModal, setAddPhotoModal] = useState(null); // jobId to add photo editing to
   const [addPhotoHours, setAddPhotoHours] = useState(10);
@@ -966,6 +966,7 @@ function EyeconMoments() {
     } : null;
     const newLoc = {
       ...existing,
+      hardware: fileOverrideModal.hardware || existing?.hardware || '',
       drive, path: path || '', notes: notes || '',
       setBy: currentUser.name, setAt: new Date().toISOString(),
       history: [...(existing?.history || []), ...(historyEntry ? [historyEntry] : [])]
@@ -1248,7 +1249,7 @@ function EyeconMoments() {
 
   const completeStageWithFile = async () => {
     const { jobId, stageId, isPhoto } = stageFileModal;
-    const { drive, path, notes, filename } = stageFileForm;
+    const { hardware, drive, path, notes, filename } = stageFileForm;
     const job = editingJobs.find(j => j.id === jobId);
     if (!job) return;
 
@@ -1263,14 +1264,14 @@ function EyeconMoments() {
     if (drive) {
       const existing = job.fileLocations?.[0];
       const historyEntry = existing ? { ...existing, changedAt: existing.setAt || new Date().toISOString(), changedBy: existing.setBy || 'Unknown' } : null;
-      const newLoc = { drive, path: path || '', notes: notes || '', filename: filename || '', setBy: currentUser.name, setAt: new Date().toISOString(), stage: stageFileModal.stageName, locked: false, history: [...(existing?.history || []), ...(historyEntry ? [historyEntry] : [])] };
+      const newLoc = { hardware: hardware || '', drive, path: path || '', notes: notes || '', filename: filename || '', setBy: currentUser.name, setAt: new Date().toISOString(), stage: stageFileModal.stageName, locked: false, history: [...(existing?.history || []), ...(historyEntry ? [historyEntry] : [])] };
       const newLocs = [newLoc];
       await db.from('jobs').update({ file_locations: newLocs }).eq('id', jobId);
       setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, fileLocations: newLocs } : j));
     }
 
     setStageFileModal(null);
-    setStageFileForm({ drive: '', path: '', notes: '', filename: '' });
+    setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' });
   };
 
   const saveEmployeeNote = async (text) => {
@@ -2323,6 +2324,14 @@ LOGGING:
               </div>
               <div className="p-4 space-y-3">
                 <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>PC / Machine</label>
+                  <select value={stageFileForm.hardware} onChange={e => setStageFileForm(p => ({...p, hardware: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select PC...</option>
+                    {hardwareLocations.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
                   <select value={stageFileForm.drive} onChange={e => setStageFileForm(p => ({...p, drive: e.target.value}))}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
@@ -2349,7 +2358,7 @@ LOGGING:
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} rows={2} />
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <button onClick={() => { setStageFileModal(null); setStageFileForm({ drive: '', path: '', notes: '', filename: '' }); }}
+                  <button onClick={() => { setStageFileModal(null); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }}
                     className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
                   <button onClick={completeStageWithFile} className="py-2 rounded-lg font-semibold bg-green-500 text-white hover:bg-green-600">
                     ✅ Mark Complete
@@ -2369,6 +2378,15 @@ LOGGING:
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>The current location will be saved to history</p>
               </div>
               <div className="p-4 space-y-3">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>PC / Machine</label>
+                  <select value={fileOverrideModal.hardware || ''}
+                    onChange={e => setFileOverrideModal(p => ({ ...p, hardware: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select PC...</option>
+                    {hardwareLocations.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
                   <select value={fileOverrideModal.drive}
@@ -2561,7 +2579,7 @@ LOGGING:
                             <span className={`text-sm font-medium ${darkMode ? 'text-purple-200' : 'text-gray-700'}`}><Camera /> Photos</span>
                             {job.photoStatus === 'completed'
                               ? <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">✅ Completed</span>
-                              : <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ drive: '', path: '', notes: '' }); }}
+                              : <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }}
                                   className={`text-xs px-3 py-1 rounded font-medium ${job.photoStatus === 'in-progress' ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
                                   {job.photoStatus === 'not-started' ? 'Start & Track' : 'Mark Complete'}
                                 </button>
@@ -2582,7 +2600,7 @@ LOGGING:
                             <span className={`text-sm font-medium ${darkMode ? 'text-blue-200' : 'text-gray-700'}`}>{stage.name}</span>
                             {stage.status === 'completed'
                               ? <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">✅ Done</span>
-                              : <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: stage.id, stageName: stage.name, isPhoto: false }); setStageFileForm({ drive: '', path: '', notes: '' }); }}
+                              : <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: stage.id, stageName: stage.name, isPhoto: false }); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }}
                                   className="text-xs px-3 py-1 rounded font-medium bg-green-500 text-white">
                                   Mark Complete
                                 </button>
@@ -3565,6 +3583,14 @@ LOGGING:
               </div>
               <div className="p-4 space-y-3">
                 <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>PC / Machine</label>
+                  <select value={stageFileForm.hardware} onChange={e => setStageFileForm(p => ({...p, hardware: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select PC...</option>
+                    {hardwareLocations.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
                   <select value={stageFileForm.drive} onChange={e => setStageFileForm(p => ({...p, drive: e.target.value}))}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
@@ -3591,7 +3617,7 @@ LOGGING:
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} rows={2} />
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <button onClick={() => { setStageFileModal(null); setStageFileForm({ drive: '', path: '', notes: '', filename: '' }); }}
+                  <button onClick={() => { setStageFileModal(null); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }}
                     className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
                   <button onClick={completeStageWithFile} className="py-2 rounded-lg font-semibold bg-green-500 text-white hover:bg-green-600">
                     ✅ Mark Complete
@@ -3806,7 +3832,7 @@ LOGGING:
                               {job.photoStatus !== 'in-progress' && (
                                 <button onClick={() => updatePhotoStatus(job.id, 'in-progress')} className="bg-yellow-500 text-white px-2 py-1 rounded text-xs">Start</button>
                               )}
-                              <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ drive: '', path: '', notes: '' }); }} className="bg-green-500 text-white px-2 py-1 rounded text-xs">✅ Complete</button>
+                              <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }} className="bg-green-500 text-white px-2 py-1 rounded text-xs">✅ Complete</button>
                             </div>
                           )}
                         </div>
@@ -6161,6 +6187,14 @@ Capturing Your Special Day
               </div>
               <div className="p-4 space-y-3">
                 <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>PC / Machine</label>
+                  <select value={stageFileForm.hardware} onChange={e => setStageFileForm(p => ({...p, hardware: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select PC...</option>
+                    {hardwareLocations.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
                   <select value={stageFileForm.drive} onChange={e => setStageFileForm(p => ({...p, drive: e.target.value}))}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
@@ -6187,7 +6221,7 @@ Capturing Your Special Day
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} rows={2} />
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <button onClick={() => { setStageFileModal(null); setStageFileForm({ drive: '', path: '', notes: '', filename: '' }); }}
+                  <button onClick={() => { setStageFileModal(null); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }}
                     className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
                   <button onClick={completeStageWithFile} className="py-2 rounded-lg font-semibold bg-green-500 text-white hover:bg-green-600">
                     ✅ Mark Complete
@@ -6355,7 +6389,7 @@ Capturing Your Special Day
                               <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">▶ Clock In</button>
                             )}
                             {job.photoStatus !== 'in-progress' && <button onClick={() => updatePhotoStatus(job.id, 'in-progress')} className="bg-yellow-500 text-white px-3 py-1.5 rounded text-xs font-semibold">Start</button>}
-                            <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ drive: '', path: '', notes: '', filename: '' }); }} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-semibold">✅ Complete</button>
+                            <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-semibold">✅ Complete</button>
                           </div>
                         </div>
                       );
@@ -8155,6 +8189,15 @@ Eyecon Moments`);
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>The current location will be saved to history</p>
               </div>
               <div className="p-4 space-y-3">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>PC / Machine</label>
+                  <select value={fileOverrideModal.hardware || ''}
+                    onChange={e => setFileOverrideModal(p => ({ ...p, hardware: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select PC...</option>
+                    {hardwareLocations.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
                   <select value={fileOverrideModal.drive}
