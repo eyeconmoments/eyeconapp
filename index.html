@@ -8349,6 +8349,11 @@ Eyecon Moments`);
                           {loc.drive && (
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${hwColor.badge}`}>{loc.drive}</span>
                           )}
+                          {loc.stage === 'Photo Editing' ? (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-pink-500 text-white">📷 Photo</span>
+                          ) : loc.stage ? (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white">🎬 Video</span>
+                          ) : null}
                           {loc.locked && (
                             <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>🔒 Locked</span>
                           )}
