@@ -151,7 +151,8 @@ const rowToEmployee = (r) => ({
   phone: r.phone || '', emergencyContact: r.emergency_contact || '',
   emergencyPhone: r.emergency_phone || '', address: r.address || '',
   canBeAssigned: r.can_be_assigned !== false,
-  personalNote: r.personal_note || ''
+  personalNote: r.personal_note || '',
+  feedback: r.feedback || []
 });
 
 const rowToEntry = (r) => ({
@@ -385,6 +386,9 @@ function EyeconMoments() {
   const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
   const [wagesPeriodFilter, setWagesPeriodFilter] = useState('all');
+  const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
+  const [showSendFeedbackModal, setShowSendFeedbackModal] = useState(false);
+  const [feedbackForm, setFeedbackForm] = useState({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
   const [showRundownModal, setShowRundownModal] = useState(false);
   const [rundownTab, setRundownTab] = useState('today');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
@@ -650,6 +654,10 @@ function EyeconMoments() {
       setCurrentUser(resolvedUser);
       setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : 'employee-dashboard');
       if (resolvedUser.role === 'admin') setShowRundownModal(true);
+      if (resolvedUser.role !== 'admin') {
+        const unread = (resolvedUser.feedback || []).filter(f => !f.acknowledgedAt);
+        if (unread.length > 0) setShowFeedbackPopup(true);
+      }
       setLoginUsername(''); setLoginPin('');
       // Always refresh jobs on login so employees see the latest itinerary sharing
       refreshJobs();
@@ -1342,6 +1350,36 @@ function EyeconMoments() {
       await db.from('shared_items').update({ done: true, done_by: currentUser.name, done_at: new Date().toISOString() }).eq('id', itemId);
       setSharedItems(prev => prev.map(i => i.id === itemId ? { ...i, done: true, doneBy: currentUser.name } : i));
     } catch(e) {}
+  };
+
+  const sendFeedback = async () => {
+    const emp = employees.find(e => e.id === parseInt(feedbackForm.toEmployeeId));
+    if (!emp || !feedbackForm.message.trim()) return;
+    const item = {
+      id: Date.now(),
+      fromName: currentUser.name,
+      jobName: feedbackForm.jobName.trim(),
+      fileRef: feedbackForm.fileRef.trim(),
+      message: feedbackForm.message.trim(),
+      sentAt: new Date().toISOString(),
+      acknowledgedAt: null
+    };
+    const updatedFeedback = [...(emp.feedback || []), item];
+    await db.from('employees').update({ feedback: updatedFeedback }).eq('id', emp.id);
+    setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, feedback: updatedFeedback } : e));
+    setFeedbackForm({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
+    setShowSendFeedbackModal(false);
+    alert(`Feedback sent to ${emp.name}`);
+  };
+
+  const acknowledgeFeedback = async (feedbackId) => {
+    const now = new Date().toISOString();
+    const updatedFeedback = (currentUser.feedback || []).map(f => f.id === feedbackId ? { ...f, acknowledgedAt: now } : f);
+    await db.from('employees').update({ feedback: updatedFeedback }).eq('id', currentUser.id);
+    setEmployees(prev => prev.map(e => e.id === currentUser.id ? { ...e, feedback: updatedFeedback } : e));
+    // Update currentUser in place via a re-find
+    const updatedEmp = employees.find(e => e.id === currentUser.id);
+    if (updatedEmp) setCurrentUser({ ...updatedEmp, feedback: updatedFeedback });
   };
 
   const updateEmployeeDetails = async (employeeId, field, value) => {
@@ -2313,6 +2351,43 @@ LOGGING:
 
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+
+        {/* Feedback Popup */}
+        {showFeedbackPopup && (() => {
+          const unread = (employees.find(e => e.id === currentUser.id)?.feedback || []).filter(f => !f.acknowledgedAt);
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-lg flex flex-col`} style={{maxHeight:'85vh'}}>
+                <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+                  <div>
+                    <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📬 You have feedback</h2>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{unread.length} unread message{unread.length !== 1 ? 's' : ''} from admin</p>
+                  </div>
+                </div>
+                <div className="overflow-y-auto flex-1 p-4 space-y-4">
+                  {unread.map(f => (
+                    <div key={f.id} className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-amber-50 border-amber-200'} border`}>
+                      {f.jobName && <p className={`text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📋 {f.jobName}</p>}
+                      {f.fileRef && <p className={`text-xs mb-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>📁 {f.fileRef}</p>}
+                      <p className={`text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{f.message}</p>
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>From {f.fromName} · {new Date(f.sentAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}</p>
+                      <button onClick={() => acknowledgeFeedback(f.id)}
+                        className="mt-3 w-full py-2 rounded-lg bg-green-500 text-white text-sm font-semibold hover:bg-green-600">
+                        ✅ Acknowledge
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <button onClick={() => setShowFeedbackPopup(false)}
+                    className={`w-full py-2.5 rounded-lg text-sm font-semibold ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                    Dismiss for now
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Stage File Modal */}
         {stageFileModal && (
@@ -3417,6 +3492,7 @@ LOGGING:
       { key: 'quote',      label: 'Quote' },
       { key: 'revisions',  label: 'Revisions' },
       { key: 'wages',      label: 'Wages' },
+      { key: 'feedback',   label: 'Feedback' },
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
@@ -3424,9 +3500,10 @@ LOGGING:
       { key: 'files',              label: 'Files' },
       { key: 'availability',       label: 'Avail.' },
       { key: 'wages',              label: 'Wages' },
+      { key: 'feedback',           label: 'Feedback' },
     ];
     const tabs = isNavAdmin ? adminTabs : employeeTabs;
-    const cols = isNavAdmin ? 'grid-cols-6' : 'grid-cols-5';
+    const cols = isNavAdmin ? 'grid-cols-6' : 'grid-cols-6';
     return (
       <>
       <div className="sticky top-0 z-10 shadow-lg" style={{background: darkMode ? '#111827' : '#1a2535'}}>
@@ -11506,6 +11583,146 @@ Eyecon Moments`);
       reader.readAsText(file);
     }
   };
+
+  // FEEDBACK
+  if (currentView === 'feedback') {
+    const isAdminView = currentUser?.role === 'admin';
+
+    const allSentFeedback = isAdminView
+      ? employees.flatMap(emp => (emp.feedback || []).map(f => ({ ...f, toName: emp.name, toId: emp.id })))
+          .sort((a,b) => new Date(b.sentAt) - new Date(a.sentAt))
+      : (employees.find(e => e.id === currentUser.id)?.feedback || [])
+          .sort((a,b) => new Date(b.sentAt) - new Date(a.sentAt));
+
+    const unacknowledgedCount = isAdminView
+      ? 0
+      : allSentFeedback.filter(f => !f.acknowledgedAt).length;
+
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-slate-50'}`}>
+        {NavBar()}
+
+        {/* Send Feedback Modal (admin only) */}
+        {showSendFeedbackModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-md`}>
+              <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+                <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📤 Send Feedback</h2>
+                <button onClick={() => setShowSendFeedbackModal(false)} className={`p-1 rounded ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'}`}>✕</button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>To</label>
+                  <select value={feedbackForm.toEmployeeId} onChange={e => setFeedbackForm(p => ({...p, toEmployeeId: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="">Select staff member...</option>
+                    {employees.filter(e => e.role !== 'admin').map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name</label>
+                  <input type="text" placeholder="e.g. Shezan Wedding" value={feedbackForm.jobName}
+                    onChange={e => setFeedbackForm(p => ({...p, jobName: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>File / Photos (which file the feedback is about)</label>
+                  <input type="text" placeholder="e.g. Large 3 / HD5 · AlmasWedding_v2.mp4" value={feedbackForm.fileRef}
+                    onChange={e => setFeedbackForm(p => ({...p, fileRef: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Feedback</label>
+                  <textarea placeholder="Write your feedback here..." value={feedbackForm.message}
+                    onChange={e => setFeedbackForm(p => ({...p, message: e.target.value}))}
+                    rows={4} className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setShowSendFeedbackModal(false)}
+                    className={`py-2.5 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button onClick={sendFeedback} disabled={!feedbackForm.toEmployeeId || !feedbackForm.message.trim()}
+                    className={`py-2.5 rounded-lg font-semibold ${feedbackForm.toEmployeeId && feedbackForm.message.trim() ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                    📤 Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="p-4 space-y-4 max-w-2xl mx-auto">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {isAdminView ? '📤 Staff Feedback' : '📬 My Feedback'}
+              </h2>
+              {!isAdminView && unacknowledgedCount > 0 && (
+                <p className="text-sm text-amber-500 font-medium">{unacknowledgedCount} unread</p>
+              )}
+            </div>
+            {isAdminView && (
+              <button onClick={() => setShowSendFeedbackModal(true)}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold text-sm hover:bg-blue-600">
+                + Send Feedback
+              </button>
+            )}
+          </div>
+
+          {allSentFeedback.length === 0 ? (
+            <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className="text-4xl mb-3">📭</p>
+              <p className="font-medium">{isAdminView ? 'No feedback sent yet' : 'No feedback received yet'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {allSentFeedback.map(f => (
+                <div key={f.id} className={`rounded-xl border p-4 ${
+                  !isAdminView && !f.acknowledgedAt
+                    ? (darkMode ? 'bg-amber-900 border-amber-700' : 'bg-amber-50 border-amber-300')
+                    : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')
+                }`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      {isAdminView && (
+                        <p className={`text-xs font-semibold mb-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>→ {f.toName}</p>
+                      )}
+                      {f.jobName && (
+                        <p className={`text-xs font-medium mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📋 {f.jobName}</p>
+                      )}
+                      {f.fileRef && (
+                        <p className={`text-xs mb-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>📁 {f.fileRef}</p>
+                      )}
+                      <p className={`text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{f.message}</p>
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        From {f.fromName} · {new Date(f.sentAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'})}
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      {f.acknowledgedAt ? (
+                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                          ✅ Seen {new Date(f.acknowledgedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}
+                        </span>
+                      ) : (
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${darkMode ? 'bg-amber-800 text-amber-300' : 'bg-amber-100 text-amber-700'}`}>
+                          ⏳ Pending
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {!isAdminView && !f.acknowledgedAt && (
+                    <button onClick={() => acknowledgeFeedback(f.id)}
+                      className="mt-3 w-full py-2 rounded-lg bg-green-500 text-white text-sm font-semibold hover:bg-green-600">
+                      ✅ Acknowledge
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // REVISIONS
   if (currentView === 'revisions') {
