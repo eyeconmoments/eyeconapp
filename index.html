@@ -11072,21 +11072,26 @@ Eyecon Moments`);
       y = 32;
       ctu('YOUR BESPOKE PACKAGE', y, {size:14, style:'bold'}); y += 24;
 
-      if (numDays <= 2) {
-        quoteData.dates.forEach((day, i) => { y = renderDayPriceCentred(day, i, y); });
-      } else {
-        const colW = 60, gap = 5, totalW = 3*colW + 2*gap;
-        const startX = (W - totalW) / 2;
-        const maxY = quoteData.dates.reduce((maxBottomY, day, i) => {
-          const col = i % 3;
-          const colX = startX + col*(colW+gap);
-          const bottomY = renderDayPriceCol(day, i, colX, colW, y);
-          return Math.max(maxBottomY, bottomY);
-        }, y);
-        y = maxY + 12;
+      // Only show per-day itemised prices when no override is active —
+      // otherwise the calculated line items would contradict the adjusted total
+      const hasPriceOverride = (quoteData.priceOverride || 0) > 0 || (quoteData.adminPriceAdjustment || 0) !== 0 || (quoteData.discount || 0) > 0;
+      if (!hasPriceOverride) {
+        if (numDays <= 2) {
+          quoteData.dates.forEach((day, i) => { y = renderDayPriceCentred(day, i, y); });
+        } else {
+          const colW = 60, gap = 5, totalW = 3*colW + 2*gap;
+          const startX = (W - totalW) / 2;
+          const maxY = quoteData.dates.reduce((maxBottomY, day, i) => {
+            const col = i % 3;
+            const colX = startX + col*(colW+gap);
+            const bottomY = renderDayPriceCol(day, i, colX, colW, y);
+            return Math.max(maxBottomY, bottomY);
+          }, y);
+          y = maxY + 12;
+        }
+        y += 8;
       }
 
-      y += 8;
       ct('YOUR PACKAGE FROM ONLY:', y, {size:13, style:'bold', color:BLUE}); y += 13;
       const svcBase = (quoteData.priceOverride||0) > 0 ? (quoteData.priceOverride||0) : (quote.serviceTotal - (quoteData.discount||0) + (quoteData.adminPriceAdjustment||0));
       const finalAmt = svcBase + quote.travelTotal;
