@@ -12059,49 +12059,47 @@ Eyecon Moments`);
                   );
                 })()}
 
-                {/* AI Screenshot Scanner */}
-                {!selectedRev.completed && (
-                  <div className={`mb-4 p-3 rounded-lg border-2 border-dashed ${darkMode ? 'border-purple-700 bg-purple-900/20' : 'border-purple-300 bg-purple-50'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className={`text-xs font-semibold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>🤖 AI SCREENSHOT READER</p>
-                        <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload an Instagram or WhatsApp screenshot — AI will extract the revision requests automatically</p>
-                      </div>
-                      {revisionScanLoading && <span className="text-purple-400 text-sm animate-pulse">Scanning…</span>}
+                {/* AI Screenshot Scanner — always shown when a revision is selected */}
+                <div className={`mb-4 p-3 rounded-lg border-2 border-dashed ${darkMode ? 'border-purple-700 bg-purple-900/20' : 'border-purple-300 bg-purple-50'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className={`text-xs font-semibold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>🤖 AI SCREENSHOT READER</p>
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload an Instagram or WhatsApp screenshot — AI will extract the revision requests automatically</p>
                     </div>
-
-                    {!revisionScanPreview && (
-                      <label className={`cursor-pointer flex items-center justify-center gap-2 px-4 py-2 rounded-lg border ${darkMode ? 'bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700' : 'bg-purple-600 border-purple-600 text-white hover:bg-purple-700'} text-sm font-semibold w-full`}>
-                        {revisionScanLoading ? '⏳ Reading screenshot…' : '📷 Upload Screenshot'}
-                        <input type="file" accept="image/*" className="hidden" disabled={revisionScanLoading}
-                          onChange={e => { const f = e.target.files?.[0]; if (f) scanRevisionScreenshot(selectedRev.id, f); e.target.value = ''; }} />
-                      </label>
-                    )}
-
-                    {revisionScanPreview && revisionScanPreview.revId === selectedRev.id && (
-                      <div>
-                        <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>✅ Found {revisionScanPreview.items.length} revision{revisionScanPreview.items.length !== 1 ? 's' : ''} — review and confirm:</p>
-                        <div className={`rounded-lg p-2 mb-3 space-y-1 max-h-48 overflow-y-auto ${darkMode ? 'bg-gray-700' : 'bg-white border border-gray-200'}`}>
-                          {revisionScanPreview.items.map((item, i) => (
-                            <div key={i} className="flex items-start gap-2">
-                              <span className={`text-xs mt-0.5 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{i+1}.</span>
-                              <p className={`text-xs ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item}</p>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={confirmScanPreview} className="flex-1 bg-green-500 text-white px-3 py-1.5 rounded text-sm font-semibold">✅ Add All to Log</button>
-                          <button onClick={() => setRevisionScanPreview(null)} className={`px-3 py-1.5 rounded text-sm font-semibold ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>✕ Discard</button>
-                          <label className={`px-3 py-1.5 rounded text-sm font-semibold cursor-pointer ${darkMode ? 'bg-purple-700 text-purple-200' : 'bg-purple-100 text-purple-700'}`}>
-                            🔄 Re-scan
-                            <input type="file" accept="image/*" className="hidden"
-                              onChange={e => { const f = e.target.files?.[0]; if (f) scanRevisionScreenshot(selectedRev.id, f); e.target.value = ''; }} />
-                          </label>
-                        </div>
-                      </div>
-                    )}
+                    {revisionScanLoading && <span className="text-purple-400 text-sm animate-pulse">Scanning…</span>}
                   </div>
-                )}
+
+                  {!revisionScanPreview && (
+                    <label className={`cursor-pointer flex items-center justify-center gap-2 px-4 py-2 rounded-lg border ${darkMode ? 'bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700' : 'bg-purple-600 border-purple-600 text-white hover:bg-purple-700'} text-sm font-semibold w-full`}>
+                      {revisionScanLoading ? '⏳ Reading screenshot…' : '📷 Upload Screenshot'}
+                      <input type="file" accept="image/*" className="hidden" disabled={revisionScanLoading}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) scanRevisionScreenshot(selectedRev.id, f); e.target.value = ''; }} />
+                    </label>
+                  )}
+
+                  {revisionScanPreview && revisionScanPreview.revId === selectedRev.id && (
+                    <div>
+                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>✅ Found {revisionScanPreview.items.length} revision{revisionScanPreview.items.length !== 1 ? 's' : ''} — review and confirm:</p>
+                      <div className={`rounded-lg p-2 mb-3 space-y-1 max-h-48 overflow-y-auto ${darkMode ? 'bg-gray-700' : 'bg-white border border-gray-200'}`}>
+                        {revisionScanPreview.items.map((item, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className={`text-xs mt-0.5 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>{i+1}.</span>
+                            <p className={`text-xs ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={confirmScanPreview} className="flex-1 bg-green-500 text-white px-3 py-1.5 rounded text-sm font-semibold">✅ Add All to Log</button>
+                        <button onClick={() => setRevisionScanPreview(null)} className={`px-3 py-1.5 rounded text-sm font-semibold ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>✕ Discard</button>
+                        <label className={`px-3 py-1.5 rounded text-sm font-semibold cursor-pointer ${darkMode ? 'bg-purple-700 text-purple-200' : 'bg-purple-100 text-purple-700'}`}>
+                          🔄 Re-scan
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) scanRevisionScreenshot(selectedRev.id, f); e.target.value = ''; }} />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Paste block */}
                 {!selectedRev.completed && (
