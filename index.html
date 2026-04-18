@@ -6723,6 +6723,7 @@ Capturing Your Special Day
                     </div>
                   </div>
                 ) : (
+                  <>
                   <select onChange={(e) => { if (e.target.value) { handleClockIn(e.target.value); e.target.value = ''; }}}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-green-50'}`}>
                     <option value="">🟢 Clock In to a Job...</option>
@@ -6732,6 +6733,7 @@ Capturing Your Special Day
                     className={`mt-2 w-full py-2 rounded-lg font-semibold text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
                     📋 General / No Job
                   </button>
+                  </>
                 )}
                 <div className="mt-3 space-y-1">
                   {timeEntries.filter(e => e.employeeId === currentUser.id && e.hoursWorked).slice(-5).reverse().map(e => (
