@@ -158,7 +158,8 @@ const rowToEmployee = (r) => ({
 const rowToEntry = (r) => ({
   id: r.id, employeeId: r.employee_id, jobId: r.job_id,
   clockIn: new Date(r.clock_in), clockOut: r.clock_out ? new Date(r.clock_out) : null,
-  hoursWorked: r.hours_worked
+  hoursWorked: r.hours_worked, description: r.description || null,
+  progressPercent: r.progress_percent ?? null, progressNote: r.progress_note || null
 });
 
 const rowToRevision = (r) => ({
@@ -323,6 +324,11 @@ function EyeconMoments() {
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [availForm, setAvailForm] = useState({ startDate: '', endDate: '', reason: '' });
   const [liveItineraryJob, setLiveItineraryJob] = useState(null); // jobId for live itinerary view
+  const [isDriveSignedIn, setIsDriveSignedIn] = useState(false);
+  const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
+  const [driveUploading, setDriveUploading] = useState(false);
+  const [generalClockInModal, setGeneralClockInModal] = useState(null); // { description: '' }
+  const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
   const [myItinerariesOpen, setMyItinerariesOpen] = useState(false); // collapsed by default
   const [progressDetailOpen, setProgressDetailOpen] = useState(false);
   const [availCalMonth, setAvailCalMonth] = useState(new Date().getMonth());
@@ -684,6 +690,7 @@ function EyeconMoments() {
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const getEmployeeName = (employeeId) => employees.find(e => e.id === employeeId)?.name || 'Unassigned';
   const getJobName = (jobId) => editingJobs.find(j => j.id === jobId)?.jobName || 'Unknown Job';
+  const getEntryLabel = (entry) => entry.jobId ? getJobName(entry.jobId) : (entry.description || 'General Work');
 
   const getUserAssignedJobs = (userId) => {
     return editingJobs.filter(job => {
@@ -707,33 +714,38 @@ function EyeconMoments() {
     return `${hours}h ${minutes}m`;
   };
 
-  const handleClockIn = async (jobId) => {
+  const handleClockIn = async (jobId, description = null) => {
     // Auto-clock-out of any existing active entry first
     const existingActive = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
     if (existingActive) {
-      if (existingActive.jobId === jobId) return; // already clocked into this job
+      if (existingActive.jobId === jobId) return; // already clocked into this job (or both general)
       await handleClockOut(existingActive.id);
     }
-    const entry = { id: Date.now(), employee_id: currentUser.id, job_id: jobId, clock_in: new Date().toISOString(), clock_out: null };
+    const entry = { id: Date.now(), employee_id: currentUser.id, job_id: jobId || null, clock_in: new Date().toISOString(), clock_out: null, description: description || null };
     const { data, error } = await db.from('time_entries').insert([entry]).select();
     if (error) { alert('Clock in failed: ' + error.message); return; }
     if (data && data[0]) setTimeEntries(prev => [...prev, rowToEntry(data[0])]);
   };
 
-  const handleClockOut = async (entryId) => {
+  const handleClockOut = async (entryId, progressPercent = null, progressNote = null) => {
     const entry = timeEntries.find(e => e.id === entryId);
     if (entry) {
       const clockOut = new Date();
       const hoursWorked = Math.round(((clockOut - new Date(entry.clockIn)) / (1000*60*60)) * 10) / 10;
-      await db.from('time_entries').update({ clock_out: clockOut.toISOString(), hours_worked: hoursWorked }).eq('id', entryId);
-      setTimeEntries(prev => prev.map(e => e.id === entryId ? { ...e, clockOut, hoursWorked } : e));
+      const updateData = { clock_out: clockOut.toISOString(), hours_worked: hoursWorked };
+      if (progressPercent !== null) updateData.progress_percent = progressPercent;
+      if (progressNote) updateData.progress_note = progressNote;
+      await db.from('time_entries').update(updateData).eq('id', entryId);
+      setTimeEntries(prev => prev.map(e => e.id === entryId ? { ...e, clockOut, hoursWorked, progressPercent, progressNote } : e));
     }
   };
+
+  const initiateClockOut = (entryId) => setProgressModal({ entryId, percent: 0, note: '' });
 
   const saveManualEntry = async () => {
     const { jobId, clockIn, clockOut, editEntryId } = manualTimeModal;
     const employeeId = manualTimeModal.employeeId || currentUser.id;
-    if (!employeeId || !jobId || !clockIn) return;
+    if (!employeeId || !clockIn) return;
     const clockInDate = new Date(clockIn);
     const clockOutDate = clockOut ? new Date(clockOut) : null;
     const hoursWorked = clockOutDate ? Math.round(((clockOutDate - clockInDate) / (1000*60*60)) * 10) / 10 : null;
@@ -1365,7 +1377,11 @@ function EyeconMoments() {
       acknowledgedAt: null
     };
     const updatedFeedback = [...(emp.feedback || []), item];
-    await db.from('employees').update({ feedback: updatedFeedback }).eq('id', emp.id);
+    const { error } = await db.from('employees').update({ feedback: updatedFeedback }).eq('id', emp.id);
+    if (error) {
+      alert('Failed to save feedback: ' + error.message + '\n\nMake sure the employees table has a feedback column (jsonb, default []).');
+      return;
+    }
     setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, feedback: updatedFeedback } : e));
     setFeedbackForm({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
     setShowSendFeedbackModal(false);
@@ -1375,9 +1391,9 @@ function EyeconMoments() {
   const acknowledgeFeedback = async (feedbackId) => {
     const now = new Date().toISOString();
     const updatedFeedback = (currentUser.feedback || []).map(f => f.id === feedbackId ? { ...f, acknowledgedAt: now } : f);
-    await db.from('employees').update({ feedback: updatedFeedback }).eq('id', currentUser.id);
+    const { error } = await db.from('employees').update({ feedback: updatedFeedback }).eq('id', currentUser.id);
+    if (error) { alert('Failed to acknowledge feedback: ' + error.message); return; }
     setEmployees(prev => prev.map(e => e.id === currentUser.id ? { ...e, feedback: updatedFeedback } : e));
-    // Update currentUser in place via a re-find
     const updatedEmp = employees.find(e => e.id === currentUser.id);
     if (updatedEmp) setCurrentUser({ ...updatedEmp, feedback: updatedFeedback });
   };
@@ -1622,6 +1638,103 @@ function EyeconMoments() {
     if (token) google.accounts.oauth2.revoke(token.access_token);
     window.gapi.client.setToken(null);
     setIsGoogleSignedIn(false);
+    setIsDriveSignedIn(false);
+  };
+
+  // ── Google Drive Upload ────────────────────────────────────────────────────
+  const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+  const requestDriveToken = () => new Promise((resolve, reject) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: (response) => {
+        if (response.error) { reject(new Error(response.error)); return; }
+        window.gapi.client.setToken(response);
+        setIsDriveSignedIn(true);
+        resolve(response.access_token);
+      }
+    });
+    client.requestAccessToken({ prompt: '' });
+  });
+
+  const getOrCreateDriveFolder = async (folderName, token) => {
+    const safeName = folderName.replace(/[/\\?%*:|"<>]/g, '-');
+    const q = `name='${safeName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (data.files && data.files.length > 0) return data.files[0].id;
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: safeName, mimeType: 'application/vnd.google-apps.folder' })
+    });
+    const folder = await createRes.json();
+    if (!folder.id) throw new Error('Could not create Drive folder: ' + (folder.error?.message || 'unknown error'));
+    return folder.id;
+  };
+
+  const uploadToDrive = async (jobId, file) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    setDriveUploading(true);
+    try {
+      let token = window.gapi?.client?.getToken()?.access_token;
+      if (!token || !isDriveSignedIn) token = await requestDriveToken();
+
+      const folderName = `Eyecon — ${job.jobName}`;
+      const folderId = await getOrCreateDriveFolder(folderName, token);
+
+      const meta = { name: file.name, parents: [folderId] };
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+      form.append('file', file);
+
+      const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.error?.message || 'Upload failed');
+      }
+      const { id: fileId } = await uploadRes.json();
+
+      // Make anyone with the link a viewer
+      await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' })
+      });
+
+      // Fetch the shareable web link
+      const infoRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=webViewLink`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const { webViewLink } = await infoRes.json();
+
+      // Persist Drive entry inside job.fileLocations
+      const driveEntry = {
+        type: 'drive_project_file',
+        fileName: file.name,
+        driveFileId: fileId,
+        driveLink: webViewLink,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: currentUser.name
+      };
+      const newFileLocations = [...(job.fileLocations || []), driveEntry];
+      await db.from('jobs').update({ file_locations: newFileLocations }).eq('id', jobId);
+      setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, fileLocations: newFileLocations } : j));
+      setDriveUploadModal(null);
+      alert(`✅ "${file.name}" uploaded to Google Drive!\n\n${webViewLink}`);
+    } catch (e) {
+      if (e.message !== 'popup_closed_by_user') alert('Upload failed: ' + e.message);
+    } finally {
+      setDriveUploading(false);
+    }
   };
 
   const syncFromGoogleCalendar = async () => {
@@ -2570,7 +2683,7 @@ LOGGING:
                   <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Started: {formatTime(activeEntry.clockIn)}</p>
                 </div>
               </div>
-              <button onClick={e => { e.stopPropagation(); handleClockOut(activeEntry.id); }} className="w-full bg-red-500 text-white py-3 rounded-lg font-semibold mt-2">
+              <button onClick={e => { e.stopPropagation(); initiateClockOut(activeEntry.id); }} className="w-full bg-red-500 text-white py-3 rounded-lg font-semibold mt-2">
                 Clock Out
               </button>
             </div>
@@ -3030,8 +3143,17 @@ LOGGING:
         {/* ── My Itineraries — jobs explicitly shared with this employee ── */}
         {currentView === 'employee-dashboard' && (() => {
           const myId = String(currentUser.id);
+          // A job's itinerary is hidden once its shoot date + end time has passed
+          const itinHasEnded = (j) => {
+            if (!j.shootDate) return false;
+            const end = new Date(j.shootDate);
+            const [eh, em] = (j.itinerary?.endTime || '23:59').split(':').map(Number);
+            end.setHours(eh, em, 0, 0);
+            return end < new Date();
+          };
           const sharedJobs = editingJobs.filter(j => {
             if (archivedJobIds.includes(j.id) || !j.itinerary) return false;
+            if (itinHasEnded(j)) return false;
             return j.itinerary?.sharedWith?.some(id => String(id) === myId);
           }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
 
@@ -3051,18 +3173,39 @@ LOGGING:
             localStorage.setItem('eyecon_parked_itins', JSON.stringify(updated));
           };
 
-          // Compute times cumulatively (same logic as admin itinerary builder)
+          // Compute times cumulatively — duration units are × 15 min (matches admin builder)
           const toMins = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
           const computeTimes = (scheduleItems, startTime) => {
             let cum = toMins(startTime || '10:00');
-            return scheduleItems.map(item => {
-              const itemMins = item.time ? toMins(item.time) : cum;
-              if (!item.time) cum += (item.duration || 2) * 30;
-              else cum = itemMins + (item.duration || 2) * 30;
-              const hh = Math.floor(itemMins / 60) % 24;
-              const mm = itemMins % 60;
-              return { ...item, computedTime: `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}` };
-            });
+            const result = [];
+            let i = 0;
+            while (i < scheduleItems.length) {
+              const item = scheduleItems[i];
+              const gid = item.groupId;
+              if (gid) {
+                // Collect consecutive items sharing this groupId (concurrent — advance time once)
+                const group = [];
+                let j = i;
+                while (j < scheduleItems.length && scheduleItems[j].groupId === gid) { group.push(scheduleItems[j]); j++; }
+                const groupMins = cum;
+                const maxDur = Math.max(...group.map(g => g.duration || 2));
+                const hh = Math.floor(groupMins / 60) % 24;
+                const mm = groupMins % 60;
+                const computedTime = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+                group.forEach(g => result.push({ ...g, computedTime }));
+                cum += maxDur * 15;
+                i = j;
+              } else {
+                const itemMins = item.time ? toMins(item.time) : cum;
+                if (!item.time) cum += (item.duration || 2) * 15;
+                else cum = itemMins + (item.duration || 2) * 15;
+                const hh = Math.floor(itemMins / 60) % 24;
+                const mm = itemMins % 60;
+                result.push({ ...item, computedTime: `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}` });
+                i++;
+              }
+            }
+            return result;
           };
 
           // Category colour dot
@@ -3142,7 +3285,7 @@ LOGGING:
                                 <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item.label || item.name || 'Item'}</p>
                                 {item.notes && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.notes}</p>}
                               </div>
-                              {item.duration && <span className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{item.duration * 30}min</span>}
+                              {item.duration && <span className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>{item.duration * 15}min</span>}
                             </div>
                           ))}
                         </div>
@@ -3503,7 +3646,13 @@ LOGGING:
       { key: 'feedback',           label: 'Feedback' },
     ];
     const tabs = isNavAdmin ? adminTabs : employeeTabs;
-    const cols = isNavAdmin ? 'grid-cols-7' : 'grid-cols-6';
+    const renderTabBtn = (tab) => (
+      <button key={tab.key} onClick={() => setCurrentView(tab.key)}
+        className={`py-1.5 px-1 rounded-lg text-center font-semibold transition-all ${currentView === tab.key ? 'nav-tab-active' : ''}`}
+        style={{fontSize:'10px', ...(currentView !== tab.key ? {background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.5)'} : {})}}>
+        {tab.label}
+      </button>
+    );
     return (
       <>
       <div className="sticky top-0 z-10 shadow-lg" style={{background: darkMode ? '#111827' : '#1a2535'}}>
@@ -3532,15 +3681,14 @@ LOGGING:
               </button>
             </div>
           </div>
-          <div className={`grid ${cols} gap-1`}>
-            {tabs.map(tab => (
-              <button key={tab.key} onClick={() => setCurrentView(tab.key)}
-                className={`py-2 px-1 rounded-lg text-center text-xs font-semibold tracking-wide transition-all ${currentView === tab.key ? 'nav-tab-active' : ''}`}
-                style={currentView !== tab.key ? {background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.5)'} : {}}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          {isNavAdmin ? (
+            <div className="space-y-1">
+              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(0, 7).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-6 gap-1">{adminTabs.slice(7).map(renderTabBtn)}</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-6 gap-1">{tabs.map(renderTabBtn)}</div>
+          )}
         </div>
       </div>
       </>
@@ -3890,7 +4038,7 @@ LOGGING:
                           >🎥</span>
                           {/* Clock in/out */}
                           {liveEntry
-                            ? <button onClick={() => handleClockOut(liveEntry.id)} className="text-xs bg-red-500 text-white px-2 py-1 rounded">Clock Out</button>
+                            ? <button onClick={() => initiateClockOut(liveEntry.id)} className="text-xs bg-red-500 text-white px-2 py-1 rounded">Clock Out</button>
                             : <button onClick={() => handleClockIn(job.id)} className="text-xs bg-green-500 text-white px-2 py-1 rounded">Clock In</button>
                           }
                         </div>
@@ -4363,8 +4511,16 @@ LOGGING:
           {/* My Itineraries — shows assigned + shared */}
           {(() => {
             const assignedIds = new Set(getUserAssignedJobs(currentUser.id).map(j => j.id));
+            const itinHasEnded = (j) => {
+              if (!j.shootDate) return false;
+              const end = new Date(j.shootDate);
+              const [eh, em] = (j.itinerary?.endTime || '23:59').split(':').map(Number);
+              end.setHours(eh, em, 0, 0);
+              return end < new Date();
+            };
             const myItineraryJobs = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || !j.itinerary) return false;
+              if (itinHasEnded(j)) return false;
               const isAssigned = assignedIds.has(j.id);
               const myId = String(currentUser.id);
               const isSharedWithMe = j.itinerary?.sharedWith?.some(id => String(id) === myId);
@@ -4389,24 +4545,45 @@ LOGGING:
                   const now = new Date();
                   const nowMins = now.getHours() * 60 + now.getMinutes();
                   const toMins = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
-                  // Build times from start + cumulative durations (for items without .time set)
+                  // Build times from start + cumulative durations — duration units are × 15 min
                   const startMins = toMins(itin.startTime || '10:00');
                   let cumulativeMins = startMins;
-                  const itemsWithTime = scheduleItems.map(item => {
-                    const itemTime = item.time ? toMins(item.time) : cumulativeMins;
-                    if (!item.time) cumulativeMins += (item.duration || 2) * 30;
-                    else cumulativeMins = itemTime + (item.duration || 2) * 30;
-                    const hh = Math.floor(itemTime / 60) % 24;
-                    const mm = itemTime % 60;
-                    return { ...item, computedTime: `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`, computedMins: itemTime };
-                  });
-                  // Find current item by time
+                  const itemsWithTime = [];
+                  let _si = 0;
+                  while (_si < scheduleItems.length) {
+                    const _item = scheduleItems[_si];
+                    const _gid = _item.groupId;
+                    if (_gid) {
+                      const _group = [];
+                      let _gj = _si;
+                      while (_gj < scheduleItems.length && scheduleItems[_gj].groupId === _gid) { _group.push(scheduleItems[_gj]); _gj++; }
+                      const _gMins = cumulativeMins;
+                      const _maxDur = Math.max(..._group.map(g => g.duration || 2));
+                      const _hh = Math.floor(_gMins / 60) % 24, _mm = _gMins % 60;
+                      const _ct = `${String(_hh).padStart(2,'0')}:${String(_mm).padStart(2,'0')}`;
+                      _group.forEach(g => itemsWithTime.push({ ...g, computedTime: _ct, computedMins: _gMins }));
+                      cumulativeMins += _maxDur * 15;
+                      _si = _gj;
+                    } else {
+                      const itemTime = _item.time ? toMins(_item.time) : cumulativeMins;
+                      if (!_item.time) cumulativeMins += (_item.duration || 2) * 15;
+                      else cumulativeMins = itemTime + (_item.duration || 2) * 15;
+                      const hh = Math.floor(itemTime / 60) % 24, mm = itemTime % 60;
+                      itemsWithTime.push({ ..._item, computedTime: `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`, computedMins: itemTime });
+                      _si++;
+                    }
+                  }
+                  // Find current item by time (skip duplicate computedMins from concurrent groups)
                   let currentIdx = -1;
                   for (let i = 0; i < itemsWithTime.length; i++) {
                     const itemMins = itemsWithTime[i].computedMins;
-                    const nextMins = itemsWithTime[i+1] ? itemsWithTime[i+1].computedMins : 24*60;
+                    // Find next item that starts at a different time (skips concurrent siblings)
+                    let ni = i + 1;
+                    while (ni < itemsWithTime.length && itemsWithTime[ni].computedMins === itemMins) ni++;
+                    const nextMins = ni < itemsWithTime.length ? itemsWithTime[ni].computedMins : 24*60;
                     if (nowMins >= itemMins && nowMins < nextMins) { currentIdx = i; break; }
                   }
+                  const currentGroupId = currentIdx >= 0 ? itemsWithTime[currentIdx]?.groupId : null;
                   return (
                     <div key={job.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
                       <div className="flex justify-between items-center p-4">
@@ -4438,10 +4615,16 @@ LOGGING:
                               <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First item: {itemsWithTime[0]?.computedTime} — {itemsWithTime[0]?.name}</p>
                             </div>
                           )}
+                          {(() => {
+                            // Group-aware boundaries: concurrent items share computedMins
+                            const _curMins = currentIdx >= 0 ? itemsWithTime[currentIdx].computedMins : -1;
+                            const _nextMins = itemsWithTime.find(it => it.computedMins > _curMins)?.computedMins ?? Infinity;
+                            const _afterNextMins = itemsWithTime.find(it => it.computedMins > _nextMins)?.computedMins ?? Infinity;
+                            return (<>
                           {itemsWithTime.map((item, idx) => {
-                            const isCurrent = idx === currentIdx;
-                            const isPast = idx < currentIdx;
-                            const isNext = idx === currentIdx + 1;
+                            const isCurrent = _curMins >= 0 && item.computedMins === _curMins;
+                            const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
+                            const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
                             if (!isCurrent && !isNext && !isPast) return null;
                             return (
                               <div key={idx} className={`rounded-xl transition-all ${
@@ -4451,10 +4634,10 @@ LOGGING:
                                 <div className="flex items-center gap-3">
                                   <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
                                   <div className="flex-1">
-                                    <p className={`font-bold ${isCurrent ? 'text-xl' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name}</p>
+                                    <p className={`font-bold ${isCurrent ? 'text-xl' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || item.label || 'Item'}</p>
                                     <p className={`${isCurrent ? 'text-sm' : 'text-xs'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                       {item.computedTime}{isCurrent ? ' — NOW' : isNext ? ' — up next' : ' — done'}
-                                      {isCurrent && item.duration ? ` · ${item.duration * 30}min` : ''}
+                                      {isCurrent && item.duration ? ` · ${item.duration * 15}min` : ''}
                                     </p>
                                   </div>
                                   {isCurrent && <span className="text-2xl">▶️</span>}
@@ -4463,18 +4646,20 @@ LOGGING:
                               </div>
                             );
                           })}
-                          {/* Coming up list */}
-                          {itemsWithTime.slice(currentIdx + 2).length > 0 && (
+                          {/* Coming up list — everything after the next group */}
+                          {_afterNextMins < Infinity && (
                             <div className={`rounded-lg p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                               <p className={`text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Coming up:</p>
-                              {itemsWithTime.slice(currentIdx + 2).map((item, i) => (
+                              {itemsWithTime.filter(it => it.computedMins >= _afterNextMins).map((item, i) => (
                                 <div key={i} className="flex items-center gap-2 py-0.5">
                                   <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
-                                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.computedTime} — {item.name}</p>
+                                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.computedTime} — {item.name || item.label || 'Item'}</p>
                                 </div>
                               ))}
                             </div>
                           )}
+                            </>);
+                          })()}
                         </div>
                       ) : (
                         // Compact list view
@@ -4489,8 +4674,8 @@ LOGGING:
                             <div key={idx} className="flex items-center gap-3 py-1.5">
                               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
                               <span className={`text-xs w-12 flex-shrink-0 font-mono ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.computedTime}</span>
-                              <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{item.name}</span>
-                              {item.duration && <span className={`ml-auto text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.duration * 30}m</span>}
+                              <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{item.name || item.label || 'Item'}</span>
+                              {item.duration && <span className={`ml-auto text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.duration * 15}m</span>}
                             </div>
                           ))}
                         </div>
@@ -4922,7 +5107,7 @@ LOGGING:
                         </div>
                         <div>
                           <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{getEmployeeName(entry.employeeId)}</p>
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{getJobName(entry.jobId)}</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{getEntryLabel(entry)}</p>
                           <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>In since {formatTime(entry.clockIn)}</p>
                         </div>
                       </div>
@@ -4944,12 +5129,23 @@ LOGGING:
                             </div>
                             <div>
                               <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{getEmployeeName(entry.employeeId)}</span>
-                              <span className={`text-xs ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>· {getJobName(entry.jobId)}</span>
+                              <span className={`text-xs ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>· {getEntryLabel(entry)}</span>
                             </div>
                           </div>
-                          <span className={`text-xs tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {entry.hoursWorked?.toFixed(1)}h · out {formatTime(entry.clockOut)}
-                          </span>
+                          <div className="text-right">
+                            <span className={`text-xs tabular-nums ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                              {entry.hoursWorked?.toFixed(1)}h · out {formatTime(entry.clockOut)}
+                            </span>
+                            {entry.progressPercent !== null && (
+                              <div className="flex items-center justify-end gap-1 mt-0.5">
+                                <div className={`w-10 h-1 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                  <div className={`h-1 rounded-full ${entry.progressPercent >= 80 ? 'bg-green-500' : entry.progressPercent >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                                    style={{width: entry.progressPercent + '%'}} />
+                                </div>
+                                <span className={`text-xs font-semibold ${entry.progressPercent >= 80 ? 'text-green-500' : entry.progressPercent >= 50 ? 'text-amber-500' : 'text-red-400'}`}>{entry.progressPercent}%</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -6309,13 +6505,111 @@ Capturing Your Special Day
           </div>
         )}
 
+        {/* Google Drive Upload Modal */}
+        {driveUploadModal && (() => {
+          const _driveJob = editingJobs.find(j => j.id === driveUploadModal.jobId);
+          if (!_driveJob) return null;
+          const _existingDriveFiles = (_driveJob.fileLocations || []).filter(f => f.type === 'drive_project_file');
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''} flex justify-between items-start`}>
+                  <div>
+                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>☁️ Upload to Google Drive</h3>
+                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{_driveJob.jobName}</p>
+                  </div>
+                  <button onClick={() => setDriveUploadModal(null)} className={`text-xl leading-none ml-3 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}>✕</button>
+                </div>
+                <div className="p-4 space-y-4">
+                  {_existingDriveFiles.length > 0 && (
+                    <div>
+                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Already on Drive:</p>
+                      {_existingDriveFiles.map((f, i) => (
+                        <div key={i} className={`flex items-center gap-2 p-2 rounded mb-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                          <span className="text-green-500 shrink-0">✓</span>
+                          <a href={f.driveLink} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-blue-500 hover:underline truncate flex-1">{f.fileName}</a>
+                          <span className={`text-xs shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(f.uploadedAt).toLocaleDateString('en-GB', {day:'numeric',month:'short'})}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload a project file:</p>
+                    <input type="file" id="drive-file-input"
+                      className={`w-full text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600 cursor-pointer`} />
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>e.g. .prproj, .aep, .ppro — avg ~400 KB</p>
+                  </div>
+                  {!isDriveSignedIn && (
+                    <div className={`rounded-lg p-3 text-xs ${darkMode ? 'bg-yellow-900 border border-yellow-700 text-yellow-300' : 'bg-yellow-50 border border-yellow-200 text-yellow-700'}`}>
+                      ⚠️ You'll be asked to sign in with Google to authorise Drive access. Sign in with the business Google account so files go to the right Drive.
+                    </div>
+                  )}
+                  <div className="flex gap-3 pt-1">
+                    <button onClick={() => setDriveUploadModal(null)}
+                      className={`flex-1 py-2 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                    <button
+                      disabled={driveUploading}
+                      onClick={() => {
+                        const file = document.getElementById('drive-file-input')?.files[0];
+                        if (!file) { alert('Please choose a file first.'); return; }
+                        uploadToDrive(driveUploadModal.jobId, file);
+                      }}
+                      className={`flex-1 py-2 rounded-lg font-semibold text-sm text-white ${driveUploading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                      {driveUploading ? '⏳ Uploading…' : '☁️ Upload'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Manual Time Entry Override Modal */}
+        {/* ── General Clock In Modal ── */}
+        {generalClockInModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+              <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>📋 Clock In — General / No Job</h3>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Describe what you're working on (admin, meeting, prep, etc.)</p>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>What are you doing?</label>
+                  <input
+                    type="text"
+                    value={generalClockInModal.description}
+                    onChange={e => setGeneralClockInModal(p => ({ ...p, description: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter' && generalClockInModal.description.trim()) { handleClockIn(null, generalClockInModal.description.trim()); setGeneralClockInModal(null); }}}
+                    placeholder="e.g. Admin, Office meeting, Equipment prep"
+                    autoFocus
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300 placeholder-gray-400'}`}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setGeneralClockInModal(null)}
+                    className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { handleClockIn(null, generalClockInModal.description.trim() || 'General Work'); setGeneralClockInModal(null); }}
+                    disabled={!generalClockInModal.description.trim()}
+                    className={`py-2 rounded-lg font-semibold ${generalClockInModal.description.trim() ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                    🕒 Clock In
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {manualTimeModal && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
               <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
-                <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>⚙️ Manual Time Entry</h3>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Override or add a forgotten clock in / clock out</p>
+                <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>{currentUser.isAdmin ? '⚙️ Manual Time Entry' : '✏️ Edit Time Entry'}</h3>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{currentUser.isAdmin ? 'Override or add a forgotten clock in / clock out' : 'Correct your clock-in or clock-out time'}</p>
               </div>
               <div className="p-4 space-y-3">
                 {/* Employee — admin sees all, employee sees only themselves */}
@@ -6366,8 +6660,8 @@ Capturing Your Special Day
                   <button onClick={() => setManualTimeModal(null)}
                     className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
                   <button onClick={saveManualEntry}
-                    disabled={!manualTimeModal.employeeId && !currentUser.isAdmin || !manualTimeModal.jobId || !manualTimeModal.clockIn}
-                    className={`py-2 rounded-lg font-semibold ${(manualTimeModal.employeeId || !currentUser.isAdmin) && manualTimeModal.jobId && manualTimeModal.clockIn ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                    disabled={(!manualTimeModal.employeeId && !currentUser.isAdmin) || (!manualTimeModal.jobId && !manualTimeModal.editEntryId) || !manualTimeModal.clockIn}
+                    className={`py-2 rounded-lg font-semibold ${(manualTimeModal.employeeId || !currentUser.isAdmin) && (manualTimeModal.jobId || manualTimeModal.editEntryId) && manualTimeModal.clockIn ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
                     💾 Save Entry
                   </button>
                 </div>
@@ -6392,10 +6686,10 @@ Capturing Your Special Day
                 </div>
                 {adminActiveEntry ? (
                   <div>
-                    <p className={`text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Working on: <strong>{getJobName(adminActiveEntry.jobId)}</strong></p>
+                    <p className={`text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Working on: <strong>{getEntryLabel(adminActiveEntry)}</strong></p>
                     <p className="text-2xl font-bold text-green-600 mb-3">{calculateElapsedTime(adminActiveEntry.clockIn)}</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => handleClockOut(adminActiveEntry.id)} className="bg-red-500 text-white py-2 rounded-lg font-semibold">🛑 Clock Out</button>
+                      <button onClick={() => initiateClockOut(adminActiveEntry.id)} className="bg-red-500 text-white py-2 rounded-lg font-semibold">🛑 Clock Out</button>
                       <button onClick={() => {
                         const ci = new Date(adminActiveEntry.clockIn);
                         const pad = n => String(n).padStart(2,'0');
@@ -6410,11 +6704,15 @@ Capturing Your Special Day
                     <option value="">🟢 Clock In to a Job...</option>
                     {editingJobs.filter(j => !archivedJobIds.includes(j.id)).map(job => <option key={job.id} value={job.id}>{job.jobName}</option>)}
                   </select>
+                  <button onClick={() => setGeneralClockInModal({ description: '' })}
+                    className={`mt-2 w-full py-2 rounded-lg font-semibold text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
+                    📋 General / No Job
+                  </button>
                 )}
                 <div className="mt-3 space-y-1">
                   {timeEntries.filter(e => e.employeeId === currentUser.id && e.hoursWorked).slice(-5).reverse().map(e => (
                     <div key={e.id} className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      <span>{getJobName(e.jobId)}</span>
+                      <span>{getEntryLabel(e)}</span>
                       <span>{e.hoursWorked?.toFixed(1)}h on {new Date(e.clockIn).toLocaleDateString('en-GB', {day:'numeric',month:'short'})}</span>
                     </div>
                   ))}
@@ -6461,7 +6759,7 @@ Capturing Your Special Day
                           </div>
                           <div className="flex gap-2 flex-wrap">
                             {activeEntry ? (
-                              <button onClick={() => handleClockOut(activeEntry.id)} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">🛑 Clock Out ({calculateElapsedTime(activeEntry.clockIn)})</button>
+                              <button onClick={() => initiateClockOut(activeEntry.id)} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">🛑 Clock Out ({calculateElapsedTime(activeEntry.clockIn)})</button>
                             ) : (
                               <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">▶ Clock In</button>
                             )}
@@ -6489,7 +6787,7 @@ Capturing Your Special Day
                           </div>
                           <div className="flex gap-1 ml-2 shrink-0">
                             {activeEntry ? (
-                              <button onClick={() => handleClockOut(activeEntry.id)} className="bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">🛑 {calculateElapsedTime(activeEntry.clockIn)}</button>
+                              <button onClick={() => initiateClockOut(activeEntry.id)} className="bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">🛑 {calculateElapsedTime(activeEntry.clockIn)}</button>
                             ) : (
                               <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">▶ Clock In</button>
                             )}
@@ -6523,6 +6821,93 @@ Capturing Your Special Day
             );
           })()}
 
+          {/* ── General / No Job clock-in — visible to all staff ── */}
+          {!currentUser.isAdmin && (() => {
+            const generalActive = timeEntries.find(e => e.employeeId === currentUser.id && !e.jobId && !e.clockOut);
+            if (generalActive) {
+              return (
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📋 General Work</h3>
+                      <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{generalActive.description || 'General Work'}</p>
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Started {formatTime(generalActive.clockIn)}</p>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600 shrink-0">{calculateElapsedTime(generalActive.clockIn)}</p>
+                  </div>
+                  <button onClick={() => initiateClockOut(generalActive.id)}
+                    className="w-full bg-red-500 text-white py-2 rounded-lg font-semibold">
+                    🛑 Clock Out
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                <h3 className={`font-bold mb-0.5 ${darkMode ? 'text-white' : 'text-gray-800'}`}>📋 General / No Job</h3>
+                <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Admin tasks, meetings, equipment prep, etc.</p>
+                <button onClick={() => setGeneralClockInModal({ description: '' })}
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-semibold">
+                  🕒 Clock In (No Job)
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* ── My Time Log — staff can view & correct their own entries ── */}
+          {!currentUser.isAdmin && (() => {
+            const _pad2 = n => String(n).padStart(2,'0');
+            const _fmtDT = d => `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}T${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+            const myEntries = timeEntries
+              .filter(e => e.employeeId === currentUser.id)
+              .sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn))
+              .slice(0, 15);
+            if (myEntries.length === 0) return null;
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🕐 My Time Log</h3>
+                  <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tap ✏️ to correct a missed clock-out or wrong time</p>
+                </div>
+                <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                  {myEntries.map(entry => {
+                    const isActive = !entry.clockOut;
+                    const hrs = entry.hoursWorked ? entry.hoursWorked.toFixed(1) + 'h' : isActive ? calculateElapsedTime(entry.clockIn) : '—';
+                    return (
+                      <div key={entry.id} className={`flex items-center gap-2 px-4 py-2.5 text-xs ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                            {entry.jobId
+                              ? getJobName(entry.jobId)
+                              : <span className="flex items-center gap-1.5"><span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-600'}`}>General</span><span className="italic">{entry.description || 'General Work'}</span></span>
+                            }
+                          </p>
+                          <p className={`mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            {new Date(entry.clockIn).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })}
+                            {' · '}{formatTime(entry.clockIn)} → {isActive ? <span className="text-green-500 font-semibold">now</span> : formatTime(entry.clockOut)}
+                          </p>
+                        </div>
+                        <span className={`shrink-0 font-semibold tabular-nums ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{hrs}</span>
+                        {isActive && <span className="shrink-0 text-xs bg-green-500 text-white rounded-full px-1.5 py-0.5 font-medium">● Live</span>}
+                        {!isActive && entry.progressPercent !== null && (
+                          <span className={`shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded ${entry.progressPercent >= 80 ? 'bg-green-100 text-green-700' : entry.progressPercent >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
+                            {entry.progressPercent}%
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setManualTimeModal({ employeeId: currentUser.id, jobId: entry.jobId, clockIn: _fmtDT(new Date(entry.clockIn)), clockOut: entry.clockOut ? _fmtDT(new Date(entry.clockOut)) : '', editEntryId: entry.id })}
+                          title="Edit this entry"
+                          className={`shrink-0 px-2 py-1 rounded text-sm ${darkMode ? 'bg-gray-700 text-orange-400 hover:bg-gray-600' : 'bg-orange-50 text-orange-500 hover:bg-orange-100'}`}>
+                          ✏️
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {activeTimeEntries.length > 0 && (
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
               <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
@@ -6534,12 +6919,17 @@ Capturing Your Special Day
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <p className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>{getEmployeeName(entry.employeeId)}</p>
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{getJobName(entry.jobId)}</p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {entry.jobId
+                            ? getJobName(entry.jobId)
+                            : <span><span className={`text-xs px-1.5 py-0.5 rounded font-semibold mr-1.5 ${darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-600'}`}>General</span><span className="italic">{entry.description || 'General Work'}</span></span>
+                          }
+                        </p>
                         <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1`}>Started: {formatTime(entry.clockIn)}</p>
                       </div>
                       <p className="text-2xl font-bold text-green-600">{calculateElapsedTime(entry.clockIn)}</p>
                     </div>
-                    <button onClick={() => handleClockOut(entry.id)} className="w-full bg-red-500 text-white py-2 rounded-lg font-semibold">
+                    <button onClick={() => initiateClockOut(entry.id)} className="w-full bg-red-500 text-white py-2 rounded-lg font-semibold">
                       Clock Out
                     </button>
                   </div>
@@ -6547,6 +6937,59 @@ Capturing Your Special Day
               </div>
             </div>
           )}
+          {/* ── Project Files — completed video jobs ready for Drive upload ── */}
+          {(() => {
+            const completedVideoJobs = editingJobs.filter(job =>
+              !archivedJobIds.includes(job.id) &&
+              job.hasVideo &&
+              (job.stages || []).length > 0 &&
+              (job.stages || []).every(s => s.status === 'completed') &&
+              (currentUser.isAdmin || (job.stages || []).some(s => String(s.assignedTo) === String(currentUser.id)))
+            );
+            if (completedVideoJobs.length === 0) return null;
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''} flex items-center justify-between`}>
+                  <div>
+                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>☁️ Project Files</h3>
+                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload completed project files to Google Drive</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold text-white bg-green-500`}>{completedVideoJobs.length}</span>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {completedVideoJobs.map(job => {
+                    const driveFiles = (job.fileLocations || []).filter(f => f.type === 'drive_project_file');
+                    return (
+                      <div key={job.id} className={`p-4 ${darkMode ? '' : ''}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>🎥 All stages complete · {(job.stages || []).length} stages</p>
+                            {driveFiles.length > 0 && (
+                              <div className="mt-1.5 space-y-0.5">
+                                {driveFiles.map((f, i) => (
+                                  <a key={i} href={f.driveLink} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 hover:underline">
+                                    <span>☁️</span><span className="truncate">{f.fileName}</span>
+                                    <span className={`shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>↗</span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <button onClick={() => setDriveUploadModal({ jobId: job.id })}
+                            className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-semibold text-white ${driveFiles.length > 0 ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                            {driveFiles.length > 0 ? '+ Add File' : '☁️ Upload'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* TODAY'S SHIFTS / THIS WEEK / THIS MONTH */}
           {(() => {
             const now = new Date();
@@ -6646,7 +7089,7 @@ Capturing Your Special Day
                                     </span>
                                   )}
                                   {/* Job name */}
-                                  <span className={`flex-1 truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{getJobName(entry.jobId)}</span>
+                                  <span className={`flex-1 truncate ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{entry.jobId ? getJobName(entry.jobId) : <span className="italic">{entry.description || 'General Work'}</span>}</span>
                                   {/* Clock In */}
                                   <span className={`shrink-0 w-11 text-center tabular-nums ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{formatTime(entry.clockIn)}</span>
                                   <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}>→</span>
@@ -6658,6 +7101,12 @@ Capturing Your Special Day
                                   )}
                                   {/* Duration */}
                                   <span className={`shrink-0 w-12 text-right font-semibold tabular-nums ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{hrs}</span>
+                                  {/* Progress */}
+                                  {!isActive && entry.progressPercent !== null && (
+                                    <span className={`shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded ${entry.progressPercent >= 80 ? 'bg-green-100 text-green-700' : entry.progressPercent >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
+                                      {entry.progressPercent}%
+                                    </span>
+                                  )}
                                   {/* Override */}
                                   <button
                                     onClick={() => setManualTimeModal({ employeeId: entry.employeeId, jobId: entry.jobId, clockIn: fmtDT(new Date(entry.clockIn)), clockOut: entry.clockOut ? fmtDT(new Date(entry.clockOut)) : '', editEntryId: entry.id })}
@@ -7140,6 +7589,31 @@ Capturing Your Special Day
                             ))}
                           </div>
                         </div>
+                        {/* Drive project files — visible once all video stages are complete */}
+                        {(job.stages || []).length > 0 && (job.stages || []).every(s => s.status === 'completed') && (() => {
+                          const _df = (job.fileLocations || []).filter(f => f.type === 'drive_project_file');
+                          return (
+                            <div className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-green-50 border border-green-200'}`}>
+                              <div className="flex items-center justify-between mb-1">
+                                <p className={`text-xs font-semibold ${darkMode ? 'text-green-400' : 'text-green-700'}`}>☁️ Project Files on Drive</p>
+                                <button onClick={() => setDriveUploadModal({ jobId: job.id })}
+                                  className={`text-xs px-2 py-0.5 rounded font-medium text-white ${_df.length > 0 ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                                  {_df.length > 0 ? '+ Add' : 'Upload'}
+                                </button>
+                              </div>
+                              {_df.length === 0
+                                ? <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>No project files uploaded yet.</p>
+                                : _df.map((f, i) => (
+                                    <a key={i} href={f.driveLink} target="_blank" rel="noopener noreferrer"
+                                      className="flex items-center gap-1.5 text-xs text-blue-500 hover:underline mt-0.5">
+                                      <span>📄</span><span className="truncate">{f.fileName}</span>
+                                      <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>↗</span>
+                                    </a>
+                                  ))
+                              }
+                            </div>
+                          );
+                        })()}
                         {job.stages.map((stage, idx) => {
                           const previousStage = idx > 0 ? job.stages[idx - 1] : null;
                           const isPreviousComplete = !previousStage || previousStage.status === 'completed';
@@ -9090,12 +9564,26 @@ Eyecon Moments`);
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className={`font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>{employee?.name}</p>
-                        <p className={`text-sm ${dm ? 'text-gray-400' : 'text-gray-600'}`}>{getJobName(entry.jobId)}</p>
+                        <p className={`text-sm ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {entry.jobId
+                            ? getJobName(entry.jobId)
+                            : <span><span className={`text-xs px-1.5 py-0.5 rounded font-semibold mr-1 ${dm ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-600'}`}>General</span><span className="italic">{entry.description || 'General Work'}</span></span>
+                          }
+                        </p>
                         <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{formatDate(entry.clockIn)}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-green-500">{entry.hoursWorked}h</p>
                         <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{formatTime(entry.clockIn)} - {formatTime(entry.clockOut)}</p>
+                        {entry.progressPercent !== null && (
+                          <div className="flex items-center justify-end gap-1.5 mt-1">
+                            <div className={`w-14 h-1.5 rounded-full ${dm ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                              <div className={`h-1.5 rounded-full ${entry.progressPercent >= 80 ? 'bg-green-500' : entry.progressPercent >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                                style={{width: entry.progressPercent + '%'}} />
+                            </div>
+                            <span className={`text-xs font-semibold ${entry.progressPercent >= 80 ? 'text-green-500' : entry.progressPercent >= 50 ? 'text-amber-500' : 'text-red-400'}`}>{entry.progressPercent}%</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     {employee && (() => {
@@ -12201,6 +12689,51 @@ Eyecon Moments`);
                 <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>← Select a revision log to view its changes</p>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Global Progress Modal (clock-out slider) — rendered outside any view ──
+  if (progressModal) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end sm:items-center justify-center p-4">
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl w-full max-w-sm`}>
+          <div className="p-5">
+            <h3 className={`font-bold text-lg mb-0.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>How far did you get? 📊</h3>
+            <p className={`text-sm mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Slide to show your progress today</p>
+            <div className="text-center mb-2">
+              <span className={`text-6xl font-bold tabular-nums ${progressModal.percent >= 80 ? 'text-green-500' : progressModal.percent >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                {progressModal.percent}%
+              </span>
+            </div>
+            <input type="range" min="0" max="100" step="5"
+              value={progressModal.percent}
+              onChange={e => setProgressModal(p => ({ ...p, percent: parseInt(e.target.value) }))}
+              className="w-full mb-2 accent-blue-500" style={{height:'28px', cursor:'pointer'}} />
+            <div className={`h-2.5 rounded-full mb-5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+              <div className={`h-2.5 rounded-full transition-all ${progressModal.percent >= 80 ? 'bg-green-500' : progressModal.percent >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                style={{ width: progressModal.percent + '%' }} />
+            </div>
+            <input type="text" placeholder="Add a note (optional)"
+              value={progressModal.note}
+              onChange={e => setProgressModal(p => ({ ...p, note: e.target.value }))}
+              className={`w-full px-3 py-2 border rounded-lg text-sm mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300 placeholder-gray-400'}`} />
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setProgressModal(null)}
+                className={`py-2.5 rounded-xl font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                Cancel
+              </button>
+              <button onClick={() => { handleClockOut(progressModal.entryId, progressModal.percent, progressModal.note.trim() || null); setProgressModal(null); }}
+                className="py-2.5 rounded-xl font-semibold bg-red-500 text-white hover:bg-red-600">
+                🛑 Clock Out
+              </button>
+            </div>
+            <button onClick={() => { handleClockOut(progressModal.entryId, null, null); setProgressModal(null); }}
+              className={`w-full mt-2 text-xs py-1.5 ${darkMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>
+              Skip — clock out without logging progress
+            </button>
           </div>
         </div>
       </div>
