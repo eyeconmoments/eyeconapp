@@ -349,6 +349,7 @@ function EyeconMoments() {
   const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
   const [postSuggestions, setPostSuggestions] = useState([]);
   const [postSuggestModal, setPostSuggestModal] = useState(null); // { jobId, note, imageData, uploading }
+  const [reportWeekOffset, setReportWeekOffset] = useState(0); // 0=current week, -1=last week, etc.
   const [myItinerariesOpen, setMyItinerariesOpen] = useState(false); // collapsed by default
   const [progressDetailOpen, setProgressDetailOpen] = useState(false);
   const [availCalMonth, setAvailCalMonth] = useState(new Date().getMonth());
@@ -3706,6 +3707,7 @@ LOGGING:
       { key: 'wages',      label: 'Wages' },
       { key: 'feedback',   label: 'Feedback' },
       { key: 'post-ideas', label: 'Posts' },
+      { key: 'reports',    label: 'Reports' },
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
@@ -3758,8 +3760,8 @@ LOGGING:
           </div>
           {isNavAdmin ? (
             <div className="space-y-1">
-              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(0, 7).map(renderTabBtn)}</div>
-              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(7).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-8 gap-1">{adminTabs.slice(0, 8).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(8).map(renderTabBtn)}</div>
             </div>
           ) : (
             <div className="grid grid-cols-7 gap-1">{tabs.map(renderTabBtn)}</div>
@@ -12903,6 +12905,266 @@ Eyecon Moments`);
             )}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'reports' && currentUser?.isAdmin) {
+    // ── Week range helpers ──
+    const getWeekStart = (offset) => {
+      const d = new Date();
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      d.setDate(diff + offset * 7);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    const weekStart = getWeekStart(reportWeekOffset);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    const weekLabel = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
+
+    // ── Filter entries for this week (completed only) ──
+    const weekEntries = timeEntries.filter(e => {
+      const ci = new Date(e.clockIn);
+      return ci >= weekStart && ci <= weekEnd && e.hoursWorked;
+    });
+
+    // ── Summary stats ──
+    const totalHours = weekEntries.reduce((s, e) => s + (e.hoursWorked || 0), 0);
+    const activeJobIds = new Set(weekEntries.filter(e => e.jobId).map(e => e.jobId));
+    const activeStaffIds = new Set(weekEntries.map(e => e.employeeId));
+    const progressVals = weekEntries.filter(e => e.progressPercent !== null).map(e => e.progressPercent);
+    const avgProgress = progressVals.length ? Math.round(progressVals.reduce((s, v) => s + v, 0) / progressVals.length) : null;
+
+    // ── Per-staff data ──
+    const staffRows = employees
+      .filter(e => activeStaffIds.has(e.id))
+      .map(emp => {
+        const entries = weekEntries.filter(e => e.employeeId === emp.id)
+          .sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn));
+        const totalH = entries.reduce((s, e) => s + (e.hoursWorked || 0), 0);
+        const activity = [0,1,2,3,4,5,6].map(i => {
+          const ds = new Date(weekStart); ds.setDate(ds.getDate() + i);
+          const de = new Date(ds); de.setHours(23,59,59,999);
+          return entries.filter(e => { const ci = new Date(e.clockIn); return ci >= ds && ci <= de; })
+            .reduce((s, e) => s + (e.hoursWorked || 0), 0);
+        });
+        const maxActivity = Math.max(...activity, 1);
+        return { emp, entries, totalH, activity, maxActivity };
+      })
+      .sort((a, b) => b.totalH - a.totalH);
+
+    // ── Per-job data ──
+    const jobRows = editingJobs
+      .filter(j => activeJobIds.has(j.id))
+      .map(job => {
+        const entries = weekEntries.filter(e => e.jobId === job.id)
+          .sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn));
+        const totalH = entries.reduce((s, e) => s + (e.hoursWorked || 0), 0);
+        const latestProg = entries.filter(e => e.progressPercent !== null)
+          .sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn))[0]?.progressPercent ?? null;
+        const staffOnJob = [...new Set(entries.map(e => e.employeeId))]
+          .map(id => employees.find(e => e.id === id)?.name).filter(Boolean);
+        return { job, entries, totalH, latestProg, staffOnJob };
+      })
+      .sort((a, b) => b.totalH - a.totalH);
+
+    // General (no-job) entries
+    const generalEntries = weekEntries.filter(e => !e.jobId)
+      .sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn));
+
+    const dm = darkMode;
+    const card = `rounded-xl border p-4 ${dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`;
+    const progColor = (p) => p >= 80 ? 'bg-green-500' : p >= 50 ? 'bg-amber-500' : 'bg-red-400';
+    const progText = (p) => p >= 80 ? (dm ? 'text-green-400' : 'text-green-600') : p >= 50 ? (dm ? 'text-amber-400' : 'text-amber-600') : (dm ? 'text-red-400' : 'text-red-500');
+
+    return (
+      <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-slate-50'} print:bg-white`} id="weekly-report">
+        {NavBar()}
+        <div className="p-4 max-w-3xl mx-auto space-y-5 print:p-6">
+
+          {/* Header + week nav */}
+          <div className="flex items-center justify-between gap-3 print:hidden">
+            <h2 className={`text-xl font-bold ${dm ? 'text-white' : 'text-gray-900'}`}>📊 Weekly Report</h2>
+            <button onClick={() => window.print()}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${dm ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              🖨️ Print
+            </button>
+          </div>
+          <div className="hidden print:block mb-4">
+            <h2 className="text-2xl font-bold">Weekly Report — Eyecon Moments</h2>
+          </div>
+
+          {/* Week selector */}
+          <div className={`flex items-center justify-between ${card} print:border-0 print:p-0`}>
+            <button onClick={() => setReportWeekOffset(o => o - 1)}
+              className={`p-2 rounded-lg ${dm ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} print:hidden`}>◀</button>
+            <div className="text-center">
+              <p className={`font-bold ${dm ? 'text-white' : 'text-gray-900'}`}>{weekLabel}</p>
+              {reportWeekOffset === 0 && <p className="text-xs text-blue-500 font-medium">Current week</p>}
+              {reportWeekOffset === -1 && <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Last week</p>}
+              {reportWeekOffset < -1 && <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{Math.abs(reportWeekOffset)} weeks ago</p>}
+            </div>
+            <button onClick={() => setReportWeekOffset(o => Math.min(o + 1, 0))}
+              disabled={reportWeekOffset >= 0}
+              className={`p-2 rounded-lg ${reportWeekOffset >= 0 ? 'opacity-30 cursor-not-allowed' : ''} ${dm ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'} print:hidden`}>▶</button>
+          </div>
+
+          {weekEntries.length === 0 ? (
+            <div className={`text-center py-16 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p className="text-4xl mb-3">📭</p>
+              <p className="font-medium">No time logged this week</p>
+            </div>
+          ) : (<>
+
+          {/* Summary banner */}
+          <div className={card}>
+            <h3 className={`font-bold mb-3 ${dm ? 'text-white' : 'text-gray-900'}`}>Summary</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Total Hours', value: totalHours.toFixed(1) + 'h', color: 'text-blue-500' },
+                { label: 'Jobs Active', value: activeJobIds.size, color: 'text-purple-500' },
+                { label: 'Staff Worked', value: activeStaffIds.size, color: 'text-green-500' },
+                { label: 'Avg Progress', value: avgProgress !== null ? avgProgress + '%' : '—', color: avgProgress !== null ? progText(avgProgress) : (dm ? 'text-gray-400' : 'text-gray-400') },
+              ].map(({ label, value, color }) => (
+                <div key={label} className={`text-center p-3 rounded-lg ${dm ? 'bg-gray-700' : 'bg-slate-50'}`}>
+                  <p className={`text-2xl font-bold ${color}`}>{value}</p>
+                  <p className={`text-xs mt-0.5 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-staff breakdown */}
+          <div className={card}>
+            <h3 className={`font-bold mb-3 ${dm ? 'text-white' : 'text-gray-900'}`}>👥 Staff Breakdown</h3>
+            <div className="space-y-5">
+              {staffRows.map(({ emp, entries, totalH, activity, maxActivity }) => (
+                <div key={emp.id}>
+                  {/* Name + hours + activity bar */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`font-semibold text-sm ${dm ? 'text-white' : 'text-gray-800'}`}>{emp.name}</span>
+                    <span className={`font-bold text-sm ${dm ? 'text-blue-400' : 'text-blue-600'}`}>{totalH.toFixed(1)}h</span>
+                  </div>
+                  {/* Mon-Sun activity bars */}
+                  <div className="flex gap-1 mb-2">
+                    {activity.map((h, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                        <div className={`w-full rounded-sm ${dm ? 'bg-gray-700' : 'bg-gray-100'}`} style={{height:'24px', position:'relative'}}>
+                          <div className="absolute bottom-0 left-0 right-0 rounded-sm bg-blue-500 transition-all"
+                            style={{height: h > 0 ? Math.max(3, Math.round((h / maxActivity) * 24)) + 'px' : '0'}} />
+                        </div>
+                        <span className={`text-xs ${dm ? 'text-gray-600' : 'text-gray-400'}`} style={{fontSize:'8px'}}>{dayNames[i]}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Entry rows */}
+                  <div className={`rounded-lg overflow-hidden border ${dm ? 'border-gray-700' : 'border-gray-100'}`}>
+                    {entries.map((e, i) => {
+                      const jobName = e.jobId ? (editingJobs.find(j => j.id === e.jobId)?.jobName || 'Unknown Job') : `General — ${e.description || 'General Work'}`;
+                      return (
+                        <div key={e.id} className={`flex items-center gap-2 px-3 py-2 text-xs ${i > 0 ? (dm ? 'border-t border-gray-700' : 'border-t border-gray-100') : ''} ${dm ? 'bg-gray-800' : 'bg-white'}`}>
+                          <span className={`w-20 shrink-0 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{fmtDate(e.clockIn)}</span>
+                          <span className={`w-20 shrink-0 tabular-nums ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{fmtTime(e.clockIn)} → {fmtTime(e.clockOut)}</span>
+                          <span className={`flex-1 truncate ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{jobName}</span>
+                          <span className={`shrink-0 font-semibold tabular-nums ${dm ? 'text-blue-400' : 'text-blue-600'}`}>{e.hoursWorked?.toFixed(1)}h</span>
+                          {e.progressPercent !== null && (
+                            <span className={`shrink-0 text-xs font-bold px-1.5 py-0.5 rounded ${e.progressPercent >= 80 ? 'bg-green-100 text-green-700' : e.progressPercent >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{e.progressPercent}%</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Progress notes */}
+                  {entries.filter(e => e.progressNote).map(e => (
+                    <p key={e.id} className={`text-xs mt-1 italic ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+                      "{e.progressNote}" — {fmtDate(e.clockIn)}
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-job breakdown */}
+          {jobRows.length > 0 && (
+            <div className={card}>
+              <h3 className={`font-bold mb-3 ${dm ? 'text-white' : 'text-gray-900'}`}>🎬 Job Breakdown</h3>
+              <div className="space-y-5">
+                {jobRows.map(({ job, entries, totalH, latestProg, staffOnJob }) => (
+                  <div key={job.id}>
+                    <div className="flex items-start justify-between mb-1.5 gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm truncate ${dm ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                        <p className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{staffOnJob.join(', ')} · {totalH.toFixed(1)}h</p>
+                      </div>
+                      {latestProg !== null && (
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <div className={`w-16 h-1.5 rounded-full ${dm ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                            <div className={`h-1.5 rounded-full ${progColor(latestProg)}`} style={{width: latestProg + '%'}} />
+                          </div>
+                          <span className={`text-xs font-bold ${progText(latestProg)}`}>{latestProg}%</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className={`rounded-lg overflow-hidden border ${dm ? 'border-gray-700' : 'border-gray-100'}`}>
+                      {entries.map((e, i) => (
+                        <div key={e.id} className={`flex items-center gap-2 px-3 py-2 text-xs ${i > 0 ? (dm ? 'border-t border-gray-700' : 'border-t border-gray-100') : ''} ${dm ? 'bg-gray-800' : 'bg-white'}`}>
+                          <span className={`w-20 shrink-0 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{fmtDate(e.clockIn)}</span>
+                          <span className={`flex-1 truncate ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{employees.find(emp => emp.id === e.employeeId)?.name || '—'}</span>
+                          <span className={`shrink-0 font-semibold tabular-nums ${dm ? 'text-blue-400' : 'text-blue-600'}`}>{e.hoursWorked?.toFixed(1)}h</span>
+                          {e.progressPercent !== null && (
+                            <span className={`shrink-0 text-xs font-bold px-1.5 py-0.5 rounded ${e.progressPercent >= 80 ? 'bg-green-100 text-green-700' : e.progressPercent >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{e.progressPercent}%</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* General / no-job entries */}
+          {generalEntries.length > 0 && (
+            <div className={card}>
+              <h3 className={`font-bold mb-3 ${dm ? 'text-white' : 'text-gray-900'}`}>📋 General Work (No Job)</h3>
+              <div className={`rounded-lg overflow-hidden border ${dm ? 'border-gray-700' : 'border-gray-100'}`}>
+                {generalEntries.map((e, i) => (
+                  <div key={e.id} className={`flex items-center gap-2 px-3 py-2 text-xs ${i > 0 ? (dm ? 'border-t border-gray-700' : 'border-t border-gray-100') : ''} ${dm ? 'bg-gray-800' : 'bg-white'}`}>
+                    <span className={`w-20 shrink-0 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{fmtDate(e.clockIn)}</span>
+                    <span className={`w-24 shrink-0 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{employees.find(emp => emp.id === e.employeeId)?.name || '—'}</span>
+                    <span className={`flex-1 truncate italic ${dm ? 'text-gray-400' : 'text-gray-500'}`}>{e.description || 'General Work'}</span>
+                    <span className={`shrink-0 font-semibold tabular-nums ${dm ? 'text-blue-400' : 'text-blue-600'}`}>{e.hoursWorked?.toFixed(1)}h</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          </>)}
+        </div>
+
+        <style>{`
+          @media print {
+            nav, .print\\:hidden { display: none !important; }
+            body { background: white !important; color: black !important; }
+            .print\\:bg-white { background: white !important; }
+            * { color: black !important; background: white !important; border-color: #e5e7eb !important; }
+            .text-blue-500, .text-blue-400, .text-blue-600 { color: #2563eb !important; }
+            .text-green-500, .text-green-600 { color: #16a34a !important; }
+            .text-amber-500, .text-amber-600 { color: #d97706 !important; }
+            .text-red-400, .text-red-500 { color: #dc2626 !important; }
+            .bg-green-100 { background: #dcfce7 !important; }
+            .bg-amber-100 { background: #fef3c7 !important; }
+            .bg-red-100 { background: #fee2e2 !important; }
+          }
+        `}</style>
       </div>
     );
   }
