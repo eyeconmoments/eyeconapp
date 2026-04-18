@@ -740,7 +740,17 @@ function EyeconMoments() {
     }
   };
 
-  const initiateClockOut = (entryId) => setProgressModal({ entryId, percent: 0, note: '' });
+  const initiateClockOut = (entryId) => {
+    const entry = timeEntries.find(e => e.id === entryId);
+    let defaultPercent = 0;
+    if (entry?.jobId) {
+      const prev = timeEntries
+        .filter(e => e.employeeId === entry.employeeId && e.jobId === entry.jobId && e.progressPercent !== null && e.id !== entryId)
+        .sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn))[0];
+      if (prev) defaultPercent = prev.progressPercent;
+    }
+    setProgressModal({ entryId, percent: defaultPercent, note: '' });
+  };
 
   const saveManualEntry = async () => {
     const { jobId, clockIn, clockOut, editEntryId } = manualTimeModal;
@@ -1278,6 +1288,20 @@ function EyeconMoments() {
       await updatePhotoStatus(jobId, 'completed');
     } else {
       await updateJobStageStatus(jobId, stageId, 'completed');
+    }
+
+    // Check if job is now fully complete (compute against updated state, not React state which hasn't flushed yet)
+    const photoDoneNow = !job.hasPhotos || (isPhoto ? true : job.photoStatus === 'completed');
+    const updatedStages = isPhoto ? job.stages : job.stages.map(s => s.id === stageId ? { ...s, status: 'completed' } : s);
+    const videoDoneNow = !job.hasVideo || (updatedStages.length > 0 && updatedStages.every(s => s.status === 'completed'));
+    if (photoDoneNow && videoDoneNow) {
+      const latestEntry = timeEntries
+        .filter(e => e.employeeId === currentUser.id && e.jobId === jobId)
+        .sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn))[0];
+      if (latestEntry) {
+        await db.from('time_entries').update({ progress_percent: 100 }).eq('id', latestEntry.id);
+        setTimeEntries(prev => prev.map(e => e.id === latestEntry.id ? { ...e, progressPercent: 100 } : e));
+      }
     }
 
     // Update file location (single entry with history)
