@@ -243,6 +243,7 @@ function EyeconMoments() {
   const [voiceState, setVoiceState] = useState('idle'); // idle | listening | thinking | speaking
   const [voiceInput, setVoiceInput] = useState('');
   const [voiceResponse, setVoiceResponse] = useState('');
+  const [voiceSubtitle, setVoiceSubtitle] = useState('');
   const voiceRecognitionRef = React.useRef(null);
   const voiceTranscriptRef = React.useRef('');
   const voiceIsListeningRef = React.useRef(false);
@@ -2442,17 +2443,22 @@ LOGGING:
   const speakText = (text) => {
     window.speechSynthesis.cancel();
     setVoiceState('speaking');
+    setVoiceSubtitle('');
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'en-GB';
     utter.rate = 1.0;
     utter.pitch = 1.0;
-    const resetIdle = () => setVoiceState('idle');
-    utter.onend = resetIdle;
+    const resetIdle = () => { setVoiceState('idle'); setVoiceSubtitle(''); };
     utter.onerror = resetIdle;
-    // Failsafe: reset after estimated speaking time so state never stays stuck
     const fallbackMs = Math.max(4000, text.length * 65);
     const fallbackTimer = setTimeout(resetIdle, fallbackMs);
-    utter.onend = () => { clearTimeout(fallbackTimer); setVoiceState('idle'); };
+    utter.onend = () => { clearTimeout(fallbackTimer); resetIdle(); };
+    utter.onboundary = (e) => {
+      if (e.name === 'word' && e.charIndex != null) {
+        const upTo = text.substring(0, e.charIndex + (e.charLength || 1));
+        setVoiceSubtitle(upTo.length > 60 ? '…' + upTo.slice(-58) : upTo);
+      }
+    };
     const doSpeak = () => {
       const voices = window.speechSynthesis.getVoices();
       const british =
@@ -2611,16 +2617,23 @@ LOGGING:
     <>
       {/* Self-contained floating voice+text assistant — never opens the chat panel */}
       <div className="fixed bottom-5 right-3 z-[9998] flex flex-col items-end gap-2" style={{maxWidth:'300px'}}>
-        {(voiceResponse || voiceState !== 'idle') && (
-          <div className={`rounded-2xl px-4 py-3 text-sm shadow-xl w-full ${darkMode ? 'bg-gray-800 text-gray-100 border border-gray-600' : 'bg-white text-gray-800 border border-gray-200'}`}
-            style={{boxShadow:'0 4px 24px rgba(0,0,0,0.25)'}}>
-            {voiceState !== 'idle' && (
-              <p className="text-xs font-semibold mb-1 animate-pulse" style={{color:'#dc2626'}}>
-                {voiceState === 'listening' ? '● Listening…' : voiceState === 'thinking' ? '◌ Thinking…' : '▶ Speaking…'}
-              </p>
-            )}
-            {voiceResponse && <p className="leading-relaxed">{voiceResponse}</p>}
+        {/* Single-line scrolling subtitle — only while speaking */}
+        {voiceState === 'speaking' && voiceSubtitle && (
+          <div className="px-3 py-1 rounded-full text-xs text-white w-full overflow-hidden"
+            style={{background:'rgba(0,0,0,0.65)', whiteSpace:'nowrap', textOverflow:'ellipsis', maxWidth:'280px'}}>
+            {voiceSubtitle}
           </div>
+        )}
+        {/* Status pill — listening or thinking only */}
+        {(voiceState === 'listening' || voiceState === 'thinking') && (
+          <div className="px-3 py-1 rounded-full text-xs font-semibold text-white animate-pulse"
+            style={{background: voiceState === 'listening' ? '#dc2626' : '#1d4ed8'}}>
+            {voiceState === 'listening' ? '● Listening…' : '◌ Thinking…'}
+          </div>
+        )}
+        {/* Error display only */}
+        {voiceState === 'idle' && voiceResponse && voiceResponse.startsWith('Error') && (
+          <div className="px-3 py-1.5 rounded-xl text-xs text-red-300 bg-gray-900 w-full">{voiceResponse}</div>
         )}
         <div className="flex items-center gap-2 w-full">
           <input
@@ -2640,14 +2653,15 @@ LOGGING:
             </button>
           )}
           <button
-            onMouseDown={handleVoicePressStart}
-            onMouseUp={handleVoicePressEnd}
-            onTouchStart={handleVoicePressStart}
-            onTouchEnd={handleVoicePressEnd}
-            title="Hold to speak, release to send"
-            className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white flex-shrink-0 select-none ${voiceState === 'listening' ? 'scale-110 animate-pulse' : 'active:scale-95'}`}
-            style={{background: voiceState === 'listening' ? '#7f1d1d' : '#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)', userSelect:'none', WebkitUserSelect:'none'}}>
-            🎤
+            onClick={voiceState === 'speaking' ? () => { window.speechSynthesis.cancel(); setVoiceState('idle'); setVoiceSubtitle(''); } : undefined}
+            onMouseDown={voiceState !== 'speaking' ? handleVoicePressStart : undefined}
+            onMouseUp={voiceState !== 'speaking' ? handleVoicePressEnd : undefined}
+            onTouchStart={voiceState !== 'speaking' ? handleVoicePressStart : undefined}
+            onTouchEnd={voiceState !== 'speaking' ? handleVoicePressEnd : undefined}
+            title={voiceState === 'speaking' ? 'Stop speaking' : 'Hold to speak, release to send'}
+            className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-white flex-shrink-0 select-none ${voiceState === 'listening' ? 'scale-110 animate-pulse' : voiceState === 'speaking' ? '' : 'active:scale-95'}`}
+            style={{background: voiceState === 'speaking' ? '#1f2937' : voiceState === 'listening' ? '#7f1d1d' : '#dc2626', fontSize: voiceState === 'speaking' ? '20px' : '24px', boxShadow:'0 4px 20px rgba(220,38,38,0.5)', userSelect:'none', WebkitUserSelect:'none'}}>
+            {voiceState === 'speaking' ? '■' : '🎤'}
           </button>
         </div>
       </div>
