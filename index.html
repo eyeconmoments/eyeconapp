@@ -2490,9 +2490,16 @@ LOGGING:
   // Help Modal component
   const helpModalJSX = (
     <>
-      {/* Floating red mic button — always visible */}
+      {/* Floating assistant buttons — always visible */}
       {!helpOpen && (
-        <div className="fixed bottom-5 right-4 z-[9998] flex flex-col items-center gap-2">
+        <div className="fixed bottom-5 right-4 z-[9998] flex flex-row items-center gap-3">
+          <button
+            onClick={() => setHelpOpen(true)}
+            title="Type a question"
+            className="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl text-white transition-transform active:scale-95"
+            style={{background:'#1a2535', border:'2px solid rgba(193,167,106,0.6)', boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
+            ⌨️
+          </button>
           <button
             onClick={() => { setHelpOpen(true); startVoiceInput(); }}
             title="Voice assistant"
