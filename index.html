@@ -2463,7 +2463,8 @@ LOGGING:
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
+          max_tokens: 16000,
+          thinking: { type: 'enabled', budget_tokens: 10000 },
           system: HELP_SYSTEM + liveData,
           messages: [...helpMessages.filter(m => m.role !== 'assistant' || helpMessages.indexOf(m) > 0), userMsg]
             .filter(m => m.role === 'user' || m.role === 'assistant')
@@ -2474,7 +2475,8 @@ LOGGING:
         throw new Error(err.error?.message || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      setHelpMessages(prev => [...prev, { role: 'assistant', content: data.content?.[0]?.text || 'Sorry, no response.' }]);
+      const textBlock = (data.content || []).find(b => b.type === 'text');
+      setHelpMessages(prev => [...prev, { role: 'assistant', content: textBlock?.text || 'Sorry, no response.' }]);
     } catch(e) {
       const isNetwork = e.message === 'Failed to fetch' || e.message === 'NetworkError when attempting to fetch resource.';
       const msg = isNetwork
