@@ -2485,7 +2485,7 @@ LOGGING:
       const overdueCount = activeJobs.filter(j => {
         try { return getDaysUntilDeadline(j.deadline) < 0 && !isJobFullyComplete(j); } catch(_) { return false; }
       }).length;
-      const wagesOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
+      const wagesOwed = editingJobs.reduce((s, j) => s + (j.wageEntries || []).filter(w => !w.paid && w.status !== 'paid').reduce((a, w) => a + (w.amount || 0), 0), 0);
       const clockedIn = timeEntries.filter(e => !e.clockOut).length;
       const liveData = `\n\nLIVE DATA: active jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in: ${clockedIn}, wages owed: £${wagesOwed.toFixed(2)}, staff: ${employees.length}, jobs: ${activeJobs.slice(0,8).map(j => j.jobName).join(', ')}`;
       const controller = new AbortController();
@@ -2558,7 +2558,7 @@ LOGGING:
     const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
     const pendingJobs = activeJobs.filter(j => !isJobFullyComplete(j));
     const overdueJobs = getOverdueJobs ? getOverdueJobs() : [];
-    const totalWageOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
+    const totalWageOwed = editingJobs.reduce((s, j) => s + (j.wageEntries || []).filter(w => !w.paid && w.status !== 'paid').reduce((a, w) => a + (w.amount || 0), 0), 0);
     const clockedInNow = timeEntries.filter(e => !e.clockOut).length;
     const liveData = `\n\nLIVE BUSINESS DATA (as of now):\n• Total active jobs: ${activeJobs.length}\n• Pending/incomplete jobs: ${pendingJobs.length}\n• Overdue jobs: ${overdueJobs.length}\n• Staff clocked in right now: ${clockedInNow}\n• Total wages owed (unpaid): £${totalWageOwed.toFixed(2)}\n• Total employees: ${employees.length}\n• Active job list: ${activeJobs.slice(0,10).map(j => `${j.jobName} (${j.jobType || 'photo-video'})`).join(', ')}${activeJobs.length > 10 ? ` + ${activeJobs.length - 10} more` : ''}`;
     const userMsg = { role: 'user', content: q };
