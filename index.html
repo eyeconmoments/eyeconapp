@@ -887,6 +887,13 @@ function EyeconMoments() {
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, [field]: value } : j));
   };
 
+  const updateJobType = async (jobId, newType) => {
+    const hasPhotos = newType !== 'video';
+    const hasVideo = newType !== 'photo';
+    await db.from('jobs').update({ job_type: newType, has_photos: hasPhotos, has_video: hasVideo }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, jobType: newType, hasPhotos, hasVideo } : j));
+  };
+
   const logWageEntry = async (job, entry) => {
     const newWageEntries = [...(job.wageEntries || []), entry];
     await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', job.id);
@@ -7771,6 +7778,15 @@ Capturing Your Special Day
                         </span>
                         <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{getJobHours(job.id)}h logged</p>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`text-xs font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Coverage:</span>
+                      <select value={job.jobType || 'photo-video'} onChange={e => updateJobType(job.id, e.target.value)}
+                        className={`text-xs px-2 py-1 rounded border font-medium ${darkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-white text-gray-700 border-gray-300'}`}>
+                        <option value="photo-video">Photo + Video</option>
+                        <option value="photo">Photo Only</option>
+                        <option value="video">Video Only</option>
+                      </select>
                     </div>
                     {job.hasPhotos && (
                       <div className={`mb-3 p-3 ${darkMode ? 'bg-purple-900' : 'bg-purple-50'} rounded-lg`}>
