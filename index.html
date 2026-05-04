@@ -245,6 +245,7 @@ function EyeconMoments() {
   const [voiceResponse, setVoiceResponse] = useState('');
   const voiceRecognitionRef = React.useRef(null);
   const voiceTranscriptRef = React.useRef('');
+  const voiceIsListeningRef = React.useRef(false);
   const helpBottomRef = React.useRef(null);
   React.useEffect(() => { helpBottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
   const [showingModal, setShowingModal] = useState(null);
@@ -2443,10 +2444,15 @@ LOGGING:
     setVoiceState('speaking');
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'en-GB';
-    utter.rate = 1.05;
+    utter.rate = 1.0;
     utter.pitch = 1.0;
-    utter.onend = () => setVoiceState('idle');
-    utter.onerror = () => setVoiceState('idle');
+    const resetIdle = () => setVoiceState('idle');
+    utter.onend = resetIdle;
+    utter.onerror = resetIdle;
+    // Failsafe: reset after estimated speaking time so state never stays stuck
+    const fallbackMs = Math.max(4000, text.length * 65);
+    const fallbackTimer = setTimeout(resetIdle, fallbackMs);
+    utter.onend = () => { clearTimeout(fallbackTimer); setVoiceState('idle'); };
     const doSpeak = () => {
       const voices = window.speechSynthesis.getVoices();
       const british = voices.find(v => v.lang === 'en-GB' && /google/i.test(v.name)) ||
@@ -2457,10 +2463,7 @@ LOGGING:
     };
     const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) { doSpeak(); }
-    else {
-      window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); };
-      setTimeout(doSpeak, 250);
-    }
+    else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; setTimeout(doSpeak, 150); }
   };
 
   const sendVoiceQuery = async (transcript) => {
@@ -2480,9 +2483,13 @@ LOGGING:
     const wagesOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
     const clockedIn = timeEntries.filter(e => !e.clockOut).length;
     const liveData = `\n\nLIVE DATA: active jobs: ${activeJobs.length}, pending: ${pendingJobs.length}, overdue: ${overdueList.length}, clocked in: ${clockedIn}, wages owed: £${wagesOwed.toFixed(2)}, staff: ${employees.length}, jobs: ${activeJobs.slice(0,8).map(j => j.jobName).join(', ')}`;
+    // 20-second timeout so it never hangs on "thinking" forever
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
@@ -2491,22 +2498,24 @@ LOGGING:
           messages: [{ role:'user', content: transcript }]
         })
       });
+      clearTimeout(timeoutId);
       if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
       const data = await res.json();
       const text = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
       setVoiceResponse(text);
       speakText(text);
     } catch(e) {
-      const errMsg = `Error: ${e.message}`;
+      clearTimeout(timeoutId);
+      const errMsg = e.name === 'AbortError' ? 'Request timed out — check your API key and connection.' : `Error: ${e.message}`;
       setVoiceResponse(errMsg);
-      speakText("Sorry, there was a connection error.");
+      setVoiceState('idle');
     }
   };
 
   const handleVoicePressStart = (e) => {
     e.preventDefault();
+    if (voiceIsListeningRef.current) return;
     if (voiceState === 'speaking') { window.speechSynthesis.cancel(); setVoiceState('idle'); return; }
-    if (voiceState !== 'idle') return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert('Voice not supported in this browser. Try Chrome.'); return; }
     voiceTranscriptRef.current = '';
@@ -2519,15 +2528,17 @@ LOGGING:
         voiceTranscriptRef.current += ev.results[i][0].transcript + ' ';
       }
     };
-    recognition.onerror = () => setVoiceState('idle');
+    recognition.onerror = () => { voiceIsListeningRef.current = false; setVoiceState('idle'); };
     voiceRecognitionRef.current = recognition;
+    voiceIsListeningRef.current = true;
     recognition.start();
     setVoiceState('listening');
   };
 
   const handleVoicePressEnd = (e) => {
     e.preventDefault();
-    if (voiceState !== 'listening') return;
+    if (!voiceIsListeningRef.current) return;
+    voiceIsListeningRef.current = false;
     const recognition = voiceRecognitionRef.current;
     if (recognition) { try { recognition.stop(); } catch(_) {} }
     setTimeout(() => sendVoiceQuery(voiceTranscriptRef.current.trim()), 350);
