@@ -2516,7 +2516,8 @@ LOGGING:
       clearTimeout(timeoutId);
       if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
       const data = await res.json();
-      const text = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
+      const textBlock = data.content?.find(b => b.type === 'text');
+      const text = textBlock?.text || "Sorry, I couldn't get a response.";
       setVoiceResponse(text);
       speakText(text);
     } catch(e) {
