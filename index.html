@@ -2470,23 +2470,26 @@ LOGGING:
     if (!transcript.trim()) { setVoiceState('idle'); return; }
     setVoiceResponse('');
     setVoiceState('thinking');
-    let key = helpApiKey;
-    if (!key) {
-      key = window.prompt('Enter your Anthropic API key (stored locally):\nconsole.anthropic.com');
-      if (!key) { setVoiceState('idle'); return; }
-      setHelpApiKey(key);
-      localStorage.setItem('eyecon_ai_key', key);
-    }
-    const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
-    const pendingJobs = activeJobs.filter(j => !isJobFullyComplete(j));
-    const overdueList = getOverdueJobs ? getOverdueJobs() : [];
-    const wagesOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
-    const clockedIn = timeEntries.filter(e => !e.clockOut).length;
-    const liveData = `\n\nLIVE DATA: active jobs: ${activeJobs.length}, pending: ${pendingJobs.length}, overdue: ${overdueList.length}, clocked in: ${clockedIn}, wages owed: £${wagesOwed.toFixed(2)}, staff: ${employees.length}, jobs: ${activeJobs.slice(0,8).map(j => j.jobName).join(', ')}`;
-    // 20-second timeout so it never hangs on "thinking" forever
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
     try {
+      let key = helpApiKey;
+      if (!key) {
+        key = window.prompt('Enter your Anthropic API key (stored locally):\nconsole.anthropic.com');
+        if (!key) { setVoiceState('idle'); return; }
+        setHelpApiKey(key);
+        localStorage.setItem('eyecon_ai_key', key);
+      }
+      const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+      const pendingCount = activeJobs.filter(j => {
+        try { return !isJobFullyComplete(j); } catch(_) { return true; }
+      }).length;
+      const overdueCount = activeJobs.filter(j => {
+        try { return getDaysUntilDeadline(j.deadline) < 0 && !isJobFullyComplete(j); } catch(_) { return false; }
+      }).length;
+      const wagesOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
+      const clockedIn = timeEntries.filter(e => !e.clockOut).length;
+      const liveData = `\n\nLIVE DATA: active jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in: ${clockedIn}, wages owed: £${wagesOwed.toFixed(2)}, staff: ${employees.length}, jobs: ${activeJobs.slice(0,8).map(j => j.jobName).join(', ')}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         signal: controller.signal,
@@ -2505,8 +2508,7 @@ LOGGING:
       setVoiceResponse(text);
       speakText(text);
     } catch(e) {
-      clearTimeout(timeoutId);
-      const errMsg = e.name === 'AbortError' ? 'Request timed out — check your API key and connection.' : `Error: ${e.message}`;
+      const errMsg = e.name === 'AbortError' ? 'Timed out — check API key & connection.' : `Error: ${e.message}`;
       setVoiceResponse(errMsg);
       setVoiceState('idle');
     }
