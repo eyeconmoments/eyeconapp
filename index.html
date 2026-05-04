@@ -240,6 +240,9 @@ function EyeconMoments() {
   const [helpLoading, setHelpLoading] = useState(false);
   const [helpApiKey, setHelpApiKey] = useState(() => localStorage.getItem('eyecon_ai_key') || '');
   const [isListening, setIsListening] = useState(false);
+  const [voiceState, setVoiceState] = useState('idle'); // idle | listening | thinking | speaking
+  const voiceRecognitionRef = React.useRef(null);
+  const voiceTranscriptRef = React.useRef('');
   const helpBottomRef = React.useRef(null);
   React.useEffect(() => { helpBottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
   const [showingModal, setShowingModal] = useState(null);
@@ -2433,6 +2436,93 @@ LOGGING:
     recognition.start();
   };
 
+  const speakText = (text) => {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'en-GB';
+    utter.rate = 1.05;
+    utter.pitch = 1.0;
+    const trySpeak = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const british = voices.find(v => v.lang === 'en-GB' && /google/i.test(v.name)) ||
+                      voices.find(v => v.lang === 'en-GB') ||
+                      voices.find(v => v.lang.startsWith('en'));
+      if (british) utter.voice = british;
+      utter.onend = () => setVoiceState('idle');
+      utter.onerror = () => setVoiceState('idle');
+      setVoiceState('speaking');
+      window.speechSynthesis.speak(utter);
+    };
+    if (window.speechSynthesis.getVoices().length > 0) trySpeak();
+    else { window.speechSynthesis.onvoiceschanged = trySpeak; }
+  };
+
+  const sendVoiceQuery = async (transcript) => {
+    if (!transcript.trim()) { setVoiceState('idle'); return; }
+    setVoiceState('thinking');
+    let key = helpApiKey;
+    if (!key) {
+      key = window.prompt('Enter your Anthropic API key (stored locally):\nconsole.anthropic.com');
+      if (!key) { setVoiceState('idle'); return; }
+      setHelpApiKey(key);
+      localStorage.setItem('eyecon_ai_key', key);
+    }
+    const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+    const pendingJobs = activeJobs.filter(j => !isJobFullyComplete(j));
+    const overdueList = getOverdueJobs ? getOverdueJobs() : [];
+    const wagesOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
+    const clockedIn = timeEntries.filter(e => !e.clockOut).length;
+    const liveData = `\n\nLIVE DATA: active jobs: ${activeJobs.length}, pending: ${pendingJobs.length}, overdue: ${overdueList.length}, clocked in: ${clockedIn}, wages owed: £${wagesOwed.toFixed(2)}, staff: ${employees.length}, jobs: ${activeJobs.slice(0,8).map(j => j.jobName).join(', ')}`;
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 300,
+          system: HELP_SYSTEM + liveData + '\n\nVOICE MODE: Respond in 2-3 natural spoken sentences. No bullet points, no markdown, no lists. Be conversational and direct.',
+          messages: [{ role:'user', content: transcript }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
+      speakText(text);
+    } catch(e) {
+      speakText("Sorry, there was a connection error.");
+      setVoiceState('idle');
+    }
+  };
+
+  const handleVoicePressStart = (e) => {
+    e.preventDefault();
+    if (voiceState === 'speaking') { window.speechSynthesis.cancel(); setVoiceState('idle'); return; }
+    if (voiceState !== 'idle') return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Voice not supported in this browser. Try Chrome.'); return; }
+    voiceTranscriptRef.current = '';
+    const recognition = new SR();
+    recognition.lang = 'en-GB';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onresult = (ev) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        voiceTranscriptRef.current += ev.results[i][0].transcript + ' ';
+      }
+    };
+    recognition.onerror = () => setVoiceState('idle');
+    voiceRecognitionRef.current = recognition;
+    recognition.start();
+    setVoiceState('listening');
+  };
+
+  const handleVoicePressEnd = (e) => {
+    e.preventDefault();
+    if (voiceState !== 'listening') return;
+    const recognition = voiceRecognitionRef.current;
+    if (recognition) { try { recognition.stop(); } catch(_) {} }
+    setTimeout(() => sendVoiceQuery(voiceTranscriptRef.current.trim()), 350);
+  };
+
   const sendHelp = async (overrideText) => {
     const q = (overrideText !== undefined ? overrideText : helpInput).trim();
     if (!q || helpLoading) return;
@@ -2492,21 +2582,32 @@ LOGGING:
     <>
       {/* Floating assistant buttons — always visible */}
       {!helpOpen && (
-        <div className="fixed bottom-5 right-4 z-[9998] flex flex-row items-center gap-3">
-          <button
-            onClick={() => setHelpOpen(true)}
-            title="Type a question"
-            className="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl text-white transition-transform active:scale-95"
-            style={{background:'#1a2535', border:'2px solid rgba(193,167,106,0.6)', boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
-            ⌨️
-          </button>
-          <button
-            onClick={() => { setHelpOpen(true); startVoiceInput(); }}
-            title="Voice assistant"
-            className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white transition-transform active:scale-95 ${isListening ? 'animate-pulse' : ''}`}
-            style={{background: isListening ? '#7f1d1d' : '#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)'}}>
-            🎤
-          </button>
+        <div className="fixed bottom-5 right-4 z-[9998] flex flex-col items-end gap-2">
+          {voiceState !== 'idle' && (
+            <div className="px-3 py-1.5 rounded-full text-xs font-semibold text-white shadow-lg"
+              style={{background: voiceState === 'listening' ? '#dc2626' : voiceState === 'speaking' ? '#16a34a' : '#1d4ed8'}}>
+              {voiceState === 'listening' ? '● Listening…' : voiceState === 'thinking' ? '◌ Thinking…' : '▶ Speaking…'}
+            </div>
+          )}
+          <div className="flex flex-row items-center gap-3">
+            <button
+              onClick={() => setHelpOpen(true)}
+              title="Type a question"
+              className="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl text-white transition-transform active:scale-95"
+              style={{background:'#1a2535', border:'2px solid rgba(193,167,106,0.6)', boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
+              ⌨️
+            </button>
+            <button
+              onMouseDown={handleVoicePressStart}
+              onMouseUp={handleVoicePressEnd}
+              onTouchStart={handleVoicePressStart}
+              onTouchEnd={handleVoicePressEnd}
+              title="Hold to speak, release to send"
+              className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white select-none transition-transform ${voiceState === 'listening' ? 'scale-110 animate-pulse' : 'active:scale-95'}`}
+              style={{background: voiceState === 'listening' ? '#7f1d1d' : voiceState !== 'idle' ? '#6b7280' : '#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)', userSelect:'none', WebkitUserSelect:'none'}}>
+              🎤
+            </button>
+          </div>
         </div>
       )}
       {/* Chat panel */}
