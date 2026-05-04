@@ -2438,27 +2438,32 @@ LOGGING:
 
   const speakText = (text) => {
     window.speechSynthesis.cancel();
+    setVoiceState('speaking');
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'en-GB';
     utter.rate = 1.05;
     utter.pitch = 1.0;
-    const trySpeak = () => {
+    utter.onend = () => setVoiceState('idle');
+    utter.onerror = () => setVoiceState('idle');
+    const doSpeak = () => {
       const voices = window.speechSynthesis.getVoices();
       const british = voices.find(v => v.lang === 'en-GB' && /google/i.test(v.name)) ||
                       voices.find(v => v.lang === 'en-GB') ||
                       voices.find(v => v.lang.startsWith('en'));
       if (british) utter.voice = british;
-      utter.onend = () => setVoiceState('idle');
-      utter.onerror = () => setVoiceState('idle');
-      setVoiceState('speaking');
       window.speechSynthesis.speak(utter);
     };
-    if (window.speechSynthesis.getVoices().length > 0) trySpeak();
-    else { window.speechSynthesis.onvoiceschanged = trySpeak; }
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) { doSpeak(); }
+    else {
+      window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); };
+      setTimeout(doSpeak, 250);
+    }
   };
 
   const sendVoiceQuery = async (transcript) => {
     if (!transcript.trim()) { setVoiceState('idle'); return; }
+    setHelpMessages(prev => [...prev, { role:'user', content: transcript }]);
     setVoiceState('thinking');
     let key = helpApiKey;
     if (!key) {
@@ -2484,12 +2489,15 @@ LOGGING:
           messages: [{ role:'user', content: transcript }]
         })
       });
+      if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
       const data = await res.json();
       const text = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
+      setHelpMessages(prev => [...prev, { role:'assistant', content: text }]);
       speakText(text);
     } catch(e) {
+      const errMsg = `Sorry, there was an error: ${e.message}`;
+      setHelpMessages(prev => [...prev, { role:'assistant', content: errMsg }]);
       speakText("Sorry, there was a connection error.");
-      setVoiceState('idle');
     }
   };
 
@@ -2580,34 +2588,16 @@ LOGGING:
   // Help Modal component
   const helpModalJSX = (
     <>
-      {/* Floating assistant buttons — always visible */}
+      {/* Single floating button — opens the assistant */}
       {!helpOpen && (
-        <div className="fixed bottom-5 right-4 z-[9998] flex flex-col items-end gap-2">
-          {voiceState !== 'idle' && (
-            <div className="px-3 py-1.5 rounded-full text-xs font-semibold text-white shadow-lg"
-              style={{background: voiceState === 'listening' ? '#dc2626' : voiceState === 'speaking' ? '#16a34a' : '#1d4ed8'}}>
-              {voiceState === 'listening' ? '● Listening…' : voiceState === 'thinking' ? '◌ Thinking…' : '▶ Speaking…'}
-            </div>
-          )}
-          <div className="flex flex-row items-center gap-3">
-            <button
-              onClick={() => setHelpOpen(true)}
-              title="Type a question"
-              className="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl text-white transition-transform active:scale-95"
-              style={{background:'#1a2535', border:'2px solid rgba(193,167,106,0.6)', boxShadow:'0 4px 20px rgba(0,0,0,0.4)'}}>
-              ⌨️
-            </button>
-            <button
-              onMouseDown={handleVoicePressStart}
-              onMouseUp={handleVoicePressEnd}
-              onTouchStart={handleVoicePressStart}
-              onTouchEnd={handleVoicePressEnd}
-              title="Hold to speak, release to send"
-              className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white select-none transition-transform ${voiceState === 'listening' ? 'scale-110 animate-pulse' : 'active:scale-95'}`}
-              style={{background: voiceState === 'listening' ? '#7f1d1d' : voiceState !== 'idle' ? '#6b7280' : '#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)', userSelect:'none', WebkitUserSelect:'none'}}>
-              🎤
-            </button>
-          </div>
+        <div className="fixed bottom-5 right-4 z-[9998]">
+          <button
+            onClick={() => setHelpOpen(true)}
+            title="Open assistant — talk or type"
+            className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white transition-transform active:scale-95"
+            style={{background:'#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)'}}>
+            🎤
+          </button>
         </div>
       )}
       {/* Chat panel */}
@@ -2641,10 +2631,12 @@ LOGGING:
                   </div>
                 </div>
               ))}
-              {helpLoading && (
+              {(helpLoading || voiceState !== 'idle') && (
                 <div className="flex justify-start">
                   <div className={`px-3 py-2 rounded-xl text-sm ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-                    <span className="animate-pulse">Thinking…</span>
+                    <span className="animate-pulse">
+                      {voiceState === 'listening' ? '● Listening…' : voiceState === 'thinking' ? '◌ Thinking…' : voiceState === 'speaking' ? '▶ Speaking — tap mic to stop' : 'Thinking…'}
+                    </span>
                   </div>
                 </div>
               )}
@@ -2653,10 +2645,15 @@ LOGGING:
             {/* Input */}
             <div className={`px-3 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex gap-2">
-                <button onClick={startVoiceInput} disabled={helpLoading}
-                  title="Voice input"
-                  className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white text-base font-bold transition-all ${isListening ? 'animate-pulse' : ''}`}
-                  style={{background: isListening ? '#7f1d1d' : '#dc2626'}}>
+                <button
+                  onMouseDown={handleVoicePressStart}
+                  onMouseUp={handleVoicePressEnd}
+                  onTouchStart={handleVoicePressStart}
+                  onTouchEnd={handleVoicePressEnd}
+                  disabled={helpLoading}
+                  title="Hold to speak, release to send"
+                  className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white text-base select-none transition-all ${voiceState === 'listening' ? 'animate-pulse scale-110' : ''}`}
+                  style={{background: voiceState === 'listening' ? '#7f1d1d' : voiceState === 'speaking' ? '#dc2626' : '#dc2626', userSelect:'none', WebkitUserSelect:'none'}}>
                   🎤
                 </button>
                 <input
