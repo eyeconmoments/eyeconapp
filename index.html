@@ -241,6 +241,8 @@ function EyeconMoments() {
   const [helpApiKey, setHelpApiKey] = useState(() => localStorage.getItem('eyecon_ai_key') || '');
   const [isListening, setIsListening] = useState(false);
   const [voiceState, setVoiceState] = useState('idle'); // idle | listening | thinking | speaking
+  const [voiceInput, setVoiceInput] = useState('');
+  const [voiceResponse, setVoiceResponse] = useState('');
   const voiceRecognitionRef = React.useRef(null);
   const voiceTranscriptRef = React.useRef('');
   const helpBottomRef = React.useRef(null);
@@ -2463,7 +2465,7 @@ LOGGING:
 
   const sendVoiceQuery = async (transcript) => {
     if (!transcript.trim()) { setVoiceState('idle'); return; }
-    setHelpMessages(prev => [...prev, { role:'user', content: transcript }]);
+    setVoiceResponse('');
     setVoiceState('thinking');
     let key = helpApiKey;
     if (!key) {
@@ -2492,11 +2494,11 @@ LOGGING:
       if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
       const data = await res.json();
       const text = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
-      setHelpMessages(prev => [...prev, { role:'assistant', content: text }]);
+      setVoiceResponse(text);
       speakText(text);
     } catch(e) {
-      const errMsg = `Sorry, there was an error: ${e.message}`;
-      setHelpMessages(prev => [...prev, { role:'assistant', content: errMsg }]);
+      const errMsg = `Error: ${e.message}`;
+      setVoiceResponse(errMsg);
       speakText("Sorry, there was a connection error.");
     }
   };
@@ -2588,19 +2590,49 @@ LOGGING:
   // Help Modal component
   const helpModalJSX = (
     <>
-      {/* Single floating button — opens the assistant */}
-      {!helpOpen && (
-        <div className="fixed bottom-5 right-4 z-[9998]">
+      {/* Self-contained floating voice+text assistant — never opens the chat panel */}
+      <div className="fixed bottom-5 right-3 z-[9998] flex flex-col items-end gap-2" style={{maxWidth:'300px'}}>
+        {(voiceResponse || voiceState !== 'idle') && (
+          <div className={`rounded-2xl px-4 py-3 text-sm shadow-xl w-full ${darkMode ? 'bg-gray-800 text-gray-100 border border-gray-600' : 'bg-white text-gray-800 border border-gray-200'}`}
+            style={{boxShadow:'0 4px 24px rgba(0,0,0,0.25)'}}>
+            {voiceState !== 'idle' && (
+              <p className="text-xs font-semibold mb-1 animate-pulse" style={{color:'#dc2626'}}>
+                {voiceState === 'listening' ? '● Listening…' : voiceState === 'thinking' ? '◌ Thinking…' : '▶ Speaking…'}
+              </p>
+            )}
+            {voiceResponse && <p className="leading-relaxed">{voiceResponse}</p>}
+          </div>
+        )}
+        <div className="flex items-center gap-2 w-full">
+          <input
+            type="text"
+            value={voiceInput}
+            onChange={e => setVoiceInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && voiceInput.trim() && voiceState === 'idle') { sendVoiceQuery(voiceInput.trim()); setVoiceInput(''); } }}
+            placeholder="Ask anything…"
+            className={`px-3 py-2.5 rounded-full text-sm outline-none shadow-md flex-1 ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-600' : 'bg-white text-gray-800 placeholder-gray-400 border border-gray-200'}`}
+            style={{minWidth:0}}
+          />
+          {voiceInput.trim() && voiceState === 'idle' && (
+            <button onClick={() => { sendVoiceQuery(voiceInput.trim()); setVoiceInput(''); }}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold"
+              style={{background:'var(--gold)', color:'#1a1a1a'}}>
+              ➤
+            </button>
+          )}
           <button
-            onClick={() => setHelpOpen(true)}
-            title="Open assistant — talk or type"
-            className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white transition-transform active:scale-95"
-            style={{background:'#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)'}}>
+            onMouseDown={handleVoicePressStart}
+            onMouseUp={handleVoicePressEnd}
+            onTouchStart={handleVoicePressStart}
+            onTouchEnd={handleVoicePressEnd}
+            title="Hold to speak, release to send"
+            className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white flex-shrink-0 select-none ${voiceState === 'listening' ? 'scale-110 animate-pulse' : 'active:scale-95'}`}
+            style={{background: voiceState === 'listening' ? '#7f1d1d' : '#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)', userSelect:'none', WebkitUserSelect:'none'}}>
             🎤
           </button>
         </div>
-      )}
-      {/* Chat panel */}
+      </div>
+      {/* Full chat panel — only opened via ? button in nav */}
       {helpOpen && (
         <div className="fixed inset-0 z-[9999] flex items-end justify-end p-4 pointer-events-none">
           <div className={`pointer-events-auto flex flex-col rounded-2xl shadow-2xl w-full max-w-sm ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-200'}`} style={{height:'80vh', maxHeight:'600px'}}>
@@ -2631,12 +2663,10 @@ LOGGING:
                   </div>
                 </div>
               ))}
-              {(helpLoading || voiceState !== 'idle') && (
+              {helpLoading && (
                 <div className="flex justify-start">
                   <div className={`px-3 py-2 rounded-xl text-sm ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-                    <span className="animate-pulse">
-                      {voiceState === 'listening' ? '● Listening…' : voiceState === 'thinking' ? '◌ Thinking…' : voiceState === 'speaking' ? '▶ Speaking — tap mic to stop' : 'Thinking…'}
-                    </span>
+                    <span className="animate-pulse">Thinking…</span>
                   </div>
                 </div>
               )}
