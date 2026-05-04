@@ -1880,6 +1880,12 @@ function EyeconMoments() {
                       nameLower.includes('wedding') ? 'wedding' :
                       nameLower.includes('engagement') ? 'engagement' : 'other';
 
+    const isVideoOnly = nameLower.includes('video only') || nameLower.includes('video-only') || (nameLower.includes('video') && !nameLower.includes('photo'));
+    const isPhotoOnly = nameLower.includes('photo only') || nameLower.includes('photo-only') || (nameLower.includes('photo') && !nameLower.includes('video'));
+    const detectedJobType = isVideoOnly ? 'video' : isPhotoOnly ? 'photo' : 'photo-video';
+    const detectedHasPhotos = !isVideoOnly;
+    const detectedHasVideo = !isPhotoOnly;
+
     // Extract real start/end times from the calendar event
     let startTime = '10:00';
     let endTime = '22:00';
@@ -1938,15 +1944,15 @@ function EyeconMoments() {
       customerName: eventName,
       shootDate: shootDate,
       deadline: deadline,
-      jobType: 'photo-video',
-      hasPhotos: true,
-      hasVideo: true,
+      jobType: detectedJobType,
+      hasPhotos: detectedHasPhotos,
+      hasVideo: detectedHasVideo,
       photoStatus: 'not-started',
       photoAssignedTo: 0,
       notes: event.description || '',
       shootHours: 8,
-      numVideographers: 2,
-      numPhotographers: 2,
+      numVideographers: isVideoOnly ? 2 : isPhotoOnly ? 0 : 2,
+      numPhotographers: isPhotoOnly ? 2 : isVideoOnly ? 0 : 2,
       videoEditHours: 10,
       photoEditHours: 6,
       customPrice: null,
@@ -4416,15 +4422,19 @@ LOGGING:
                                 const eventDate = new Date(event.start?.dateTime || event.start?.date);
                                 const deadline = new Date(eventDate);
                                 deadline.setMonth(deadline.getMonth() + 3);
-                                
+                                const evtName = (event.summary || 'Imported Event').toLowerCase();
+                                const evtVideoOnly = evtName.includes('video only') || evtName.includes('video-only') || (evtName.includes('video') && !evtName.includes('photo'));
+                                const evtPhotoOnly = evtName.includes('photo only') || evtName.includes('photo-only') || (evtName.includes('photo') && !evtName.includes('video'));
+
                                 const newJob = {
                                   id: Date.now() + Math.random(),
                                   jobName: event.summary || 'Imported Event',
                                   customerName: event.description?.split('\n')[0] || 'TBC',
                                   eventDate: eventDate.toISOString().split('T')[0],
                                   deadline: deadline.toISOString().split('T')[0],
-                                  hasPhotos: true,
-                                  hasVideo: true,
+                                  jobType: evtVideoOnly ? 'video' : evtPhotoOnly ? 'photo' : 'photo-video',
+                                  hasPhotos: !evtVideoOnly,
+                                  hasVideo: !evtPhotoOnly,
                                   photoStatus: 'pending',
                                   photoAssignedTo: 0,
                                   stages: [
@@ -10024,8 +10034,8 @@ Eyecon Moments`);
     }).length;
     
     // Job type breakdown
-    const photoOnlyJobs = pastJobs.filter(j => j.jobType === 'photo-only').length;
-    const videoOnlyJobs = pastJobs.filter(j => j.jobType === 'video-only').length;
+    const photoOnlyJobs = pastJobs.filter(j => j.jobType === 'photo').length;
+    const videoOnlyJobs = pastJobs.filter(j => j.jobType === 'video').length;
     const photoVideoJobs = pastJobs.filter(j => j.jobType === 'photo-video').length;
     
     // Pipeline stages
