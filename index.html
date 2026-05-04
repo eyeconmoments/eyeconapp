@@ -2488,73 +2488,90 @@ LOGGING:
   };
 
   // Help Modal component
-  const helpModalJSX = helpOpen ? (
-      <div className="fixed inset-0 z-50 flex items-end justify-end p-4 pointer-events-none">
-        <div className={`pointer-events-auto flex flex-col rounded-2xl shadow-2xl w-full max-w-sm ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-200'}`} style={{height:'80vh', maxHeight:'600px'}}>
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 rounded-t-2xl shrink-0" style={{background:'linear-gradient(135deg,#1a2535,#243040)', borderBottom:'1px solid rgba(193,167,106,0.3)'}}>
-            <div>
-              <p className="font-bold text-sm" style={{color:'var(--gold)'}}>✨ Eyecon Assistant</p>
-              <p className="text-xs text-gray-400">Ask me anything about the app</p>
+  const helpModalJSX = (
+    <>
+      {/* Floating red mic button — always visible */}
+      {!helpOpen && (
+        <div className="fixed bottom-5 right-4 z-[9998] flex flex-col items-center gap-2">
+          <button
+            onClick={() => { setHelpOpen(true); startVoiceInput(); }}
+            title="Voice assistant"
+            className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl text-white transition-transform active:scale-95 ${isListening ? 'animate-pulse' : ''}`}
+            style={{background: isListening ? '#7f1d1d' : '#dc2626', boxShadow:'0 4px 20px rgba(220,38,38,0.5)'}}>
+            🎤
+          </button>
+        </div>
+      )}
+      {/* Chat panel */}
+      {helpOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-end p-4 pointer-events-none">
+          <div className={`pointer-events-auto flex flex-col rounded-2xl shadow-2xl w-full max-w-sm ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-200'}`} style={{height:'80vh', maxHeight:'600px'}}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-t-2xl shrink-0" style={{background:'linear-gradient(135deg,#1a2535,#243040)', borderBottom:'1px solid rgba(193,167,106,0.3)'}}>
+              <div>
+                <p className="font-bold text-sm" style={{color:'var(--gold)'}}>✨ Eyecon Assistant</p>
+                <p className="text-xs text-gray-400">Ask me anything about the app</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {helpApiKey && (
+                  <button onClick={() => { const k = window.prompt('Update API key:', helpApiKey); if (k) { setHelpApiKey(k); localStorage.setItem('eyecon_ai_key', k); }}}
+                    className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded">🔑</button>
+                )}
+                <button onClick={() => setHelpOpen(false)} className="text-gray-400 hover:text-white text-lg leading-none">✕</button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {helpApiKey && (
-                <button onClick={() => { const k = window.prompt('Update API key:', helpApiKey); if (k) { setHelpApiKey(k); localStorage.setItem('eyecon_ai_key', k); }}}
-                  className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded">🔑</button>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+              {helpMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
+                    msg.role === 'user'
+                      ? 'text-white rounded-br-none'
+                      : darkMode ? 'bg-gray-800 text-gray-200 rounded-bl-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                  }`} style={msg.role === 'user' ? {background:'var(--gold)', color:'#1a1a1a'} : {}}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {helpLoading && (
+                <div className="flex justify-start">
+                  <div className={`px-3 py-2 rounded-xl text-sm ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className="animate-pulse">Thinking…</span>
+                  </div>
+                </div>
               )}
-              <button onClick={() => setHelpOpen(false)} className="text-gray-400 hover:text-white text-lg leading-none">✕</button>
+              <div ref={helpBottomRef} />
             </div>
-          </div>
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-            {helpMessages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
-                  msg.role === 'user'
-                    ? 'text-white rounded-br-none'
-                    : darkMode ? 'bg-gray-800 text-gray-200 rounded-bl-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'
-                }`} style={msg.role === 'user' ? {background:'var(--gold)', color:'#1a1a1a'} : {}}>
-                  {msg.content}
-                </div>
+            {/* Input */}
+            <div className={`px-3 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className="flex gap-2">
+                <button onClick={startVoiceInput} disabled={helpLoading}
+                  title="Voice input"
+                  className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white text-base font-bold transition-all ${isListening ? 'animate-pulse' : ''}`}
+                  style={{background: isListening ? '#7f1d1d' : '#dc2626'}}>
+                  🎤
+                </button>
+                <input
+                  type="text"
+                  value={helpInput}
+                  onChange={e => setHelpInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendHelp()}
+                  placeholder={isListening ? 'Listening…' : 'Ask a question…'}
+                  className={`flex-1 px-3 py-2 rounded-xl text-sm outline-none ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-700' : 'bg-gray-100 text-gray-800 placeholder-gray-400'}`}
+                />
+                <button onClick={() => sendHelp()} disabled={helpLoading}
+                  className="px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
+                  style={{background:'var(--gold)', color:'#1a1a1a'}}>
+                  ➤
+                </button>
               </div>
-            ))}
-            {helpLoading && (
-              <div className="flex justify-start">
-                <div className={`px-3 py-2 rounded-xl text-sm ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-                  <span className="animate-pulse">Thinking…</span>
-                </div>
-              </div>
-            )}
-            <div ref={helpBottomRef} />
-          </div>
-          {/* Input */}
-          <div className={`px-3 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className="flex gap-2">
-              <button onClick={startVoiceInput} disabled={helpLoading}
-                title="Voice input"
-                className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white text-base font-bold transition-all ${isListening ? 'animate-pulse' : ''}`}
-                style={{background: isListening ? '#7f1d1d' : '#dc2626'}}>
-                🎤
-              </button>
-              <input
-                type="text"
-                value={helpInput}
-                onChange={e => setHelpInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendHelp()}
-                placeholder={isListening ? 'Listening…' : 'Ask a question…'}
-                className={`flex-1 px-3 py-2 rounded-xl text-sm outline-none ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-700' : 'bg-gray-100 text-gray-800 placeholder-gray-400'}`}
-              />
-              <button onClick={() => sendHelp()} disabled={helpLoading}
-                className="px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
-                style={{background:'var(--gold)', color:'#1a1a1a'}}>
-                ➤
-              </button>
+              {!helpApiKey && <p className="text-xs text-gray-500 mt-1.5 text-center">Needs an Anthropic API key — you'll be prompted on first question</p>}
             </div>
-            {!helpApiKey && <p className="text-xs text-gray-500 mt-1.5 text-center">Needs an Anthropic API key — you'll be prompted on first question</p>}
           </div>
         </div>
-      </div>
-  ) : null;
+      )}
+    </>
+  );
   const isSamUser = currentUser?.username?.toLowerCase() === 'sam';
   if ((currentView === 'employee-dashboard' || currentView === 'availability' || (currentView === 'files' && (currentUser?.role === 'employee' || currentUser?.role === 'manager'))) && !isSamUser && !(currentUser?.role === 'admin')) {
     const myJobs = getUserAssignedJobs(currentUser.id);
