@@ -239,6 +239,7 @@ function EyeconMoments() {
   const [helpMessages, setHelpMessages] = useState([{ role:'assistant', content:'👋 Hi! I\'m your Eyecon Moments assistant. Ask me anything about using the app — clocking in, sharing itineraries, creating quotes, managing jobs, or anything else!' }]);
   const [helpLoading, setHelpLoading] = useState(false);
   const [helpApiKey, setHelpApiKey] = useState(() => localStorage.getItem('eyecon_ai_key') || '');
+  const [isListening, setIsListening] = useState(false);
   const helpBottomRef = React.useRef(null);
   React.useEffect(() => { helpBottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
   const [showingModal, setShowingModal] = useState(null);
@@ -2414,8 +2415,26 @@ LOGGING:
 - Use the logging doc to record when work was completed and where the file can be found.`;
 
 
-  const sendHelp = async () => {
-    const q = helpInput.trim();
+  const startVoiceInput = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Voice input is not supported in this browser. Try Chrome on Android.'); return; }
+    const recognition = new SR();
+    recognition.lang = 'en-GB';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    setIsListening(true);
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      setIsListening(false);
+      sendHelp(transcript);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+  };
+
+  const sendHelp = async (overrideText) => {
+    const q = (overrideText !== undefined ? overrideText : helpInput).trim();
     if (!q || helpLoading) return;
     if (!helpApiKey) {
       const key = window.prompt('Enter your Anthropic API key (stored locally, never sent anywhere else):\nGet one at console.anthropic.com');
@@ -2423,6 +2442,12 @@ LOGGING:
       setHelpApiKey(key);
       localStorage.setItem('eyecon_ai_key', key);
     }
+    const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+    const pendingJobs = activeJobs.filter(j => !isJobFullyComplete(j));
+    const overdueJobs = getOverdueJobs ? getOverdueJobs() : [];
+    const totalWageOwed = (editingWageItems || []).filter(w => !w.paid).reduce((s, w) => s + (w.amount || 0), 0);
+    const clockedInNow = timeEntries.filter(e => !e.clockOut).length;
+    const liveData = `\n\nLIVE BUSINESS DATA (as of now):\n• Total active jobs: ${activeJobs.length}\n• Pending/incomplete jobs: ${pendingJobs.length}\n• Overdue jobs: ${overdueJobs.length}\n• Staff clocked in right now: ${clockedInNow}\n• Total wages owed (unpaid): £${totalWageOwed.toFixed(2)}\n• Total employees: ${employees.length}\n• Active job list: ${activeJobs.slice(0,10).map(j => `${j.jobName} (${j.jobType || 'photo-video'})`).join(', ')}${activeJobs.length > 10 ? ` + ${activeJobs.length - 10} more` : ''}`;
     const userMsg = { role: 'user', content: q };
     setHelpMessages(prev => [...prev, userMsg]);
     setHelpInput('');
@@ -2437,9 +2462,9 @@ LOGGING:
           'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-sonnet-4-6',
           max_tokens: 1024,
-          system: HELP_SYSTEM,
+          system: HELP_SYSTEM + liveData,
           messages: [...helpMessages.filter(m => m.role !== 'assistant' || helpMessages.indexOf(m) > 0), userMsg]
             .filter(m => m.role === 'user' || m.role === 'assistant')
         })
@@ -2503,15 +2528,21 @@ LOGGING:
           {/* Input */}
           <div className={`px-3 py-3 border-t shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex gap-2">
+              <button onClick={startVoiceInput} disabled={helpLoading}
+                title="Voice input"
+                className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white text-base font-bold transition-all ${isListening ? 'animate-pulse' : ''}`}
+                style={{background: isListening ? '#7f1d1d' : '#dc2626'}}>
+                🎤
+              </button>
               <input
                 type="text"
                 value={helpInput}
                 onChange={e => setHelpInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendHelp()}
-                placeholder="Ask a question…"
+                placeholder={isListening ? 'Listening…' : 'Ask a question…'}
                 className={`flex-1 px-3 py-2 rounded-xl text-sm outline-none ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-700' : 'bg-gray-100 text-gray-800 placeholder-gray-400'}`}
               />
-              <button onClick={sendHelp} disabled={helpLoading}
+              <button onClick={() => sendHelp()} disabled={helpLoading}
                 className="px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
                 style={{background:'var(--gold)', color:'#1a1a1a'}}>
                 ➤
