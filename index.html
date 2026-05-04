@@ -2490,6 +2490,7 @@ LOGGING:
         localStorage.setItem('eyecon_ai_key', key);
       }
       const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+      const allJobs = editingJobs;
       const pendingCount = activeJobs.filter(j => {
         try { return !isJobFullyComplete(j); } catch(_) { return true; }
       }).length;
@@ -2498,7 +2499,25 @@ LOGGING:
       }).length;
       const wagesOwed = editingJobs.reduce((s, j) => s + (j.wageEntries || []).filter(w => !w.paid && w.status !== 'paid').reduce((a, w) => a + (w.amount || 0), 0), 0);
       const clockedIn = timeEntries.filter(e => !e.clockOut).length;
-      const liveData = `\n\nLIVE DATA: active jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in: ${clockedIn}, wages owed: £${wagesOwed.toFixed(2)}, staff: ${employees.length}, jobs: ${activeJobs.slice(0,8).map(j => j.jobName).join(', ')}`;
+      // Build per-staff summary
+      const staffSummary = employees.map(emp => {
+        const empJobs = allJobs.filter(j =>
+          j.photoAssignedTo === emp.id ||
+          (j.stages || []).some(s => s.assignedTo === emp.id)
+        );
+        const recentEntries = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked).sort((a,b) => new Date(b.clockIn||b.date||0) - new Date(a.clockIn||a.date||0)).slice(0,3);
+        const empWageOwed = allJobs.reduce((s,j) => s + (j.wageEntries||[]).filter(w => w.employeeId===emp.id && !w.paid && w.status!=='paid').reduce((a,w)=>a+(w.amount||0),0), 0);
+        const lastJob = empJobs.length ? empJobs[empJobs.length-1].jobName : 'none';
+        const assignedJobNames = empJobs.map(j=>j.jobName).join(', ') || 'none';
+        const recentStr = recentEntries.map(e=>`${e.hoursWorked?.toFixed(1)}h on ${e.jobId ? (allJobs.find(j=>j.id===e.jobId)?.jobName||e.jobId) : 'unknown'}`).join('; ') || 'no recent entries';
+        return `${emp.name} (${emp.role||'staff'}): assigned jobs: ${assignedJobNames}; last job: ${lastJob}; recent time: ${recentStr}; wages owed: £${empWageOwed.toFixed(2)}`;
+      }).join('\n  ');
+      const jobDetails = activeJobs.slice(0,20).map(j => {
+        const photoEmp = j.photoAssignedTo ? (employees.find(e=>e.id===j.photoAssignedTo)?.name||j.photoAssignedTo) : null;
+        const videoStaff = (j.stages||[]).map(s=>s.assignedTo ? (employees.find(e=>e.id===s.assignedTo)?.name||s.assignedTo) : null).filter(Boolean);
+        return `"${j.jobName}" [${j.jobType||'photo-video'}] date:${j.jobDate||'?'} status:${j.photoStatus||'?'}${photoEmp ? ` photo:${photoEmp}` : ''}${videoStaff.length ? ` video:${videoStaff.join(',')}` : ''}`;
+      }).join('\n  ');
+      const liveData = `\n\nLIVE DATA SNAPSHOT:\nActive jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in now: ${clockedIn}, total wages owed: £${wagesOwed.toFixed(2)}\n\nSTAFF (${employees.length} total):\n  ${staffSummary}\n\nJOB LIST (active):\n  ${jobDetails}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000);
       const res = await fetch('https://api.anthropic.com/v1/messages', {
