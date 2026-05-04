@@ -2453,10 +2453,13 @@ LOGGING:
     const fallbackMs = Math.max(4000, text.length * 65);
     const fallbackTimer = setTimeout(resetIdle, fallbackMs);
     utter.onend = () => { clearTimeout(fallbackTimer); resetIdle(); };
+    const words = text.split(/\s+/);
     utter.onboundary = (e) => {
       if (e.name === 'word' && e.charIndex != null) {
-        const upTo = text.substring(0, e.charIndex + (e.charLength || 1));
-        setVoiceSubtitle(upTo.length > 60 ? '…' + upTo.slice(-58) : upTo);
+        const spoken = text.substring(0, e.charIndex + (e.charLength || 1));
+        const spokenWords = spoken.trim().split(/\s+/);
+        const idx = spokenWords.length - 1;
+        setVoiceSubtitle(words.slice(Math.max(0, idx - 1), idx + 3).join(' '));
       }
     };
     const doSpeak = () => {
@@ -13172,7 +13175,7 @@ Eyecon Moments`);
     );
   }
 
-  if (currentView === 'reports' && currentUser?.isAdmin) {
+  if (currentView === 'reports' && (currentUser?.role === 'admin' || currentUser?.role === 'manager')) {
     // ── Week range helpers ──
     const getWeekStart = (offset) => {
       const d = new Date();
