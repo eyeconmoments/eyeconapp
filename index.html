@@ -396,7 +396,7 @@ function EyeconMoments() {
       clientPhone: '',
       eventType: 'wedding',
       numDays: 1,
-      dates: [{ date: '', startTime: '10:00', endTime: '22:00' }],
+      dates: [{ date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: true, video: true, numPhotographers: 1, videoType: 'dual' }],
       wantPhoto: true,
       wantVideo: true,
       numPhotographers: 1,
@@ -8959,7 +8959,7 @@ Eyecon Moments`);
                       clientPhone: inquiry.phone || '',
                       eventType: inquiry.eventType || 'wedding',
                       numDays: 1,
-                      dates: [{ date: inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0 }],
+                      dates: [{ date: inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: true, video: true, numPhotographers: 1, videoType: 'dual' }],
                       wantPhoto: true,
                       wantVideo: true,
                       numPhotographers: 1,
@@ -8993,8 +8993,12 @@ Eyecon Moments`);
               quoteData.dates.forEach((day, idx) => {
                 const s = new Date(`2025-01-01T${day.startTime}`), e = new Date(`2025-01-01T${day.endTime}`);
                 const h = (e - s) / (1000 * 60 * 60);
-                if (quoteData.wantVideo) { const c = h * 150; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography (${h}h × £150/hr)`, cost: c }); }
-                if (quoteData.wantPhoto) { const photoRate = quoteData.numPhotographers >= 2 ? 150 : 125; const c = h * photoRate; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${quoteData.numPhotographers >= 2 ? ` — ${quoteData.numPhotographers} photographers` : ''})`, cost: c }); }
+                const cdv = day.video ?? quoteData.wantVideo ?? true;
+                const cdp = day.photo ?? quoteData.wantPhoto ?? true;
+                const cdvt = day.videoType ?? quoteData.videoType ?? 'dual';
+                const cdnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
+                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr)`, cost: c }); }
+                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''})`, cost: c }); }
                 const dist = day.distance || 0;
                 if (dist > 0) { const c = calcMileage(dist); total += c; breakdown.push({ item: `Day ${idx+1} - Travel (${dist}mi × £0.45 × 2)`, cost: c }); }
               });
@@ -9006,9 +9010,11 @@ Eyecon Moments`);
             const finalTotal = crmServiceBase;
             const sendEmailAndMarkQuoted = () => {
               const firstName = (quoteData.clientName || '').split(' ')[0].split('&')[0].trim() || 'there';
-              const qType = quoteData.wantPhoto && quoteData.wantVideo ? 'Photography & Cinematography' : quoteData.wantPhoto ? 'Photography' : 'Cinematography';
+              const crmAnyPhoto = quoteData.dates.some(d => d.photo ?? quoteData.wantPhoto ?? true);
+              const crmAnyVideo = quoteData.dates.some(d => d.video ?? quoteData.wantVideo ?? true);
+              const qType = crmAnyPhoto && crmAnyVideo ? 'Photography & Cinematography' : crmAnyPhoto ? 'Photography' : 'Cinematography';
               const subject = encodeURIComponent(`${qType} Quote - Eyecon Moments`);
-              const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nI have attached the quote for your attention with a breakdown of the details for you to consider.\n\nIf you have any questions or would like to further discuss anything, please don't hesitate to contact. I look forward to hearing from you.\n\nKind Regards,\nEyecon Moments`);
+              const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use your name as the payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`);
               window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${subject}&body=${body}`;
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
               setShowCRMQuoteModal(false);
@@ -9043,30 +9049,13 @@ Eyecon Moments`);
                         <option value="walima">Walima</option><option value="event">Other Event</option>
                       </select></div>
 
-                    {/* Services */}
-                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Services Required</label>
-                      <div className="flex gap-6 mt-2">
-                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={quoteData.wantPhoto} onChange={e => setQuoteData({...quoteData, wantPhoto: e.target.checked})} className="w-4 h-4" /><span className={`text-sm ${dm ? 'text-gray-300' : ''}`}>📸 Photography</span></label>
-                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={quoteData.wantVideo} onChange={e => setQuoteData({...quoteData, wantVideo: e.target.checked})} className="w-4 h-4" /><span className={`text-sm ${dm ? 'text-gray-300' : ''}`}>🎥 Cinematography</span></label>
-                      </div></div>
-
-                    {/* Photographers */}
-                    {quoteData.wantPhoto && <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>No. of Photographers</label>
-                      <select value={quoteData.numPhotographers} onChange={e => setQuoteData({...quoteData, numPhotographers: parseInt(e.target.value)})} className={inp}>
-                        {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
-                      </select></div>}
-
-                    {quoteData.wantVideo && <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Video Coverage</label>
-                      <select value={quoteData.videoType || 'dual'} onChange={e => setQuoteData({...quoteData, videoType: e.target.value})} className={inp}>
-                        <option value="dual">Dual Videographer — £150/hr</option>
-                        <option value="single">Single Videographer — £125/hr</option>
-                      </select></div>}
 
                     {/* Number of days */}
                     <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Number of Days</label>
                       <select value={quoteData.numDays} onChange={e => {
                         const days = parseInt(e.target.value);
-                        const nd = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0 });
+                        const prevD = quoteData.dates[quoteData.dates.length - 1] || {};
+                        const nd = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: prevD.photo ?? quoteData.wantPhoto ?? true, video: prevD.video ?? quoteData.wantVideo ?? true, numPhotographers: prevD.numPhotographers ?? quoteData.numPhotographers ?? 1, videoType: prevD.videoType ?? quoteData.videoType ?? 'dual' });
                         setQuoteData({...quoteData, numDays: days, dates: nd});
                       }} className={inp}>
                         {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
@@ -9075,7 +9064,23 @@ Eyecon Moments`);
                     {/* Per-day details */}
                     {quoteData.dates.map((day, dayIdx) => (
                       <div key={dayIdx} className={`p-3 rounded-lg ${dm ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                        <p className={`font-semibold text-sm mb-3 ${dm ? 'text-white' : ''}`}>Day {dayIdx + 1}</p>
+                        <p className={`font-semibold text-sm mb-2 ${dm ? 'text-white' : ''}`}>Day {dayIdx + 1}</p>
+                        {/* Per-day services */}
+                        <div className="flex flex-wrap gap-3 mb-2">
+                          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={quoteData.dates[dayIdx]?.photo ?? quoteData.wantPhoto ?? true} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],photo:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} /><span className={`text-xs ${dm ? 'text-gray-300' : ''}`}>📸 Photo</span></label>
+                          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={quoteData.dates[dayIdx]?.video ?? quoteData.wantVideo ?? true} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],video:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} /><span className={`text-xs ${dm ? 'text-gray-300' : ''}`}>🎥 Video</span></label>
+                          {(quoteData.dates[dayIdx]?.photo ?? quoteData.wantPhoto ?? true) && (
+                            <select value={quoteData.dates[dayIdx]?.numPhotographers ?? quoteData.numPhotographers ?? 1} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],numPhotographers:parseInt(e.target.value)}; setQuoteData({...quoteData,dates:nd}); }} className={`px-2 py-0.5 border rounded text-xs ${dm ? 'bg-gray-600 border-gray-500 text-white' : ''}`}>
+                              {[1,2,3,4].map(n => <option key={n} value={n}>{n} photographer{n>1?'s':''}</option>)}
+                            </select>
+                          )}
+                          {(quoteData.dates[dayIdx]?.video ?? quoteData.wantVideo ?? true) && (
+                            <select value={quoteData.dates[dayIdx]?.videoType ?? quoteData.videoType ?? 'dual'} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],videoType:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={`px-2 py-0.5 border rounded text-xs ${dm ? 'bg-gray-600 border-gray-500 text-white' : ''}`}>
+                              <option value="dual">Dual — £150/hr</option>
+                              <option value="single">Single — £125/hr</option>
+                            </select>
+                          )}
+                        </div>
                         <div className="grid grid-cols-3 gap-2 mb-2">
                           <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Date</label>
                             <input type="date" value={day.date} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],date:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
@@ -11753,8 +11758,11 @@ Eyecon Moments`);
         const hours = (end - start) / (1000 * 60 * 60);
         
         // Staff costs at £13/hour
-        if (quoteData.wantVideo) costs += hours * 13;
-        if (quoteData.wantPhoto) costs += hours * quoteData.numPhotographers * 13;
+        const dv = day.video ?? quoteData.wantVideo ?? true;
+        const dp = day.photo ?? quoteData.wantPhoto ?? true;
+        const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
+        if (dv) costs += hours * 13;
+        if (dp) costs += hours * dnp * 13;
       });
       // Add travel costs (per day)
       quoteData.dates.forEach(day => {
@@ -11774,19 +11782,24 @@ Eyecon Moments`);
         const end = new Date(`2025-01-01T${day.endTime}`);
         const hours = (end - start) / (1000 * 60 * 60);
 
-        if (quoteData.wantVideo) {
-          const videoRate = quoteData.videoType === 'single' ? 125 : 150;
-          const videoLabel = quoteData.videoType === 'single' ? 'Single Videographer' : 'Dual Videographer';
+        const dayHasV = day.video ?? quoteData.wantVideo ?? true;
+        const dayHasP = day.photo ?? quoteData.wantPhoto ?? true;
+        const dayVType = day.videoType ?? quoteData.videoType ?? 'dual';
+        const dayNPhot = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
+
+        if (dayHasV) {
+          const videoRate = dayVType === 'single' ? 125 : 150;
+          const videoLabel = dayVType === 'single' ? 'Single Videographer' : 'Dual Videographer';
           const videoCost = hours * videoRate;
           serviceTotal += videoCost;
           breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr)`, cost: videoCost });
         }
 
-        if (quoteData.wantPhoto) {
-          const photoRate = quoteData.numPhotographers >= 2 ? 150 : 125;
+        if (dayHasP) {
+          const photoRate = dayNPhot >= 2 ? 150 : 125;
           const photoCost = hours * photoRate;
           serviceTotal += photoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${quoteData.numPhotographers >= 2 ? ` — ${quoteData.numPhotographers} photographers` : ''})`, cost: photoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''})`, cost: photoCost });
         }
       });
 
@@ -11825,8 +11838,9 @@ Eyecon Moments`);
     const profit = finalTotal - costs;
     const profitMargin = finalTotal > 0 ? ((profit / finalTotal) * 100).toFixed(1) : 0;
     
-    const quoteType = quoteData.wantPhoto && quoteData.wantVideo ? 'Photography & Cinematography' : 
-                      quoteData.wantPhoto ? 'Photography' : 'Cinematography';
+    const anyPhoto = quoteData.dates.some(d => d.photo ?? quoteData.wantPhoto ?? true);
+    const anyVideo = quoteData.dates.some(d => d.video ?? quoteData.wantVideo ?? true);
+    const quoteType = anyPhoto && anyVideo ? 'Photography & Cinematography' : anyPhoto ? 'Photography' : 'Cinematography';
     
     // Generate PDF
     const generatePDF = () => {
@@ -11914,7 +11928,8 @@ Eyecon Moments`);
       };
 
       const eventLabel = 'A   Q U O T E   F O R';
-      const hasPhoto = quoteData.wantPhoto, hasVideo = quoteData.wantVideo;
+      const hasPhoto = quoteData.dates.some(d => d.photo ?? quoteData.wantPhoto ?? true);
+      const hasVideo = quoteData.dates.some(d => d.video ?? quoteData.wantVideo ?? true);
       const typeSpaced = hasPhoto && hasVideo
         ? 'C I N E M A T O G R A P H Y   &   P H O T O G R A P H Y   Q U O T E'
         : hasPhoto ? 'P H O T O G R A P H Y   Q U O T E'
@@ -11969,9 +11984,13 @@ Eyecon Moments`);
       // Helper: render one day pricing block centred
       const renderDayPriceCentred = (day, idx, y) => {
         const h = getHrs(day);
+        const dv = day.video ?? quoteData.wantVideo ?? true;
+        const dp = day.photo ?? quoteData.wantPhoto ?? true;
+        const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
+        const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         ctu('DAY '+(idx+1), y, {size:11, style:'bold'}); y += 12;
-        if (hasVideo)  { ct('Videography: £'+(h*150).toFixed(2), y, {size:11}); y += 8; }
-        if (hasPhoto)  { const np=quoteData.numPhotographers||1; const pr=np>=2?150:125; ct('Photography: £'+(h*pr).toFixed(2), y, {size:11}); y += 8; }
+        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr).toFixed(2), y, {size:11}); y += 8; }
+        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr).toFixed(2), y, {size:11}); y += 8; }
         const dayDist = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist>0) { ct('Travel: £'+(dayDist*0.9).toFixed(2), y, {size:11}); y += 8; }
         return y + 10;
@@ -11989,10 +12008,14 @@ Eyecon Moments`);
         doc.setDrawColor(...BLACK); doc.setLineWidth(0.35);
         doc.line(lx, y+1.5, lx+lw, y+1.5);
         y += 11;
+        const dv2 = day.video ?? quoteData.wantVideo ?? true;
+        const dp2 = day.photo ?? quoteData.wantPhoto ?? true;
+        const dvt2 = day.videoType ?? quoteData.videoType ?? 'dual';
+        const dnp2 = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
         const lines = [];
-        if (hasVideo)  lines.push('Videography: £'+(h*150).toFixed(2));
-        if (hasPhoto)  { const np=quoteData.numPhotographers||1; const pr=np>=2?150:125; lines.push('Photography: £'+(h*pr).toFixed(2)); }
+        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2).toFixed(2)); }
+        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2).toFixed(2)); }
         const dayDist2 = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist2>0) lines.push('Travel: £'+(dayDist2*0.9).toFixed(2));
         lines.forEach(r => {
@@ -12059,7 +12082,7 @@ Eyecon Moments`);
       if (hasPhoto) {
         y = overflowCheck(y, 55); // heading + 3 items ≈ 50mm
         y += 8; ctu('Photography', y, {size:11, style:'bold'}); y += 11;
-        const np = quoteData.numPhotographers||1;
+        const np = Math.max(...quoteData.dates.map(d => d.numPhotographers ?? quoteData.numPhotographers ?? 1));
         [np+' Photographer'+(np>1?'s':''),'Unlimited photos','All photos are edited and returned digitally'
         ].forEach(item => { ct(item, y, {size:9.5}); y += 6.5; });
       }
@@ -12169,7 +12192,7 @@ Eyecon Moments`);
     const emailQuote = async () => {
       const firstName = (quoteData.clientName || '').split(' ')[0].split('&')[0].trim() || 'there';
       const subjectText = `${quoteType} Quote - Eyecon Moments`;
-      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nI have attached the quote for your attention with a breakdown of the details for you to consider.\n\nIf you have any questions or would like to further discuss anything, please don't hesitate to contact. I look forward to hearing from you.\n\nKind Regards,\nEyecon Moments`;
+      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use your name as the payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
         // On mobile, mailto: triggers the native mail app
@@ -12275,7 +12298,7 @@ Eyecon Moments`);
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
             <div className="flex justify-between items-center mb-4">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>💰 {quoteType} Quote Calculator</h2>
-              <button onClick={() => { if (window.confirm('Clear current quote and start fresh?')) { const blank = { clientName:'',clientEmail:'',clientPhone:'',eventType:'wedding',numDays:1,dates:[{date:'',startTime:'10:00',endTime:'22:00',location:'',postcode:'',distance:0}],wantPhoto:true,wantVideo:true,numPhotographers:1,numVideographers:1,videoType:'dual',location:'',postcode:'',distance:0,travelFee:0,notes:'',discount:0,adminPriceAdjustment:0,priceOverride:0 }; setQuoteData(blank); localStorage.removeItem('eyecon_quote_draft'); } }}
+              <button onClick={() => { if (window.confirm('Clear current quote and start fresh?')) { const blank = { clientName:'',clientEmail:'',clientPhone:'',eventType:'wedding',numDays:1,dates:[{date:'',startTime:'10:00',endTime:'22:00',location:'',postcode:'',distance:0,photo:true,video:true,numPhotographers:1,videoType:'dual'}],wantPhoto:true,wantVideo:true,numPhotographers:1,numVideographers:1,videoType:'dual',location:'',postcode:'',distance:0,travelFee:0,notes:'',discount:0,adminPriceAdjustment:0,priceOverride:0 }; setQuoteData(blank); localStorage.removeItem('eyecon_quote_draft'); } }}
                 className={`text-xs px-3 py-1 rounded-lg ${darkMode ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 🗑 New Quote
               </button>
@@ -12309,37 +12332,14 @@ Eyecon Moments`);
               </select>
             </div>
             
-            {/* Service Selection */}
-            <div className="mb-6">
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Services Required</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={quoteData.wantPhoto} onChange={(e) => setQuoteData({...quoteData, wantPhoto: e.target.checked})} className="w-5 h-5" />
-                  <span className={darkMode ? 'text-gray-300' : ''}>📸 Photography</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={quoteData.wantVideo} onChange={(e) => setQuoteData({...quoteData, wantVideo: e.target.checked})} className="w-5 h-5" />
-                  <span className={darkMode ? 'text-gray-300' : ''}>🎥 Cinematography</span>
-                </label>
-              </div>
-              {quoteData.wantVideo && (
-                <div className="mt-3">
-                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Videographer Coverage</label>
-                  <select value={quoteData.videoType || 'dual'} onChange={(e) => setQuoteData({...quoteData, videoType: e.target.value})}
-                    className={`px-3 py-1.5 border rounded-lg text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
-                    <option value="dual">Dual Videographer — £150/hr (default)</option>
-                    <option value="single">Single Videographer — £125/hr</option>
-                  </select>
-                </div>
-              )}
-            </div>
             
             {/* Number of Days */}
             <div className="mb-6">
               <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Number of Days</label>
               <select value={quoteData.numDays} onChange={(e) => {
                 const days = parseInt(e.target.value);
-                const newDates = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0 });
+                const prevDay = quoteData.dates[quoteData.dates.length - 1] || {};
+                const newDates = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: prevDay.photo ?? quoteData.wantPhoto ?? true, video: prevDay.video ?? quoteData.wantVideo ?? true, numPhotographers: prevDay.numPhotographers ?? quoteData.numPhotographers ?? 1, videoType: prevDay.videoType ?? quoteData.videoType ?? 'dual' });
                 setQuoteData({...quoteData, numDays: days, dates: newDates});
               }} className="w-full px-3 py-2 border rounded-lg">
                 {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
@@ -12350,6 +12350,44 @@ Eyecon Moments`);
             {quoteData.dates.map((day, dayIdx) => (
               <div key={dayIdx} className={`mb-4 p-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
                 <h4 className={`font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Day {dayIdx + 1}</h4>
+                {/* Per-day services */}
+                <div className="flex flex-wrap gap-4 mb-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4"
+                      checked={day.photo ?? quoteData.wantPhoto ?? true}
+                      onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],photo:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} />
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : ''}`}>📸 Photography</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4"
+                      checked={day.video ?? quoteData.wantVideo ?? true}
+                      onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],video:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} />
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : ''}`}>🎥 Cinematography</span>
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  {(day.photo ?? quoteData.wantPhoto ?? true) && (
+                    <div>
+                      <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>No. of Photographers</label>
+                      <select value={day.numPhotographers ?? quoteData.numPhotographers ?? 1}
+                        onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],numPhotographers:parseInt(e.target.value)}; setQuoteData({...quoteData,dates:nd}); }}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : ''}`}>
+                        {[1,2,3,4].map(n => <option key={n} value={n}>{n} photographer{n>1?'s':''}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {(day.video ?? quoteData.wantVideo ?? true) && (
+                    <div>
+                      <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Videographer Coverage</label>
+                      <select value={day.videoType ?? quoteData.videoType ?? 'dual'}
+                        onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],videoType:e.target.value}; setQuoteData({...quoteData,dates:nd}); }}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : ''}`}>
+                        <option value="dual">Dual — £150/hr</option>
+                        <option value="single">Single — £125/hr</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-4 mb-3">
                   <div>
                     <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Date</label>
