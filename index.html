@@ -409,7 +409,8 @@ function EyeconMoments() {
       notes: '',
       discount: 0,
       adminPriceAdjustment: 0,
-      priceOverride: 0
+      priceOverride: 0,
+      teamNotes: ''
     };
   });
   const [savedQuotes, setSavedQuotes] = useState(() => {
@@ -9013,10 +9014,20 @@ Eyecon Moments`);
               const crmAnyPhoto = quoteData.dates.some(d => d.photo ?? quoteData.wantPhoto ?? true);
               const crmAnyVideo = quoteData.dates.some(d => d.video ?? quoteData.wantVideo ?? true);
               const qType = crmAnyPhoto && crmAnyVideo ? 'Photography & Cinematography' : crmAnyPhoto ? 'Photography' : 'Cinematography';
+              const crmEventDateRaw = quoteData.dates[0]?.date;
+              const crmPayRef = crmEventDateRaw ? new Date(crmEventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
               const subject = encodeURIComponent(`${qType} Quote - Eyecon Moments`);
-              const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use your name as the payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`);
+              const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`);
               window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${subject}&body=${body}`;
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
+              if (quoteData.teamNotes) {
+                const existingInq = inquiries.find(i => i.id === crmQuoteInquiry.id);
+                const prevNotes = existingInq?.notes || '';
+                const newNotes = prevNotes ? prevNotes + '\n[Team note: ' + quoteData.teamNotes + ']' : '[Team note: ' + quoteData.teamNotes + ']';
+                db.from('inquiries').update({ notes: newNotes }).eq('id', crmQuoteInquiry.id).then(() => {
+                  setInquiries(prev => prev.map(i => i.id === crmQuoteInquiry.id ? { ...i, notes: newNotes } : i));
+                });
+              }
               setShowCRMQuoteModal(false);
               setCrmQuoteInquiry(null);
               alert('Gmail opened! Status updated to Quoted. Remember to attach the PDF.');
@@ -9099,8 +9110,13 @@ Eyecon Moments`);
                     ))}
 
                     {/* Notes */}
-                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Additional Notes</label>
+                    <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Additional Notes (client-facing)</label>
                       <textarea value={quoteData.notes} rows={2} onChange={e => setQuoteData({...quoteData, notes: e.target.value})} className={inp} /></div>
+
+                    {/* Team Notes */}
+                    <div className={`p-2 rounded ${dm ? 'bg-teal-900 border-teal-700' : 'bg-teal-50 border-teal-200'} border`}>
+                      <label className={`text-xs font-medium block mb-1 ${dm ? 'text-teal-300' : 'text-teal-800'}`}>🔒 Internal Team Notes — not sent to client</label>
+                      <textarea value={quoteData.teamNotes || ''} rows={3} placeholder="e.g. Client wants drone shots, has a tight budget, follow up before Friday…" onChange={e => setQuoteData({...quoteData, teamNotes: e.target.value})} className={`w-full px-2 py-1 border rounded text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'border-teal-200 placeholder-gray-400'}`} /></div>
 
                     {/* Discount */}
                     <div><label className={`text-xs font-medium ${dm ? 'text-gray-300' : 'text-gray-600'}`}>Discount (£)</label>
@@ -12192,7 +12208,9 @@ Eyecon Moments`);
     const emailQuote = async () => {
       const firstName = (quoteData.clientName || '').split(' ')[0].split('&')[0].trim() || 'there';
       const subjectText = `${quoteType} Quote - Eyecon Moments`;
-      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use your name as the payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
+      const eventDateRaw = quoteData.dates[0]?.date;
+      const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
+      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
         // On mobile, mailto: triggers the native mail app
@@ -12209,7 +12227,8 @@ Eyecon Moments`);
         const followUpDate = new Date();
         followUpDate.setDate(followUpDate.getDate() + 7);
         const dayCount = quoteData.dates.length;
-        const qNotes = `[Quote sent ${new Date().toLocaleDateString('en-GB')}] £${finalTotal.toFixed(2)} — ${quoteType}, ${dayCount} day${dayCount > 1 ? 's' : ''}. Follow up by ${followUpDate.toLocaleDateString('en-GB')}.`;
+        const teamNoteStr = quoteData.teamNotes ? ` | Team note: ${quoteData.teamNotes}` : '';
+        const qNotes = `[Quote sent ${new Date().toLocaleDateString('en-GB')}] £${finalTotal.toFixed(2)} — ${quoteType}, ${dayCount} day${dayCount > 1 ? 's' : ''}. Follow up by ${followUpDate.toLocaleDateString('en-GB')}.${teamNoteStr}`;
         const existing = inquiries.find(i => i.email?.toLowerCase() === quoteData.clientEmail.toLowerCase());
         if (existing) {
           const updatedNotes = existing.notes ? existing.notes + '\n' + qNotes : qNotes;
@@ -12298,7 +12317,7 @@ Eyecon Moments`);
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
             <div className="flex justify-between items-center mb-4">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>💰 {quoteType} Quote Calculator</h2>
-              <button onClick={() => { if (window.confirm('Clear current quote and start fresh?')) { const blank = { clientName:'',clientEmail:'',clientPhone:'',eventType:'wedding',numDays:1,dates:[{date:'',startTime:'10:00',endTime:'22:00',location:'',postcode:'',distance:0,photo:true,video:true,numPhotographers:1,videoType:'dual'}],wantPhoto:true,wantVideo:true,numPhotographers:1,numVideographers:1,videoType:'dual',location:'',postcode:'',distance:0,travelFee:0,notes:'',discount:0,adminPriceAdjustment:0,priceOverride:0 }; setQuoteData(blank); localStorage.removeItem('eyecon_quote_draft'); } }}
+              <button onClick={() => { if (window.confirm('Clear current quote and start fresh?')) { const blank = { clientName:'',clientEmail:'',clientPhone:'',eventType:'wedding',numDays:1,dates:[{date:'',startTime:'10:00',endTime:'22:00',location:'',postcode:'',distance:0,photo:true,video:true,numPhotographers:1,videoType:'dual'}],wantPhoto:true,wantVideo:true,numPhotographers:1,numVideographers:1,videoType:'dual',location:'',postcode:'',distance:0,travelFee:0,notes:'',discount:0,adminPriceAdjustment:0,priceOverride:0,teamNotes:'' }; setQuoteData(blank); localStorage.removeItem('eyecon_quote_draft'); } }}
                 className={`text-xs px-3 py-1 rounded-lg ${darkMode ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 🗑 New Quote
               </button>
@@ -12440,10 +12459,18 @@ Eyecon Moments`);
             ))}
             
             {/* Notes */}
-            <div className="mb-6">
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Additional Notes</label>
+            <div className="mb-4">
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Additional Notes (client-facing)</label>
               <textarea value={quoteData.notes} onChange={(e) => setQuoteData({...quoteData, notes: e.target.value})}
                 className="w-full px-3 py-2 border rounded-lg" rows={2} placeholder="Any special requirements..." />
+            </div>
+
+            {/* Team Notes */}
+            <div className={`p-3 rounded-lg border ${darkMode ? 'bg-teal-900 border-teal-700' : 'bg-teal-50 border-teal-200'}`}>
+              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-teal-300' : 'text-teal-800'}`}>🔒 Internal Team Notes — not sent to client</label>
+              <textarea value={quoteData.teamNotes || ''} onChange={(e) => setQuoteData({...quoteData, teamNotes: e.target.value})}
+                rows={3} placeholder="e.g. Client wants drone shots, has a tight budget, follow up before Friday…"
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'border-teal-200 placeholder-gray-400'}`} />
             </div>
           </div>
           
