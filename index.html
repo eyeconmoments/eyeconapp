@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Eyecon">
+    <meta name="theme-color" content="#1a2535">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon.svg">
     <title>Eyecon Moments - Complete</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" onerror="document.body.innerHTML='<h2 style=color:red>Supabase failed to load</h2>'"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -123,6 +128,13 @@
         box-shadow: 0 2px 8px rgba(193,167,106,0.4);
       }
     </style>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
 </head>
 <body>
     <div id="root"></div>
@@ -689,6 +701,7 @@ function EyeconMoments() {
         setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, role: 'admin' } : e));
       }
       setCurrentUser(resolvedUser);
+      if (Notification.permission === 'default') Notification.requestPermission();
       setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : 'employee-dashboard');
       if (resolvedUser.role === 'admin') setShowRundownModal(true);
       if (resolvedUser.role !== 'admin') {
@@ -933,6 +946,26 @@ function EyeconMoments() {
     const videoDone = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
     return photoDone && videoDone;
   };
+  const checkDeadlineNotifications = React.useCallback(() => {
+    if (Notification.permission !== 'granted') return;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const key = 'eyecon_notif_sent_' + today.toISOString().slice(0,10);
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+    editingJobs.forEach(job => {
+      if (archivedJobIds.includes(job.id) || isJobFullyComplete(job)) return;
+      const days = getDaysUntilDeadline(job.deadline);
+      if (days === 0) new Notification('Eyecon Moments – Due Today', { body: `"${job.title}" is due today.`, icon: '/icon.svg' });
+      else if (days === 1) new Notification('Eyecon Moments – Due Tomorrow', { body: `"${job.title}" is due tomorrow.`, icon: '/icon.svg' });
+      else if (days < 0) new Notification('Eyecon Moments – Overdue', { body: `"${job.title}" is ${Math.abs(days)} day(s) overdue.`, icon: '/icon.svg' });
+    });
+  }, [editingJobs, archivedJobIds]);
+
+  React.useEffect(() => {
+    if (!currentUser) return;
+    checkDeadlineNotifications();
+  }, [currentUser, checkDeadlineNotifications]);
+
   const getOverdueJobs = () => editingJobs.filter(job => getDaysUntilDeadline(job.deadline) < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job));
   const getDueSoonJobs = () => editingJobs.filter(job => {
     const days = getDaysUntilDeadline(job.deadline);
