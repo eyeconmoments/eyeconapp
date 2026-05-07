@@ -9,15 +9,18 @@
     <meta name="theme-color" content="#1a2535">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon.svg">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <title>Eyecon Moments - Complete</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" onerror="document.body.innerHTML='<h2 style=color:red>Supabase failed to load</h2>'"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script src="https://accounts.google.com/gsi/client"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
       /* Prevent pull-to-refresh */
@@ -137,7 +140,47 @@
     </script>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="em-splash" style="position:fixed;inset:0;background:#1a2535;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;font-family:sans-serif;">
+        <svg width="72" height="72" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style="margin-bottom:20px">
+          <rect width="512" height="512" rx="80" fill="#1a2535"/>
+          <rect x="96" y="176" width="320" height="224" rx="28" fill="none" stroke="#C1A76A" stroke-width="22"/>
+          <path d="M186 176 l28-44 h84 l28 44z" fill="#C1A76A" opacity="0.85"/>
+          <circle cx="256" cy="292" r="72" fill="none" stroke="#C1A76A" stroke-width="18"/>
+          <circle cx="256" cy="292" r="40" fill="#C1A76A" opacity="0.3"/>
+          <circle cx="256" cy="292" r="18" fill="#C1A76A"/>
+          <circle cx="384" cy="220" r="16" fill="#C1A76A" opacity="0.7"/>
+        </svg>
+        <div style="color:#C1A76A;font-size:22px;font-weight:600;letter-spacing:2px;margin-bottom:6px">EYECON MOMENTS</div>
+        <div style="color:#8a9bb0;font-size:12px;letter-spacing:3px">MOMENTS FOR LIFE</div>
+        <div style="margin-top:32px;width:40px;height:3px;border-radius:2px;background:#2d3f55;overflow:hidden">
+          <div style="height:100%;background:#C1A76A;animation:em-bar 1.4s ease-in-out infinite" id="em-bar"></div>
+        </div>
+      </div>
+      <style>#em-bar{animation:em-bar 1.4s ease-in-out infinite}@keyframes em-bar{0%{width:0%;margin-left:0}50%{width:100%;margin-left:0}100%{width:0%;margin-left:100%}}</style>
+    </div>
+    <script>
+      // Lazy-load jsPDF — only fetched when a PDF is first generated
+      window._loadJsPDF = () => new Promise((res, rej) => {
+        if (window.jspdf) { res(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+      // Lazy-load Google APIs — only fetched when calendar sync is opened
+      window._loadGoogleAPIs = () => new Promise(res => {
+        if (window.gapi && window.google?.accounts?.oauth2) { res(); return; }
+        let done = 0;
+        const check = () => { if (++done === 2) res(); };
+        const s1 = document.createElement('script');
+        s1.src = 'https://apis.google.com/js/api.js'; s1.onload = check;
+        document.head.appendChild(s1);
+        const s2 = document.createElement('script');
+        s2.src = 'https://accounts.google.com/gsi/client'; s2.onload = check;
+        document.head.appendChild(s2);
+      });
+    </script>
     <script type="text/babel">
 const { createClient } = supabase;
 const db = createClient('https://wgqamqzlfnjcqyprphkw.supabase.co', 'sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE');
@@ -1727,7 +1770,8 @@ function EyeconMoments() {
   const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
   const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
 
-  const initGoogleCalendar = () => {
+  const initGoogleCalendar = async () => {
+    await window._loadGoogleAPIs();
     window.gapi.load('client', () => {
       window.gapi.client.init({
         apiKey: GOOGLE_API_KEY,
@@ -1738,7 +1782,8 @@ function EyeconMoments() {
     });
   };
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
+    await window._loadGoogleAPIs();
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
@@ -2082,9 +2127,6 @@ function EyeconMoments() {
     setGCalSyncing(false);
   };
 
-  useEffect(() => {
-    initGoogleCalendar();
-  }, []);
 
   useEffect(() => {
     if (isGoogleSignedIn) {
@@ -5960,7 +6002,8 @@ LOGGING:
     };
     
     // EYECON_LOGO moved to component scope above
-    const generateItineraryPDF = (job, returnBlob = false) => {
+    const generateItineraryPDF = async (job, returnBlob = false) => {
+      await window._loadJsPDF();
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       const itinerary = initItinerary(job);
@@ -11859,8 +11902,8 @@ Eyecon Moments`);
     const quoteType = anyPhoto && anyVideo ? 'Photography & Cinematography' : anyPhoto ? 'Photography' : 'Cinematography';
     
     // Generate PDF
-    const generatePDF = () => {
-      if (!window.jspdf) { alert('PDF library not loaded — please refresh the page and try again.'); return; }
+    const generatePDF = async () => {
+      await window._loadJsPDF();
       try {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF('p', 'mm', 'a4');
@@ -12940,7 +12983,8 @@ Eyecon Moments`);
       setRevisionScanPreview(null);
     };
 
-    const downloadRevisionPDF = (rev) => {
+    const downloadRevisionPDF = async (rev) => {
+      await window._loadJsPDF();
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       const W = 210; const margin = 15; let y = 20;
@@ -13682,6 +13726,8 @@ class ErrorBoundary extends React.Component {
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<ErrorBoundary><EyeconMoments /></ErrorBoundary>);
+const _splash = document.getElementById('em-splash');
+if (_splash) _splash.style.display = 'none';
     </script>
 </body>
 </html>
