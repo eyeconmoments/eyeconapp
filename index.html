@@ -740,7 +740,7 @@ function EyeconMoments() {
         setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, role: 'admin' } : e));
       }
       setCurrentUser(resolvedUser);
-      if (Notification.permission === 'default') Notification.requestPermission();
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
       setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : 'employee-dashboard');
       if (resolvedUser.role === 'admin') setShowRundownModal(true);
       if (resolvedUser.role !== 'admin') {
@@ -985,8 +985,18 @@ function EyeconMoments() {
     const videoDone = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
     return photoDone && videoDone;
   };
+  const showNotification = (title, body) => {
+    try {
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(reg => reg.showNotification(title, { body, icon: '/icon.svg' })).catch(() => {});
+      } else {
+        new Notification(title, { body, icon: '/icon.svg' });
+      }
+    } catch(e) {}
+  };
+
   const checkDeadlineNotifications = React.useCallback(() => {
-    if (Notification.permission !== 'granted') return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const today = new Date(); today.setHours(0,0,0,0);
     const key = 'eyecon_notif_sent_' + today.toISOString().slice(0,10);
     if (sessionStorage.getItem(key)) return;
@@ -994,9 +1004,9 @@ function EyeconMoments() {
     editingJobs.forEach(job => {
       if (archivedJobIds.includes(job.id) || isJobFullyComplete(job)) return;
       const days = getDaysUntilDeadline(job.deadline);
-      if (days === 0) new Notification('Eyecon Moments – Due Today', { body: `"${job.title}" is due today.`, icon: '/icon.svg' });
-      else if (days === 1) new Notification('Eyecon Moments – Due Tomorrow', { body: `"${job.title}" is due tomorrow.`, icon: '/icon.svg' });
-      else if (days < 0) new Notification('Eyecon Moments – Overdue', { body: `"${job.title}" is ${Math.abs(days)} day(s) overdue.`, icon: '/icon.svg' });
+      if (days === 0) showNotification('Eyecon Moments – Due Today', `"${job.title}" is due today.`);
+      else if (days === 1) showNotification('Eyecon Moments – Due Tomorrow', `"${job.title}" is due tomorrow.`);
+      else if (days < 0) showNotification('Eyecon Moments – Overdue', `"${job.title}" is ${Math.abs(days)} day(s) overdue.`);
     });
   }, [editingJobs, archivedJobIds]);
 
