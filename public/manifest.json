@@ -1,7 +1,7 @@
 {
-  "name": "Eyecon Moments",
-  "short_name": "Eyecon",
-  "description": "Eyecon Moments – photography & videography job management",
+  "name": "Eyecon Moments — Business Management",
+  "short_name": "Eyecon Moments",
+  "description": "Eyecon Moments – photography & videography business management",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -9,9 +9,9 @@
   "theme_color": "#1a2535",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/logo.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
