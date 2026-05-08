@@ -5725,9 +5725,16 @@ LOGGING:
                         <div>
                           <p className="font-bold text-lg">{job.jobName}</p>
                           <p className="text-sm opacity-90">{job.customerName}</p>
-                          <span className="inline-block mt-1 text-xs font-semibold bg-white bg-opacity-30 px-2 py-0.5 rounded-full">
-                            {job.jobType === 'video' ? '🎬 Video' : job.jobType === 'photo' ? '📷 Photo' : '📷🎬 Photo & Video'}
-                          </span>
+                          <button
+                            onClick={() => {
+                              const next = job.jobType === 'photo-video' ? 'video' : job.jobType === 'video' ? 'photo' : 'photo-video';
+                              updateJobType(job.id, next);
+                            }}
+                            className="inline-block mt-1 text-xs font-semibold bg-white bg-opacity-30 hover:bg-opacity-50 active:bg-opacity-60 px-2 py-0.5 rounded-full cursor-pointer"
+                            title="Tap to change type"
+                          >
+                            {job.jobType === 'video' ? '🎬 Video' : job.jobType === 'photo' ? '📷 Photo' : '📷🎬 Photo & Video'} ✎
+                          </button>
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-2xl">{daysOverdue}</p>
