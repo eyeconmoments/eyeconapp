@@ -9381,7 +9381,7 @@ Eyecon Moments`);
                     ✅ Followed up on {new Date(inquiry.followUpDate).toLocaleDateString()}
                   </p>
                 )}
-                {inquiry.status === 'contacted' && (
+                {(inquiry.status === 'contacted' || inquiry.status === 'quoted' || inquiry.status === 'booked') && (
                   <button onClick={() => {
                     setQuoteData({
                       clientName: inquiry.customerName,
@@ -9400,7 +9400,7 @@ Eyecon Moments`);
                     setCrmQuoteInquiry(inquiry);
                     setShowCRMQuoteModal(true);
                   }} className="mt-3 w-full bg-indigo-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-indigo-600">
-                    💰 Create Quote
+                    {inquiry.status === 'contacted' ? '💰 Create Quote' : '🔄 Requote'}
                   </button>
                 )}
               </div>
