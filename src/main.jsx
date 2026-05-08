@@ -3,6 +3,16 @@ import ReactDOM from 'react-dom/client'
 import { createClient } from '@supabase/supabase-js'
 import './index.css'
 
+// Google API scripts are loaded via <script> tags in index.html.
+// This helper waits until window.gapi and window.google are available.
+window._loadGoogleAPIs = () => new Promise((resolve) => {
+  const check = () => {
+    if (window.gapi && window.google) { resolve(); }
+    else { setTimeout(check, 50); }
+  };
+  check();
+});
+
 const db = createClient('https://wgqamqzlfnjcqyprphkw.supabase.co', 'sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE');
 
 // DB helpers - convert snake_case rows to camelCase app objects
