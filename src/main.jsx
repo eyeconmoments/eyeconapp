@@ -569,6 +569,21 @@ function EyeconMoments() {
         }
         if (sugRes.data) setPostSuggestions(sugRes.data.map(rowToSuggestion));
         if (gearRes.data) setGearChecklists(gearRes.data);
+
+        // Auto-login: if this device has a saved user, skip the login screen
+        try {
+          const savedId = localStorage.getItem('eyecon_saved_user');
+          if (savedId) {
+            const saved = (empRes.data || []).find(e => String(e.id) === savedId);
+            if (saved) {
+              const resolvedUser = saved.username?.toLowerCase() === 'sam' ? { ...saved, role: 'admin' } : saved;
+              setCurrentUser(resolvedUser);
+              setCurrentView(resolvedUser.role === 'admin' || resolvedUser.role === 'manager' ? 'dashboard' : 'employee-dashboard');
+            } else {
+              localStorage.removeItem('eyecon_saved_user');
+            }
+          }
+        } catch(_) {}
       } catch(e) {
         console.error('DB load error:', e);
         setEmployees(FALLBACK_EMPLOYEES);
@@ -591,6 +606,7 @@ function EyeconMoments() {
         setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, role: 'admin' } : e));
       }
       setCurrentUser(resolvedUser);
+      try { localStorage.setItem('eyecon_saved_user', String(resolvedUser.id)); } catch(_) {}
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(subscribeToPush, 1000); }).catch(() => {});
       } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -2297,6 +2313,7 @@ function EyeconMoments() {
           <button
             onClick={() => {
               setCurrentUser(null);
+              try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {}
               setShowEmergencyContactModal(false);
               setCurrentView('login');
             }}
@@ -3118,7 +3135,7 @@ LOGGING:
               <div className="flex items-center gap-2">
                 <button onClick={() => setHelpOpen(true)} title="Help" className={`w-9 h-9 rounded-lg text-sm font-bold ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-yellow-600 hover:bg-gray-200'}`}>?</button>
                 <button onClick={refreshJobs} title="Refresh data" className={`px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>🔄</button>
-                <button onClick={() => { setCurrentUser(null); setCurrentView('login'); }} className={`px-4 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                <button onClick={() => { setCurrentUser(null); try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }} className={`px-4 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>
                   <LogOut /> Logout
                 </button>
               </div>
@@ -4216,7 +4233,7 @@ LOGGING:
                 style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
-              <button onClick={() => { setCurrentUser(null); setCurrentView('login'); }}
+              <button onClick={() => { setCurrentUser(null); try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium"
                 style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
                 Logout
