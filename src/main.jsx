@@ -308,6 +308,8 @@ function EyeconMoments() {
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
   const [wagesPeriodFilter, setWagesPeriodFilter] = useState('all');
   const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
+  const [showClockInPrompt, setShowClockInPrompt] = useState(false);
+  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
   const [showSendFeedbackModal, setShowSendFeedbackModal] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
   const [showRundownModal, setShowRundownModal] = useState(false);
@@ -576,6 +578,29 @@ function EyeconMoments() {
       }
       setCurrentUser(resolvedUser);
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+
+      // Auto clock-out: close any open entry left past 7pm
+      const openEntry = timeEntries.find(e => e.employeeId === resolvedUser.id && !e.clockOut);
+      if (openEntry) {
+        const now = new Date();
+        const clockInDate = new Date(openEntry.clockIn);
+        const sevenPm = new Date(clockInDate); sevenPm.setHours(19, 0, 0, 0);
+        const isToday = clockInDate.toDateString() === now.toDateString();
+        if (!isToday || now >= sevenPm) {
+          const autoOut = new Date(clockInDate); autoOut.setHours(19, 0, 0, 0);
+          const hours = Math.round(((autoOut - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
+          await db.from('time_entries').update({ clock_out: autoOut.toISOString(), hours_worked: hours }).eq('id', openEntry.id);
+          setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: autoOut, hoursWorked: hours } : e));
+          setAutoClockOutInfo({
+            date: autoOut.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+            hoursWorked: hours
+          });
+        }
+      }
+
+      // Show clock-in prompt for non-admin staff
+      if (resolvedUser.role !== 'admin') setShowClockInPrompt(true);
+
       setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : 'employee-dashboard');
       if (resolvedUser.role === 'admin') setShowRundownModal(true);
       if (resolvedUser.role !== 'admin') {
@@ -2766,6 +2791,62 @@ LOGGING:
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
         {/* Feedback Popup */}
+        {/* Clock-in prompt + auto clock-out notice */}
+        {(showClockInPrompt || autoClockOutInfo) && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+            <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
+              {autoClockOutInfo && (
+                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">⏰</span>
+                    <div>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
+                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                      </p>
+                      <p className="text-xs mt-1" style={{color:'#6a7d90'}}>Check your hours tab if this doesn't look right.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {showClockInPrompt && (
+                <div className="p-5">
+                  <div className="text-center mb-5">
+                    <div className="text-3xl mb-2">👋</div>
+                    <h3 className="font-semibold text-lg text-white">Welcome back, {currentUser?.name?.split(' ')[0]}!</h3>
+                    <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>Are you starting work right now?</p>
+                  </div>
+                  <button
+                    onClick={async () => { setShowClockInPrompt(false); setAutoClockOutInfo(null); await handleClockIn(null); }}
+                    className="w-full py-3 rounded-xl font-semibold text-sm mb-2"
+                    style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}
+                  >
+                    ✅ Clock In Now
+                  </button>
+                  <button
+                    onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); }}
+                    className="w-full py-2.5 rounded-xl text-sm transition-colors"
+                    style={{color:'#8a9bb0'}}
+                  >
+                    Skip for now
+                  </button>
+                </div>
+              )}
+              {!showClockInPrompt && autoClockOutInfo && (
+                <div className="p-4">
+                  <button
+                    onClick={() => setAutoClockOutInfo(null)}
+                    className="w-full py-2.5 rounded-xl text-sm"
+                    style={{color:'#8a9bb0'}}
+                  >
+                    Got it
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {showFeedbackPopup && (() => {
           const unread = (employees.find(e => e.id === currentUser.id)?.feedback || []).filter(f => !f.acknowledgedAt);
           return (
