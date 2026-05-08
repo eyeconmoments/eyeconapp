@@ -4413,6 +4413,84 @@ LOGGING:
         {helpModalJSX}
         {NavBar()}
 
+        {/* Clock-in prompt for admin */}
+        {(showClockInPrompt || autoClockOutInfo) && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+            <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
+              {autoClockOutInfo && (
+                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">⏰</span>
+                    <div>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
+                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {showClockInPrompt && (() => {
+                const _ciJobs = getUserAssignedJobs(currentUser?.id);
+                return (
+                  <div className="p-6">
+                    <div className="text-center mb-5">
+                      <div className="text-4xl mb-2">👋</div>
+                      <h3 className="font-bold text-xl text-white">Welcome back, {currentUser?.name?.split(' ')[0]}!</h3>
+                      <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>What are you clocking into?</p>
+                    </div>
+                    <div className="space-y-3">
+                      <select
+                        value={clockInPickingJob || ''}
+                        onChange={e => { setClockInPickingJob(e.target.value); setClockInGeneralDesc(''); }}
+                        className="w-full px-4 py-3.5 rounded-xl text-sm font-semibold"
+                        style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.35)', color:'white', outline:'none', appearance:'auto'}}
+                      >
+                        <option value="" style={{background:'#1a2535'}}>— Select a job —</option>
+                        {_ciJobs.map(job => (
+                          <option key={job.id} value={String(job.id)} style={{background:'#1a2535'}}>
+                            {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
+                          </option>
+                        ))}
+                        <option value="general" style={{background:'#1a2535'}}>🔧 General / No specific job</option>
+                      </select>
+                      {clockInPickingJob === 'general' && (
+                        <input type="text" placeholder="What are you doing? (required)"
+                          value={clockInGeneralDesc} onChange={e => setClockInGeneralDesc(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl text-sm text-white"
+                          style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} autoFocus />
+                      )}
+                      <button
+                        disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
+                        onClick={async () => {
+                          const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
+                          const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
+                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                          await handleClockIn(jobId, desc);
+                        }}
+                        className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
+                        style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535',
+                          opacity:(!clockInPickingJob||(clockInPickingJob==='general'&&!clockInGeneralDesc.trim()))?0.4:1,
+                          cursor:(!clockInPickingJob||(clockInPickingJob==='general'&&!clockInGeneralDesc.trim()))?'not-allowed':'pointer'}}>
+                        🟢 Clock In
+                      </button>
+                      <button onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                        className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                        Skip for now
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+              {!showClockInPrompt && autoClockOutInfo && (
+                <div className="p-4">
+                  <button onClick={() => setAutoClockOutInfo(null)} className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>Got it</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Daily / Weekly Rundown Modal */}
         {showRundownModal && (
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
