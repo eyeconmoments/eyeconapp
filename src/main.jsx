@@ -310,6 +310,7 @@ function EyeconMoments() {
   const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
   const [showClockInPrompt, setShowClockInPrompt] = useState(false);
   const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
+  const [clockInPickingJob, setClockInPickingJob] = useState(false);
   const [showSendFeedbackModal, setShowSendFeedbackModal] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
   const [showRundownModal, setShowRundownModal] = useState(false);
@@ -2809,7 +2810,7 @@ LOGGING:
                   </div>
                 </div>
               )}
-              {showClockInPrompt && (
+              {showClockInPrompt && !clockInPickingJob && (
                 <div className="p-5">
                   <div className="text-center mb-5">
                     <div className="text-3xl mb-2">👋</div>
@@ -2817,18 +2818,51 @@ LOGGING:
                     <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>Are you starting work right now?</p>
                   </div>
                   <button
-                    onClick={async () => { setShowClockInPrompt(false); setAutoClockOutInfo(null); await handleClockIn(null); }}
+                    onClick={() => setClockInPickingJob(true)}
                     className="w-full py-3 rounded-xl font-semibold text-sm mb-2"
                     style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}
                   >
                     ✅ Clock In Now
                   </button>
                   <button
-                    onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); }}
-                    className="w-full py-2.5 rounded-xl text-sm transition-colors"
+                    onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); }}
+                    className="w-full py-2.5 rounded-xl text-sm"
                     style={{color:'#8a9bb0'}}
                   >
                     Skip for now
+                  </button>
+                </div>
+              )}
+              {showClockInPrompt && clockInPickingJob && (
+                <div className="p-5">
+                  <h3 className="font-semibold text-base text-white mb-1">What are you working on?</h3>
+                  <p className="text-xs mb-4" style={{color:'#8a9bb0'}}>Select a job or choose general work</p>
+                  <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
+                    {getUserAssignedJobs(currentUser?.id).map(job => (
+                      <button
+                        key={job.id}
+                        onClick={async () => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); await handleClockIn(job.id); }}
+                        className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-white transition-colors"
+                        style={{background:'rgba(193,167,106,0.1)', border:'1px solid rgba(193,167,106,0.2)'}}
+                      >
+                        📋 {job.jobName}
+                        {job.customerName && <span className="block text-xs mt-0.5" style={{color:'#8a9bb0'}}>{job.customerName}</span>}
+                      </button>
+                    ))}
+                    <button
+                      onClick={async () => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); await handleClockIn(null); }}
+                      className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors"
+                      style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'#8a9bb0'}}
+                    >
+                      🔧 General Work
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setClockInPickingJob(false)}
+                    className="w-full py-2 text-xs"
+                    style={{color:'#6a7d90'}}
+                  >
+                    ← Back
                   </button>
                 </div>
               )}
