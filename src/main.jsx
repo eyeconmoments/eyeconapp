@@ -329,6 +329,7 @@ function EyeconMoments() {
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [showAIJobModal, setShowAIJobModal] = useState(false);
   const [showManualJobModal, setShowManualJobModal] = useState(false);
+  const [showProfitAnalysis, setShowProfitAnalysis] = useState(false);
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
   const [extractedJobData, setExtractedJobData] = useState(null);
@@ -12232,7 +12233,8 @@ Eyecon Moments`);
         const dv = day.video ?? quoteData.wantVideo ?? true;
         const dp = day.photo ?? quoteData.wantPhoto ?? true;
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
-        if (dv) costs += hours * 13;
+        const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
+        if (dv) costs += hours * 13 * (dvt === 'dual' ? 2 : 1);
         if (dp) costs += hours * dnp * 13;
       });
       // Add travel costs (per day)
@@ -13033,23 +13035,34 @@ Eyecon Moments`);
               })()}
             </div>
             
-            {/* Profit Calculator (Admin Only View) */}
-            <div className={`p-3 mt-4 ${darkMode ? 'bg-blue-900' : 'bg-blue-50'} rounded-lg`}>
-              <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>📊 Profit Analysis (Admin View)</p>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Est. Costs</p>
-                  <p className="font-bold text-red-600">£{costs.toFixed(2)}</p>
+            {/* Profit Calculator (Admin Only View) — hidden by default */}
+            <div className="mt-4">
+              <button
+                onClick={() => setShowProfitAnalysis(p => !p)}
+                className={`w-full py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-between ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+              >
+                <span>📊 Profit Analysis</span>
+                <span>{showProfitAnalysis ? '🙈 Hide' : '👁 Show'}</span>
+              </button>
+              {showProfitAnalysis && (
+                <div className={`p-3 mt-2 ${darkMode ? 'bg-blue-900' : 'bg-blue-50'} rounded-lg`}>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Est. Costs</p>
+                      <p className="font-bold text-red-600">£{costs.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Profit</p>
+                      <p className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>£{profit.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Margin</p>
+                      <p className={`font-bold ${Number(profitMargin) >= 40 ? 'text-green-600' : Number(profitMargin) >= 20 ? 'text-yellow-600' : 'text-red-600'}`}>{profitMargin}%</p>
+                    </div>
+                  </div>
+                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Costs = staff at £13/hr (dual video counts 2 people) + travel</p>
                 </div>
-                <div>
-                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Profit</p>
-                  <p className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>£{profit.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Margin</p>
-                  <p className={`font-bold ${profitMargin >= 40 ? 'text-green-600' : profitMargin >= 20 ? 'text-yellow-600' : 'text-red-600'}`}>{profitMargin}%</p>
-                </div>
-              </div>
+              )}
             </div>
             
             <div className="grid grid-cols-3 gap-3 mt-6">
