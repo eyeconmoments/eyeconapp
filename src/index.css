@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+      /* Prevent pull-to-refresh */
+      html {
+        overscroll-behavior-y: none;
+        height: 100%;
+      }
+      body {
+        overscroll-behavior-y: none;
+        min-height: 100%;
+        -webkit-overflow-scrolling: touch;
+      }
+      #root {
+        min-height: 100%;
+      }
+
+      .nav-scroll-container {
+        display: flex;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        scroll-snap-type: none !important;
+        scroll-behavior: auto !important;
+        overscroll-behavior: none !important;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+        touch-action: pan-x !important;
+        will-change: scroll-position;
+      }
+      .nav-scroll-container::-webkit-scrollbar {
+        display: none;
+      }
+      .nav-scroll-container > * {
+        touch-action: manipulation;
+        flex-shrink: 0;
+      }
+      .nav-no-snap {
+        overflow-x: scroll !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        scroll-snap-type: none !important;
+        scroll-behavior: auto;
+        overscroll-behavior-x: contain;
+      }
+      .nav-no-snap::-webkit-scrollbar {
+        height: 6px;
+      }
+      .nav-no-snap::-webkit-scrollbar-thumb {
+        background: #cbd5e0;
+        border-radius: 3px;
+      }
+      .nav-no-snap > * {
+        scroll-snap-align: none !important;
+      }
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Mobile-friendly tap targets */
+      @media (max-width: 640px) {
+        button { min-height: 40px; }
+        input, select, textarea { font-size: 16px !important; }
+      }
+
+      /* Tailwind JIT timing failsafe — pre-define critical layout classes so
+         they work on cached second loads before Tailwind's scanner fires */
+      .min-h-screen { min-height: 100vh; min-height: 100dvh; }
+      .flex { display: flex; }
+      .flex-col { flex-direction: column; }
+      .hidden { display: none !important; }
+      .w-full { width: 100%; }
+      .h-full { height: 100%; }
+      .items-center { align-items: center; }
+      .justify-center { justify-content: center; }
+      .fixed { position: fixed; }
+      .relative { position: relative; }
+      .absolute { position: absolute; }
+      .inset-0 { inset: 0; }
+      .overflow-hidden { overflow: hidden; }
+      .overflow-auto { overflow: auto; }
+      .overflow-y-auto { overflow-y: auto; }
+
+      /* Brand colours */
+      :root {
+        --gold: #C1A76A;
+        --gold-light: #D4BC86;
+        --gold-dark: #A8904F;
+        --dark: #111827;
+        --dark-card: #1F2937;
+      }
+
+      /* Premium font */
+      body { font-family: 'Montserrat', sans-serif; }
+
+      /* Gold gradient utility */
+      .gold-gradient { background: linear-gradient(135deg, #C1A76A 0%, #D4BC86 50%, #A8904F 100%); }
+      .dark-gradient { background: linear-gradient(135deg, #111827 0%, #1F2937 100%); }
+
+      /* Premium card */
+      .card-premium {
+        border-radius: 16px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+        transition: box-shadow 0.2s;
+      }
+      .card-premium:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+
+      /* Gold button */
+      .btn-gold {
+        background: linear-gradient(135deg, #C1A76A, #A8904F);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        transition: opacity 0.2s, transform 0.1s;
+      }
+      .btn-gold:active { opacity: 0.85; transform: scale(0.98); }
+
+      /* Nav tab active gold */
+      .nav-tab-active {
+        background: linear-gradient(135deg, #C1A76A, #A8904F) !important;
+        color: #fff !important;
+        box-shadow: 0 2px 8px rgba(193,167,106,0.4);
+      }
