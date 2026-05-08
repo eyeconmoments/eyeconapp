@@ -312,6 +312,7 @@ function EyeconMoments() {
   const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
   const [clockInPickingJob, setClockInPickingJob] = useState(false);
   const [clockInGeneralDesc, setClockInGeneralDesc] = useState('');
+  const [clockOutBannerDismissed, setClockOutBannerDismissed] = useState(false);
   const [showSendFeedbackModal, setShowSendFeedbackModal] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
   const [showRundownModal, setShowRundownModal] = useState(false);
@@ -2793,6 +2794,30 @@ LOGGING:
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
         {/* Feedback Popup */}
+        {/* 6:30pm clock-out reminder banner */}
+        {(() => {
+          if (!currentUser || clockOutBannerDismissed) return null;
+          const active = getUserActiveTimeEntry(currentUser.id);
+          if (!active) return null;
+          const h = currentTime.getHours(), m = currentTime.getMinutes();
+          if (h < 18 || (h === 18 && m < 30)) return null;
+          return (
+            <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 gap-3" style={{background:'linear-gradient(135deg,#7c2d12,#dc2626)'}}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-lg flex-shrink-0">⏰</span>
+                <span className="text-white text-sm font-medium truncate">You're still clocked in — time to wrap up!</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={async () => { setClockOutBannerDismissed(true); await handleClockOut(active.id); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap" style={{background:'white', color:'#dc2626'}}>
+                  Clock Out
+                </button>
+                <button onClick={() => setClockOutBannerDismissed(true)} className="text-white text-xl opacity-70 leading-none">×</button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Clock-in prompt + auto clock-out notice */}
         {(showClockInPrompt || autoClockOutInfo) && (
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
@@ -3567,6 +3592,45 @@ LOGGING:
           )}
 
         </div>
+
+        {/* Weekly timesheet */}
+        {currentView === 'employee-dashboard' && (() => {
+          const now = new Date();
+          const weekStart = new Date(now);
+          weekStart.setHours(0,0,0,0);
+          weekStart.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
+          const myEntries = timeEntries.filter(e => e.employeeId === currentUser.id && new Date(e.clockIn) >= weekStart);
+          if (myEntries.length === 0) return null;
+          const byJob = {};
+          myEntries.forEach(e => {
+            const key = e.jobId || '__general__';
+            const hrs = e.hoursWorked || (e.clockOut ? (new Date(e.clockOut) - new Date(e.clockIn)) / 3600000 : (currentTime - new Date(e.clockIn)) / 3600000);
+            if (!byJob[key]) byJob[key] = { label: e.jobId ? getJobName(e.jobId) : (e.description || 'General Work'), hours: 0 };
+            byJob[key].hours += hrs;
+          });
+          const totalHours = Object.values(byJob).reduce((s, j) => s + j.hours, 0);
+          return (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4 mx-4 mb-4`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📊 This Week's Hours</h3>
+                <span className={`text-sm font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{totalHours.toFixed(1)}h total</span>
+              </div>
+              <div className="space-y-2">
+                {Object.values(byJob).sort((a, b) => b.hours - a.hours).map((job, i) => (
+                  <div key={i} className={`flex items-center justify-between py-2 border-b last:border-0 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                    <span className={`text-sm truncate mr-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{job.label}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="w-20 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                        <div className="h-full rounded-full" style={{width:`${Math.min(100,(job.hours/totalHours)*100)}%`, background:'#C1A76A'}} />
+                      </div>
+                      <span className={`text-sm font-semibold w-10 text-right ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.hours.toFixed(1)}h</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── My Itineraries — jobs explicitly shared with this employee ── */}
         {currentView === 'employee-dashboard' && (() => {
@@ -5539,6 +5603,65 @@ LOGGING:
                   })}
                 </div>
                 <button onClick={() => setCurrentView('crm')} className="text-sm text-red-700 font-semibold">Go to CRM →</button>
+              </div>
+            );
+          })()}
+
+          {/* Outstanding payments */}
+          {(() => {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const awaitingDeposit = inquiries.filter(i => {
+              if (i.status !== 'quoted') return false;
+              const since = new Date(i.quotedDate || i.submittedDate);
+              return Math.floor((currentTime - since) / 86400000) >= 7;
+            });
+            const awaitingBalance = inquiries.filter(i => {
+              if (i.status !== 'booked') return false;
+              return i.eventDate && new Date(i.eventDate) < today;
+            });
+            if (awaitingDeposit.length === 0 && awaitingBalance.length === 0) return null;
+            return (
+              <div className={`${darkMode ? 'bg-yellow-900 border-yellow-700' : 'bg-yellow-50 border-yellow-400'} border-2 rounded-lg p-4`}>
+                <h3 className={`font-bold mb-3 ${darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>💰 Outstanding Payments ({awaitingDeposit.length + awaitingBalance.length})</h3>
+                {awaitingDeposit.length > 0 && (
+                  <div className="mb-3">
+                    <p className={`text-xs font-semibold mb-2 uppercase tracking-wide ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Awaiting Deposit</p>
+                    <div className="space-y-1.5">
+                      {awaitingDeposit.map(inq => {
+                        const days = Math.floor((currentTime - new Date(inq.quotedDate || inq.submittedDate)) / 86400000);
+                        return (
+                          <div key={inq.id} className={`flex justify-between items-center p-2 rounded-lg ${darkMode ? 'bg-yellow-800' : 'bg-white'} border ${darkMode ? 'border-yellow-700' : 'border-yellow-200'}`}>
+                            <div>
+                              <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inq.customerName}</p>
+                              <p className={`text-xs ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Quoted {days} day{days !== 1 ? 's' : ''} ago · {inq.eventType}</p>
+                            </div>
+                            <button onClick={() => setCurrentView('crm')} className="text-xs bg-yellow-500 text-white px-2 py-1 rounded font-semibold">View</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {awaitingBalance.length > 0 && (
+                  <div>
+                    <p className={`text-xs font-semibold mb-2 uppercase tracking-wide ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Awaiting Balance</p>
+                    <div className="space-y-1.5">
+                      {awaitingBalance.map(inq => {
+                        const daysAgo = Math.floor((currentTime - new Date(inq.eventDate)) / 86400000);
+                        return (
+                          <div key={inq.id} className={`flex justify-between items-center p-2 rounded-lg ${darkMode ? 'bg-yellow-800' : 'bg-white'} border ${darkMode ? 'border-yellow-700' : 'border-yellow-200'}`}>
+                            <div>
+                              <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inq.customerName}</p>
+                              <p className={`text-xs ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Event was {daysAgo} day{daysAgo !== 1 ? 's' : ''} ago · {inq.eventType}</p>
+                            </div>
+                            <button onClick={() => setCurrentView('crm')} className="text-xs bg-yellow-500 text-white px-2 py-1 rounded font-semibold">View</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <button onClick={() => setCurrentView('crm')} className={`mt-3 text-sm font-semibold ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Go to CRM →</button>
               </div>
             );
           })()}
