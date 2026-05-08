@@ -580,6 +580,11 @@ function EyeconMoments() {
               setCurrentUser(resolvedUser);
               setCurrentView(resolvedUser.role === 'admin' || resolvedUser.role === 'manager' ? 'dashboard' : 'employee-dashboard');
               setShowClockInPrompt(true);
+              if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(() => subscribeToPush(resolvedUser.id), 1000); }).catch(() => {});
+              } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                setTimeout(() => subscribeToPush(resolvedUser.id), 1000);
+              }
             } else {
               localStorage.removeItem('eyecon_saved_user');
             }
@@ -609,9 +614,9 @@ function EyeconMoments() {
       setCurrentUser(resolvedUser);
       try { localStorage.setItem('eyecon_saved_user', String(resolvedUser.id)); } catch(_) {}
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(subscribeToPush, 1000); }).catch(() => {});
+        Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(() => subscribeToPush(resolvedUser.id), 1000); }).catch(() => {});
       } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        setTimeout(subscribeToPush, 1000);
+        setTimeout(() => subscribeToPush(resolvedUser.id), 1000);
       }
 
       // Auto clock-out: close any open entry left past 7pm
@@ -1780,7 +1785,7 @@ function EyeconMoments() {
 
   // ── Google Drive Upload ────────────────────────────────────────────────────
   // ── Web Push ─────────────────────────────────────────────────────────────
-  const subscribeToPush = async () => {
+  const subscribeToPush = async (userId) => {
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
       if (Notification.permission !== 'granted') return;
@@ -1793,8 +1798,10 @@ function EyeconMoments() {
         });
       }
       setPushSubscription(sub);
+      const uid = userId ?? currentUser?.id;
+      if (!uid) return;
       await db.from('push_subscriptions').upsert(
-        [{ employee_id: currentUser?.id, subscription: sub.toJSON() }],
+        [{ employee_id: uid, subscription: sub.toJSON() }],
         { onConflict: 'employee_id' }
       );
     } catch (_) {}
