@@ -983,6 +983,28 @@ function EyeconMoments() {
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [currentUser, checkClockReminder]);
 
+  // Admin-side background sweep: clock out any staff still active past 7 PM
+  React.useEffect(() => {
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
+    const sweep = async () => {
+      const now = new Date();
+      if (now.getHours() < 19) return; // before 7 PM — nothing to do
+      const openEntries = timeEntries.filter(e => !e.clockOut);
+      if (!openEntries.length) return;
+      await Promise.allSettled(openEntries.map(async entry => {
+        const clockInDate = new Date(entry.clockIn);
+        const sevenPm = new Date(clockInDate); sevenPm.setHours(19, 0, 0, 0);
+        if (now < sevenPm) return; // clocked in after 7 PM today — leave open
+        const hours = Math.round(((sevenPm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
+        await db.from('time_entries').update({ clock_out: sevenPm.toISOString(), hours_worked: hours }).eq('id', entry.id);
+        setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: sevenPm, hoursWorked: hours } : e));
+      }));
+    };
+    sweep();
+    const interval = setInterval(sweep, 60 * 1000); // re-check every minute
+    return () => clearInterval(interval);
+  }, [currentUser, timeEntries]);
+
   const getOverdueJobs = () => editingJobs.filter(job => getDaysUntilDeadline(job.deadline) < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job));
   const getDueSoonJobs = () => editingJobs.filter(job => {
     const days = getDaysUntilDeadline(job.deadline);
