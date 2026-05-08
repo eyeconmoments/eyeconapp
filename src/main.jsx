@@ -330,6 +330,7 @@ function EyeconMoments() {
   const [showAIJobModal, setShowAIJobModal] = useState(false);
   const [showManualJobModal, setShowManualJobModal] = useState(false);
   const [showProfitAnalysis, setShowProfitAnalysis] = useState(false);
+  const [showKeyboardInput, setShowKeyboardInput] = useState(false);
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
   const [extractedJobData, setExtractedJobData] = useState(null);
@@ -2652,7 +2653,7 @@ LOGGING:
       clearTimeout(timeoutId);
       if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
       const data = await res.json();
-      const text = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
+      const text = (data.content || []).find(b => b.type === 'text')?.text || "Sorry, I couldn't get a response.";
       setVoiceResponse(text);
       speakText(text);
     } catch(e) {
@@ -2772,22 +2773,37 @@ LOGGING:
           <div className="px-3 py-1.5 rounded-xl text-xs text-red-300 bg-gray-900 w-full">{voiceResponse}</div>
         )}
         <div className="flex items-center gap-2 w-full">
-          <input
-            type="text"
-            value={voiceInput}
-            onChange={e => setVoiceInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && voiceInput.trim() && voiceState === 'idle') { sendVoiceQuery(voiceInput.trim()); setVoiceInput(''); } }}
-            placeholder="Ask anything…"
-            className={`px-3 py-2.5 rounded-full text-sm outline-none shadow-md flex-1 ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-600' : 'bg-white text-gray-800 placeholder-gray-400 border border-gray-200'}`}
-            style={{minWidth:0}}
-          />
-          {voiceInput.trim() && voiceState === 'idle' && (
-            <button onClick={() => { sendVoiceQuery(voiceInput.trim()); setVoiceInput(''); }}
-              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold"
-              style={{background:'var(--gold)', color:'#1a1a1a'}}>
-              ➤
-            </button>
+          {/* Keyboard toggle */}
+          <button
+            onClick={() => setShowKeyboardInput(v => !v)}
+            title={showKeyboardInput ? 'Hide keyboard' : 'Type a message'}
+            className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-lg transition-all ${showKeyboardInput ? 'bg-gold' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}
+            style={showKeyboardInput ? {background:'var(--gold)', color:'#1a1a1a'} : {}}>
+            ⌨️
+          </button>
+          {/* Text input — visible only when keyboard is toggled on */}
+          {showKeyboardInput && (
+            <>
+              <input
+                type="text"
+                value={voiceInput}
+                onChange={e => setVoiceInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && voiceInput.trim() && voiceState === 'idle') { sendVoiceQuery(voiceInput.trim()); setVoiceInput(''); } }}
+                placeholder="Ask anything…"
+                autoFocus
+                className={`px-3 py-2.5 rounded-full text-sm outline-none shadow-md flex-1 ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500 border border-gray-600' : 'bg-white text-gray-800 placeholder-gray-400 border border-gray-200'}`}
+                style={{minWidth:0}}
+              />
+              {voiceInput.trim() && voiceState === 'idle' && (
+                <button onClick={() => { sendVoiceQuery(voiceInput.trim()); setVoiceInput(''); }}
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold"
+                  style={{background:'var(--gold)', color:'#1a1a1a'}}>
+                  ➤
+                </button>
+              )}
+            </>
           )}
+          {/* Mic button */}
           <button
             onClick={voiceState === 'speaking' ? () => { window.speechSynthesis.cancel(); setVoiceState('idle'); setVoiceSubtitle(''); } : undefined}
             onMouseDown={voiceState !== 'speaking' ? handleVoicePressStart : undefined}
