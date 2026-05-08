@@ -2829,74 +2829,72 @@ LOGGING:
                   </div>
                 </div>
               )}
-              {showClockInPrompt && !clockInPickingJob && (
-                <div className="p-5">
-                  <div className="text-center mb-5">
-                    <div className="text-3xl mb-2">👋</div>
-                    <h3 className="font-semibold text-lg text-white">Welcome back, {currentUser?.name?.split(' ')[0]}!</h3>
-                    <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>Are you starting work right now?</p>
-                  </div>
-                  <button
-                    onClick={() => setClockInPickingJob(true)}
-                    className="w-full py-3 rounded-xl font-semibold text-sm mb-2"
-                    style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}
-                  >
-                    ✅ Clock In Now
-                  </button>
-                  <button
-                    onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); }}
-                    className="w-full py-2.5 rounded-xl text-sm"
-                    style={{color:'#8a9bb0'}}
-                  >
-                    Skip for now
-                  </button>
-                </div>
-              )}
-              {showClockInPrompt && clockInPickingJob && (
-                <div className="p-5">
-                  <h3 className="font-semibold text-base text-white mb-1">What are you working on?</h3>
-                  <p className="text-xs mb-4" style={{color:'#8a9bb0'}}>Select a job or choose general work</p>
-                  <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
-                    {getUserAssignedJobs(currentUser?.id).map(job => (
-                      <button
-                        key={job.id}
-                        onClick={async () => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); await handleClockIn(job.id); }}
-                        className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-white transition-colors"
-                        style={{background:'rgba(193,167,106,0.1)', border:'1px solid rgba(193,167,106,0.2)'}}
+              {showClockInPrompt && (() => {
+                const _ciJobs = getUserAssignedJobs(currentUser?.id);
+                const _ciIsGeneral = clockInGeneralDesc !== undefined && _ciJobs.length > 0
+                  ? false : false; // computed below per select value
+                return (
+                  <div className="p-6">
+                    <div className="text-center mb-5">
+                      <div className="text-4xl mb-2">👋</div>
+                      <h3 className="font-bold text-xl text-white">Welcome back, {currentUser?.name?.split(' ')[0]}!</h3>
+                      <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>What are you clocking into?</p>
+                    </div>
+                    <div className="space-y-3">
+                      <select
+                        value={clockInPickingJob || ''}
+                        onChange={e => { setClockInPickingJob(e.target.value); setClockInGeneralDesc(''); }}
+                        className="w-full px-4 py-3.5 rounded-xl text-sm font-semibold"
+                        style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.35)', color:'white', outline:'none', appearance:'auto'}}
                       >
-                        📋 {job.jobName}
-                        {job.customerName && <span className="block text-xs mt-0.5" style={{color:'#8a9bb0'}}>{job.customerName}</span>}
+                        <option value="" style={{background:'#1a2535'}}>— Select a job —</option>
+                        {_ciJobs.map(job => (
+                          <option key={job.id} value={String(job.id)} style={{background:'#1a2535'}}>
+                            {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
+                          </option>
+                        ))}
+                        <option value="general" style={{background:'#1a2535'}}>🔧 General / No specific job</option>
+                      </select>
+                      {clockInPickingJob === 'general' && (
+                        <input
+                          type="text"
+                          placeholder="What are you doing? (required)"
+                          value={clockInGeneralDesc}
+                          onChange={e => setClockInGeneralDesc(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl text-sm text-white"
+                          style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}}
+                          autoFocus
+                        />
+                      )}
+                      <button
+                        disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
+                        onClick={async () => {
+                          const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
+                          const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
+                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                          await handleClockIn(jobId, desc);
+                        }}
+                        className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
+                        style={{
+                          background: 'linear-gradient(135deg,#C1A76A,#e8d4a0)',
+                          color: '#1a2535',
+                          opacity: (!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())) ? 0.4 : 1,
+                          cursor: (!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())) ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        🟢 Clock In
                       </button>
-                    ))}
-                    <div style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'12px'}} className="p-3">
-                      <p className="text-sm font-medium mb-2" style={{color:'#8a9bb0'}}>🔧 General Work</p>
-                      <input
-                        type="text"
-                        placeholder="What are you working on? (required)"
-                        value={clockInGeneralDesc}
-                        onChange={e => setClockInGeneralDesc(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg text-sm text-white mb-2"
-                        style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}}
-                      />
                       <button
-                        disabled={!clockInGeneralDesc.trim()}
-                        onClick={async () => { const d = clockInGeneralDesc.trim(); setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); await handleClockIn(null, d); }}
-                        className="w-full py-2 rounded-lg text-sm font-semibold transition-opacity"
-                        style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535', opacity: clockInGeneralDesc.trim() ? 1 : 0.4, cursor: clockInGeneralDesc.trim() ? 'pointer' : 'not-allowed'}}
+                        onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                        className="w-full py-2.5 rounded-xl text-sm"
+                        style={{color:'#8a9bb0'}}
                       >
-                        Clock In
+                        Skip for now
                       </button>
                     </div>
                   </div>
-                  <button
-                    onClick={() => { setClockInPickingJob(false); setClockInGeneralDesc(''); }}
-                    className="w-full py-2 text-xs"
-                    style={{color:'#6a7d90'}}
-                  >
-                    ← Back
-                  </button>
-                </div>
-              )}
+                );
+              })()}
               {!showClockInPrompt && autoClockOutInfo && (
                 <div className="p-4">
                   <button
