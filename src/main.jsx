@@ -1780,57 +1780,36 @@ function EyeconMoments() {
     if (!job) return;
     setDriveUploading(true);
     try {
-      let token = window.gapi?.client?.getToken()?.access_token;
-      if (!token || !isDriveSignedIn) token = await requestDriveToken();
+      const fileBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      const folderName = `Eyecon — ${job.jobName}`;
-      const folderId = await getOrCreateDriveFolder(folderName, token);
-
-      const meta = { name: file.name, parents: [folderId] };
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
-      form.append('file', file);
-
-      const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+      const res = await fetch('/.netlify/functions/upload-drive', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileBase64 }),
       });
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json();
-        throw new Error(err.error?.message || 'Upload failed');
-      }
-      const { id: fileId } = await uploadRes.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
 
-      // Make anyone with the link a viewer
-      await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'reader', type: 'anyone' })
-      });
-
-      // Fetch the shareable web link
-      const infoRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=webViewLink`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const { webViewLink } = await infoRes.json();
-
-      // Persist Drive entry inside job.fileLocations
       const driveEntry = {
         type: 'drive_project_file',
         fileName: file.name,
-        driveFileId: fileId,
-        driveLink: webViewLink,
+        driveFileId: data.driveFileId,
+        driveLink: data.driveLink,
         uploadedAt: new Date().toISOString(),
-        uploadedBy: currentUser.name
+        uploadedBy: currentUser.name,
       };
       const newFileLocations = [...(job.fileLocations || []), driveEntry];
       await db.from('jobs').update({ file_locations: newFileLocations }).eq('id', jobId);
       setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, fileLocations: newFileLocations } : j));
       setDriveUploadModal(null);
-      alert(`✅ "${file.name}" uploaded to Google Drive!\n\n${webViewLink}`);
+      alert(`✅ "${file.name}" uploaded to Google Drive!\n\n${data.driveLink}`);
     } catch (e) {
-      if (e.message !== 'popup_closed_by_user') alert('Upload failed: ' + e.message);
+      alert('Upload failed: ' + e.message);
     } finally {
       setDriveUploading(false);
     }
@@ -7231,11 +7210,6 @@ Capturing Your Special Day
                       className={`w-full text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'} file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600 cursor-pointer`} />
                     <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>e.g. .prproj, .aep, .ppro — avg ~400 KB</p>
                   </div>
-                  {!isDriveSignedIn && (
-                    <div className={`rounded-lg p-3 text-xs ${darkMode ? 'bg-yellow-900 border border-yellow-700 text-yellow-300' : 'bg-yellow-50 border border-yellow-200 text-yellow-700'}`}>
-                      ⚠️ You'll be asked to sign in with Google to authorise Drive access. Sign in with the business Google account so files go to the right Drive.
-                    </div>
-                  )}
                   <div className="flex gap-3 pt-1">
                     <button onClick={() => setDriveUploadModal(null)}
                       className={`flex-1 py-2 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
@@ -7319,11 +7293,6 @@ Capturing Your Special Day
                       }} />
                   </div>
                   <p id="pf-filename" className="text-xs text-center text-green-600 font-medium hidden"></p>
-                  {!isDriveSignedIn && (
-                    <div className={`rounded-lg p-3 text-xs ${darkMode ? 'bg-yellow-900 border border-yellow-700 text-yellow-300' : 'bg-yellow-50 border border-yellow-200 text-yellow-700'}`}>
-                      ⚠️ You'll be asked to sign in with the business Google account to authorise Drive access.
-                    </div>
-                  )}
                   <div className="flex gap-3">
                     <button onClick={() => setProjectFileModal(null)}
                       className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
