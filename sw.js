@@ -1,6 +1,6 @@
-const CACHE_NAME = 'eyecon-v2';
+const CACHE_NAME = 'eyecon-v3';
 
-// CDN scripts to pre-cache on first install
+// CDN scripts to pre-cache on first install (versioned URLs only — no JIT generators)
 const PRECACHE = [
   '/',
   '/index.html',
@@ -10,15 +10,14 @@ const PRECACHE = [
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
-  'https://cdn.tailwindcss.com',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
 ];
 
-// Hosts we cache (CDN scripts that never change once versioned)
+// Hosts we cache — Tailwind CDN excluded: it's an unversioned JIT engine
+// that must go through the browser's native HTTP cache to behave correctly.
 const CACHE_HOSTS = new Set([
   'cdn.jsdelivr.net',
   'unpkg.com',
-  'cdn.tailwindcss.com',
   'cdnjs.cloudflare.com',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
@@ -27,9 +26,7 @@ const CACHE_HOSTS = new Set([
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
-      // Cache same-origin assets reliably
       await cache.addAll(['/', '/index.html', '/manifest.json', '/icon.svg']);
-      // Cache CDN scripts — use cors mode so responses aren't opaque
       await Promise.allSettled(
         PRECACHE.filter(u => u.startsWith('http')).map(async url => {
           try {
@@ -57,10 +54,10 @@ self.addEventListener('fetch', event => {
   const isSameOrigin = url.origin === self.location.origin;
   const isCDN = CACHE_HOSTS.has(url.hostname);
 
-  if (!isSameOrigin && !isCDN) return; // ignore analytics, auth pings, etc.
+  if (!isSameOrigin && !isCDN) return; // Tailwind, analytics, auth pings pass through
 
   if (isCDN) {
-    // Cache-first: CDN scripts are pinned to a version — serve instantly, no network wait
+    // Cache-first: versioned CDN scripts never change — serve instantly
     event.respondWith(
       caches.match(event.request).then(cached => {
         if (cached) return cached;
