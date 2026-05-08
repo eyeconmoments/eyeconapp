@@ -4176,11 +4176,11 @@ LOGGING:
           </div>
           {isNavAdmin ? (
             <div className="space-y-1">
-              <div className="grid grid-cols-8 gap-1">{adminTabs.slice(0, 8).map(renderTabBtn)}</div>
-              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(8).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(0, 7).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(7).map(renderTabBtn)}</div>
             </div>
           ) : (
-            <div className="grid grid-cols-7 gap-1">{tabs.map(renderTabBtn)}</div>
+            <div className="grid grid-cols-8 gap-1">{tabs.map(renderTabBtn)}</div>
           )}
         </div>
       </div>
