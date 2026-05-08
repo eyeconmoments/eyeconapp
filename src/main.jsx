@@ -579,6 +579,7 @@ function EyeconMoments() {
               const resolvedUser = saved.username?.toLowerCase() === 'sam' ? { ...saved, role: 'admin' } : saved;
               setCurrentUser(resolvedUser);
               setCurrentView(resolvedUser.role === 'admin' || resolvedUser.role === 'manager' ? 'dashboard' : 'employee-dashboard');
+              setShowClockInPrompt(true);
             } else {
               localStorage.removeItem('eyecon_saved_user');
             }
