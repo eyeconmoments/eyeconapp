@@ -237,6 +237,7 @@ function EyeconMoments() {
   const [liveItineraryJob, setLiveItineraryJob] = useState(null); // jobId for live itinerary view
   const [isDriveSignedIn, setIsDriveSignedIn] = useState(false);
   const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
+  const [projectFileModal, setProjectFileModal] = useState(null); // { jobId, jobName } — upload project file after video complete
   const [driveUploading, setDriveUploading] = useState(false);
   const [generalClockInModal, setGeneralClockInModal] = useState(null); // { description: '' }
   const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
@@ -1360,6 +1361,11 @@ function EyeconMoments() {
 
     setStageFileModal(null);
     setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' });
+
+    // Prompt for project file upload when all video editing is done
+    if (!isPhoto && videoDoneNow) {
+      setProjectFileModal({ jobId, jobName: job.jobName });
+    }
   };
 
   const saveEmployeeNote = async (text) => {
@@ -7250,6 +7256,97 @@ Capturing Your Special Day
           );
         })()}
 
+        {/* Project File Upload Modal — triggered when video editing reaches 100% */}
+        {projectFileModal && (() => {
+          let _pfDragOver = false;
+          const _pfJob = editingJobs.find(j => j.id === projectFileModal.jobId);
+          const _pfExisting = (_pfJob?.fileLocations || []).filter(f => f.type === 'drive_project_file');
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl w-full max-w-md`}>
+                <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🎉 Video Editing Complete!</h2>
+                      <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{projectFileModal.jobName}</p>
+                    </div>
+                    <button onClick={() => setProjectFileModal(null)} className={`text-2xl leading-none ml-3 mt-0.5 ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}>✕</button>
+                  </div>
+                  <p className={`text-sm mt-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload the project file to Google Drive so the team can access it anytime.</p>
+                </div>
+                <div className="p-5 space-y-4">
+                  {_pfExisting.length > 0 && (
+                    <div className={`rounded-lg p-3 ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>✅ Already on Drive:</p>
+                      {_pfExisting.map((f, i) => (
+                        <a key={i} href={f.driveLink} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-xs text-blue-500 hover:underline mt-0.5">
+                          <span>📄</span><span className="truncate">{f.fileName}</span><span>↗</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div
+                    id="pf-dropzone"
+                    onDragOver={e => { e.preventDefault(); document.getElementById('pf-dropzone').style.borderColor = '#C1A76A'; }}
+                    onDragLeave={() => { document.getElementById('pf-dropzone').style.borderColor = ''; }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      document.getElementById('pf-dropzone').style.borderColor = '';
+                      const f = e.dataTransfer.files[0];
+                      if (f) {
+                        const inp = document.getElementById('pf-file-input');
+                        const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files;
+                        document.getElementById('pf-filename').textContent = `${f.name}  (${(f.size / 1024).toFixed(0)} KB)`;
+                        document.getElementById('pf-filename').style.display = 'block';
+                      }
+                    }}
+                    onClick={() => document.getElementById('pf-file-input').click()}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${darkMode ? 'border-gray-600 hover:border-gold' : 'border-gray-300 hover:border-yellow-500'}`}
+                    style={{transition:'border-color 0.2s'}}>
+                    <div className="text-3xl mb-2">📂</div>
+                    <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drag & drop project file here</p>
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>or click to browse</p>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>.prproj · .drp · .aep · .fcpbundle · .ppro</p>
+                    <input type="file" id="pf-file-input" className="hidden"
+                      accept=".prproj,.drp,.aep,.fcpbundle,.ppro,.xml"
+                      onChange={e => {
+                        const f = e.target.files[0];
+                        if (f) {
+                          document.getElementById('pf-filename').textContent = `${f.name}  (${(f.size / 1024).toFixed(0)} KB)`;
+                          document.getElementById('pf-filename').style.display = 'block';
+                        }
+                      }} />
+                  </div>
+                  <p id="pf-filename" className="text-xs text-center text-green-600 font-medium hidden"></p>
+                  {!isDriveSignedIn && (
+                    <div className={`rounded-lg p-3 text-xs ${darkMode ? 'bg-yellow-900 border border-yellow-700 text-yellow-300' : 'bg-yellow-50 border border-yellow-200 text-yellow-700'}`}>
+                      ⚠️ You'll be asked to sign in with the business Google account to authorise Drive access.
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <button onClick={() => setProjectFileModal(null)}
+                      className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      Skip for now
+                    </button>
+                    <button
+                      disabled={driveUploading}
+                      onClick={async () => {
+                        const file = document.getElementById('pf-file-input')?.files[0];
+                        if (!file) { alert('Please choose or drag a file first.'); return; }
+                        await uploadToDrive(projectFileModal.jobId, file);
+                        setProjectFileModal(null);
+                      }}
+                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${driveUploading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                      {driveUploading ? '⏳ Uploading…' : '☁️ Upload to Drive'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Manual Time Entry Override Modal */}
         {/* ── General Clock In Modal ── */}
         {generalClockInModal && (
@@ -8230,6 +8327,24 @@ Capturing Your Special Day
               return (
                 <div key={job.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow ${isArchived ? 'opacity-60' : ''}`}>
                   <div className="p-4">
+                    {(() => {
+                      const _topDriveFiles = (job.fileLocations || []).filter(f => f.type === 'drive_project_file');
+                      if (_topDriveFiles.length === 0) return null;
+                      return (
+                        <div className={`flex items-center gap-2 mb-2 p-2 rounded-lg ${darkMode ? 'bg-blue-900 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
+                          <span className="text-sm">☁️</span>
+                          <span className={`text-xs font-semibold flex-1 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>Project file on Drive</span>
+                          {_topDriveFiles.map((f, i) => (
+                            <a key={i} href={f.driveLink} target="_blank" rel="noopener noreferrer"
+                              className="text-xs font-bold px-2.5 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 whitespace-nowrap">
+                              📄 Open
+                            </a>
+                          ))}
+                          <button onClick={() => setDriveUploadModal({ jobId: job.id })}
+                            className={`text-xs px-2 py-1 rounded ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}>+ Add</button>
+                        </div>
+                      );
+                    })()}
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : ''}`}>{job.jobName}</h3>
