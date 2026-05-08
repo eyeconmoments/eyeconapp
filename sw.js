@@ -26,7 +26,7 @@ const CACHE_HOSTS = new Set([
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
-      await cache.addAll(['/', '/index.html', '/manifest.json', '/icon.svg']);
+      await cache.addAll(['/', '/index.html', '/manifest.json', '/icon.svg', '/logo.png']);
       await Promise.allSettled(
         PRECACHE.filter(u => u.startsWith('http')).map(async url => {
           try {
