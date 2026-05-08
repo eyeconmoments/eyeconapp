@@ -278,7 +278,7 @@ function EyeconMoments() {
       clientPhone: '',
       eventType: 'wedding',
       numDays: 1,
-      dates: [{ date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: true, video: true, numPhotographers: 1, videoType: 'dual' }],
+      dates: [{ date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: true, video: true, drone: false, numPhotographers: 1, videoType: 'dual' }],
       wantPhoto: true,
       wantVideo: true,
       numPhotographers: 1,
@@ -9429,6 +9429,7 @@ Eyecon Moments`);
                 const cdnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
                 if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr)`, cost: c }); }
                 if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''})`, cost: c }); }
+                if (day.drone) { total += 100; breakdown.push({ item: `Day ${idx+1} - Drone Coverage`, cost: 100 }); }
                 const dist = day.distance || 0;
                 if (dist > 0) { const c = calcMileage(dist); total += c; breakdown.push({ item: `Day ${idx+1} - Travel (${dist}mi × £0.45 × 2)`, cost: c }); }
               });
@@ -9495,7 +9496,7 @@ Eyecon Moments`);
                       <select value={quoteData.numDays} onChange={e => {
                         const days = parseInt(e.target.value);
                         const prevD = quoteData.dates[quoteData.dates.length - 1] || {};
-                        const nd = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: prevD.photo ?? quoteData.wantPhoto ?? true, video: prevD.video ?? quoteData.wantVideo ?? true, numPhotographers: prevD.numPhotographers ?? quoteData.numPhotographers ?? 1, videoType: prevD.videoType ?? quoteData.videoType ?? 'dual' });
+                        const nd = Array(days).fill(null).map((_, i) => quoteData.dates[i] || { date: '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: prevD.photo ?? quoteData.wantPhoto ?? true, video: prevD.video ?? quoteData.wantVideo ?? true, drone: prevD.drone ?? false, numPhotographers: prevD.numPhotographers ?? quoteData.numPhotographers ?? 1, videoType: prevD.videoType ?? quoteData.videoType ?? 'dual' });
                         setQuoteData({...quoteData, numDays: days, dates: nd});
                       }} className={inp}>
                         {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
@@ -9509,6 +9510,7 @@ Eyecon Moments`);
                         <div className="flex flex-wrap gap-3 mb-2">
                           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={quoteData.dates[dayIdx]?.photo ?? quoteData.wantPhoto ?? true} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],photo:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} /><span className={`text-xs ${dm ? 'text-gray-300' : ''}`}>📸 Photo</span></label>
                           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={quoteData.dates[dayIdx]?.video ?? quoteData.wantVideo ?? true} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],video:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} /><span className={`text-xs ${dm ? 'text-gray-300' : ''}`}>🎥 Video</span></label>
+                          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={quoteData.dates[dayIdx]?.drone ?? false} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],drone:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} /><span className={`text-xs ${dm ? 'text-gray-300' : ''}`}>🚁 Drone (+£100)</span></label>
                           {(quoteData.dates[dayIdx]?.photo ?? quoteData.wantPhoto ?? true) && (
                             <select value={quoteData.dates[dayIdx]?.numPhotographers ?? quoteData.numPhotographers ?? 1} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],numPhotographers:parseInt(e.target.value)}; setQuoteData({...quoteData,dates:nd}); }} className={`px-2 py-0.5 border rounded text-xs ${dm ? 'bg-gray-600 border-gray-500 text-white' : ''}`}>
                               {[1,2,3,4].map(n => <option key={n} value={n}>{n} photographer{n>1?'s':''}</option>)}
@@ -12270,6 +12272,10 @@ Eyecon Moments`);
           serviceTotal += photoCost;
           breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''})`, cost: photoCost });
         }
+        if (day.drone) {
+          serviceTotal += 100;
+          breakdown.push({ item: `Day ${idx + 1} - Drone Coverage`, cost: 100 });
+        }
       });
 
       // Travel — kept separate so it's always included even when price override is active
@@ -12459,6 +12465,7 @@ Eyecon Moments`);
         ctu('DAY '+(idx+1), y, {size:11, style:'bold'}); y += 12;
         if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr).toFixed(2), y, {size:11}); y += 8; }
         if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr).toFixed(2), y, {size:11}); y += 8; }
+        if (day.drone) { ct('Drone Coverage: £100.00', y, {size:11}); y += 8; }
         const dayDist = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist>0) { ct('Travel: £'+(dayDist*0.9).toFixed(2), y, {size:11}); y += 8; }
         return y + 10;
@@ -12484,6 +12491,7 @@ Eyecon Moments`);
         const lines = [];
         if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2).toFixed(2)); }
         if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2).toFixed(2)); }
+        if (day.drone) lines.push('Drone Coverage: £100.00');
         const dayDist2 = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist2>0) lines.push('Travel: £'+(dayDist2*0.9).toFixed(2));
         lines.forEach(r => {
@@ -12834,6 +12842,12 @@ Eyecon Moments`);
                       checked={day.video ?? quoteData.wantVideo ?? true}
                       onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],video:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} />
                     <span className={`text-sm ${darkMode ? 'text-gray-300' : ''}`}>🎥 Cinematography</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4"
+                      checked={day.drone ?? false}
+                      onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],drone:e.target.checked}; setQuoteData({...quoteData,dates:nd}); }} />
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : ''}`}>🚁 Drone (+£100)</span>
                   </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mb-3">
