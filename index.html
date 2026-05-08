@@ -90,6 +90,24 @@
         input, select, textarea { font-size: 16px !important; }
       }
 
+      /* Tailwind JIT timing failsafe — pre-define critical layout classes so
+         they work on cached second loads before Tailwind's scanner fires */
+      .min-h-screen { min-height: 100vh; min-height: 100dvh; }
+      .flex { display: flex; }
+      .flex-col { flex-direction: column; }
+      .hidden { display: none !important; }
+      .w-full { width: 100%; }
+      .h-full { height: 100%; }
+      .items-center { align-items: center; }
+      .justify-center { justify-content: center; }
+      .fixed { position: fixed; }
+      .relative { position: relative; }
+      .absolute { position: absolute; }
+      .inset-0 { inset: 0; }
+      .overflow-hidden { overflow: hidden; }
+      .overflow-auto { overflow: auto; }
+      .overflow-y-auto { overflow-y: auto; }
+
       /* Brand colours */
       :root {
         --gold: #C1A76A;
