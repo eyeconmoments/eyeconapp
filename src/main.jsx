@@ -12254,6 +12254,7 @@ Eyecon Moments`);
         if (dv) costs += dvt === 'dual' ? 155 : 135;
         if (dp) costs += dnp >= 2 ? 65 : 45;
       });
+      costs += 25; // Memory stick
       return costs;
     };
     
@@ -13072,7 +13073,7 @@ Eyecon Moments`);
                       <p className={`font-bold ${Number(profitMargin) >= 40 ? 'text-green-600' : Number(profitMargin) >= 20 ? 'text-yellow-600' : 'text-red-600'}`}>{profitMargin}%</p>
                     </div>
                   </div>
-                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Shoot: £13/hr/person · Edit: video single £135 / dual £155 · photo single £45 / dual £65</p>
+                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Shoot: £13/hr/person · Edit: video single £135 / dual £155 · photo single £45 / dual £65 · Memory stick £25</p>
                 </div>
               )}
             </div>
