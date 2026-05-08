@@ -243,6 +243,8 @@ function EyeconMoments() {
   const [activeGearCheck, setActiveGearCheck] = useState(null); // { jobName, items: [{name,checked}], notes }
   const [gearCheckView, setGearCheckView] = useState('new'); // 'new' | 'history'
   const [gearCheckSaving, setGearCheckSaving] = useState(false);
+  const [timeSubTab, setTimeSubTab] = useState('timesheets');
+  const [insightsSubTab, setInsightsSubTab] = useState('stats');
   const [generalClockInModal, setGeneralClockInModal] = useState(null); // { description: '' }
   const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
   const [postSuggestions, setPostSuggestions] = useState([]);
@@ -3077,7 +3079,7 @@ LOGGING:
                 { key: 'employee-dashboard', label: 'My Jobs' },
                 { key: 'files', label: 'Files' },
                 { key: 'availability', label: 'Avail.' },
-                { key: 'wages', label: 'Wages' },
+                { key: 'time', label: 'Time' },
                 { key: 'checklist', label: 'Gear ✓' },
               ].map(tab => (
                 <button key={tab.key} onClick={() => setCurrentView(tab.key)}
@@ -4114,14 +4116,12 @@ LOGGING:
       { key: 'crm',        label: 'CRM' },
       { key: 'files',      label: 'Files' },
       { key: 'employees',  label: 'Staff' },
-      { key: 'timesheets', label: 'Time' },
-      { key: 'analytics',  label: 'Stats' },
+      { key: 'time',       label: 'Time' },
+      { key: 'insights',   label: 'Reports' },
       { key: 'quote',      label: 'Quote' },
       { key: 'revisions',  label: 'Revisions' },
-      { key: 'wages',      label: 'Wages' },
       { key: 'feedback',   label: 'Feedback' },
       { key: 'post-ideas', label: 'Posts' },
-      { key: 'reports',    label: 'Reports' },
       { key: 'checklist',  label: 'Gear ✓' },
     ];
     const employeeTabs = [
@@ -4129,7 +4129,7 @@ LOGGING:
       { key: 'timeclock',          label: 'Clock' },
       { key: 'files',              label: 'Files' },
       { key: 'availability',       label: 'Avail.' },
-      { key: 'wages',              label: 'Wages' },
+      { key: 'time',               label: 'Time' },
       { key: 'feedback',           label: 'Feedback' },
       { key: 'post-ideas',         label: 'Posts' },
       { key: 'checklist',          label: 'Gear ✓' },
@@ -10288,7 +10288,7 @@ Eyecon Moments`);
   }
 
   // TIMESHEETS
-  if (currentView === 'timesheets') {
+  if (currentView === 'time' && timeSubTab === 'timesheets') {
     const filteredEntries = getFilteredTimeEntries();
     const totalHours = filteredEntries.reduce((acc, e) => acc + e.hoursWorked, 0);
     
@@ -10297,6 +10297,14 @@ Eyecon Moments`);
       <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
         {NavBar()}
+        <div className={`px-4 pt-3 pb-1 flex gap-1 p-1 ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
+          {[{k:'timesheets',l:'⏱ Timesheets'},{k:'wages',l:'💰 Wages'}].map(t => (
+            <button key={t.k} onClick={() => setTimeSubTab(t.k)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${timeSubTab === t.k ? 'bg-blue-500 text-white' : dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500 border border-gray-200'}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
         <div className="p-4 space-y-4">
           {/* Filters + Total */}
           <div className={`${dm ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
@@ -10423,7 +10431,7 @@ Eyecon Moments`);
   }
 
   // ANALYTICS
-  if (currentView === 'analytics') {
+  if (currentView === 'insights' && insightsSubTab === 'stats') {
     // Only include jobs whose shoot date has passed (not today or future) — upcoming jobs excluded from all stats
     const _analyticsTodayMidnight = new Date(); _analyticsTodayMidnight.setHours(0, 0, 0, 0);
     const pastJobs = editingJobs.filter(job => !job.shootDate || new Date(job.shootDate) < _analyticsTodayMidnight);
@@ -10669,6 +10677,14 @@ Eyecon Moments`);
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
         {NavBar()}
+        <div className={`px-4 pt-3 pb-1 flex gap-1 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+          {[{k:'stats',l:'📊 Stats'},{k:'reports',l:'📋 Reports'}].map(t => (
+            <button key={t.k} onClick={() => setInsightsSubTab(t.k)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${insightsSubTab === t.k ? 'bg-blue-500 text-white' : darkMode ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500 border border-gray-200'}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
         <div className="p-4 space-y-4">
           {/* Revenue Trend Line Graph */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
@@ -11269,7 +11285,7 @@ Eyecon Moments`);
   }
 
   // ── WAGES ────────────────────────────────────────────────────────────────────
-  if (currentView === 'wages') {
+  if (currentView === 'time' && timeSubTab === 'wages') {
     const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
     const dm = darkMode;
 
@@ -11478,6 +11494,14 @@ Eyecon Moments`);
       <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {helpModalJSX}
         {NavBar()}
+        <div className={`px-4 pt-3 pb-1 flex gap-1 ${dm ? 'bg-gray-900' : 'bg-gray-50'}`}>
+          {[{k:'timesheets',l:'⏱ Timesheets'},{k:'wages',l:'💰 Wages'}].map(t => (
+            <button key={t.k} onClick={() => setTimeSubTab(t.k)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${timeSubTab === t.k ? 'bg-blue-500 text-white' : dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500 border border-gray-200'}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
         <div className="p-4 space-y-4">
 
           {/* Shoot Wage Modal */}
@@ -13559,7 +13583,7 @@ Eyecon Moments`);
     );
   }
 
-  if (currentView === 'reports' && (currentUser?.role === 'admin' || currentUser?.role === 'manager')) {
+  if (currentView === 'insights' && insightsSubTab === 'reports' && (currentUser?.role === 'admin' || currentUser?.role === 'manager')) {
     // ── Week range helpers ──
     const getWeekStart = (offset) => {
       const d = new Date();
@@ -13636,6 +13660,14 @@ Eyecon Moments`);
     return (
       <div className={`min-h-screen ${dm ? 'bg-gray-900' : 'bg-slate-50'} print:bg-white`} id="weekly-report">
         {NavBar()}
+        <div className={`px-4 pt-3 pb-1 flex gap-1 print:hidden ${dm ? 'bg-gray-900' : 'bg-slate-50'}`}>
+          {[{k:'stats',l:'📊 Stats'},{k:'reports',l:'📋 Reports'}].map(t => (
+            <button key={t.k} onClick={() => setInsightsSubTab(t.k)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${insightsSubTab === t.k ? 'bg-blue-500 text-white' : dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500 border border-gray-200'}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
         <div className="p-4 max-w-3xl mx-auto space-y-5 print:p-6">
 
           {/* Header + week nav */}
