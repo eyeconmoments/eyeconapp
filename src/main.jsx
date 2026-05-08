@@ -5725,6 +5725,9 @@ LOGGING:
                         <div>
                           <p className="font-bold text-lg">{job.jobName}</p>
                           <p className="text-sm opacity-90">{job.customerName}</p>
+                          <span className="inline-block mt-1 text-xs font-semibold bg-white bg-opacity-30 px-2 py-0.5 rounded-full">
+                            {job.jobType === 'video' ? '🎬 Video' : job.jobType === 'photo' ? '📷 Photo' : '📷🎬 Photo & Video'}
+                          </span>
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-2xl">{daysOverdue}</p>
@@ -5788,65 +5791,6 @@ LOGGING:
                   })}
                 </div>
                 <button onClick={() => setCurrentView('crm')} className="text-sm text-red-700 font-semibold">Go to CRM →</button>
-              </div>
-            );
-          })()}
-
-          {/* Outstanding payments */}
-          {(() => {
-            const today = new Date(); today.setHours(0,0,0,0);
-            const awaitingDeposit = inquiries.filter(i => {
-              if (i.status !== 'quoted') return false;
-              const since = new Date(i.quotedDate || i.submittedDate);
-              return Math.floor((currentTime - since) / 86400000) >= 7;
-            });
-            const awaitingBalance = inquiries.filter(i => {
-              if (i.status !== 'booked') return false;
-              return i.eventDate && new Date(i.eventDate) < today;
-            });
-            if (awaitingDeposit.length === 0 && awaitingBalance.length === 0) return null;
-            return (
-              <div className={`${darkMode ? 'bg-yellow-900 border-yellow-700' : 'bg-yellow-50 border-yellow-400'} border-2 rounded-lg p-4`}>
-                <h3 className={`font-bold mb-3 ${darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>💰 Outstanding Payments ({awaitingDeposit.length + awaitingBalance.length})</h3>
-                {awaitingDeposit.length > 0 && (
-                  <div className="mb-3">
-                    <p className={`text-xs font-semibold mb-2 uppercase tracking-wide ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Awaiting Deposit</p>
-                    <div className="space-y-1.5">
-                      {awaitingDeposit.map(inq => {
-                        const days = Math.floor((currentTime - new Date(inq.quotedDate || inq.submittedDate)) / 86400000);
-                        return (
-                          <div key={inq.id} className={`flex justify-between items-center p-2 rounded-lg ${darkMode ? 'bg-yellow-800' : 'bg-white'} border ${darkMode ? 'border-yellow-700' : 'border-yellow-200'}`}>
-                            <div>
-                              <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inq.customerName}</p>
-                              <p className={`text-xs ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Quoted {days} day{days !== 1 ? 's' : ''} ago · {inq.eventType}</p>
-                            </div>
-                            <button onClick={() => setCurrentView('crm')} className="text-xs bg-yellow-500 text-white px-2 py-1 rounded font-semibold">View</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {awaitingBalance.length > 0 && (
-                  <div>
-                    <p className={`text-xs font-semibold mb-2 uppercase tracking-wide ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Awaiting Balance</p>
-                    <div className="space-y-1.5">
-                      {awaitingBalance.map(inq => {
-                        const daysAgo = Math.floor((currentTime - new Date(inq.eventDate)) / 86400000);
-                        return (
-                          <div key={inq.id} className={`flex justify-between items-center p-2 rounded-lg ${darkMode ? 'bg-yellow-800' : 'bg-white'} border ${darkMode ? 'border-yellow-700' : 'border-yellow-200'}`}>
-                            <div>
-                              <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inq.customerName}</p>
-                              <p className={`text-xs ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Event was {daysAgo} day{daysAgo !== 1 ? 's' : ''} ago · {inq.eventType}</p>
-                            </div>
-                            <button onClick={() => setCurrentView('crm')} className="text-xs bg-yellow-500 text-white px-2 py-1 rounded font-semibold">View</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <button onClick={() => setCurrentView('crm')} className={`mt-3 text-sm font-semibold ${darkMode ? 'text-yellow-400' : 'text-yellow-700'}`}>Go to CRM →</button>
               </div>
             );
           })()}
