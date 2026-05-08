@@ -47,6 +47,26 @@ self.addEventListener('activate', event => {
   );
 });
 
+self.addEventListener('push', event => {
+  try {
+    const data = event.data ? event.data.json() : {};
+    const title = data.title || 'Eyecon Moments';
+    const options = {
+      body: data.body || '',
+      icon: data.icon || '/logo.png',
+      badge: '/logo.png',
+      tag: 'eyecon-activity',
+      renotify: true,
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (_) {}
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow('/'));
+});
+
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 

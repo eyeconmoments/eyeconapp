@@ -14,6 +14,7 @@ window._loadGoogleAPIs = () => new Promise((resolve) => {
 });
 
 const db = createClient('https://wgqamqzlfnjcqyprphkw.supabase.co', 'sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE');
+const VAPID_PUBLIC_KEY = 'BJYHvcBZl4MjltyfVL_QHqMaBhW-Ek9bHHJMH4tH4-myZGQzt7gH4E9KU7PMQXthXgJ2zQms5jlrU3ZHX5blPKA';
 
 // DB helpers - convert snake_case rows to camelCase app objects
 const rowToJob = (r) => ({
@@ -245,6 +246,7 @@ function EyeconMoments() {
   const [gearCheckSaving, setGearCheckSaving] = useState(false);
   const [timeSubTab, setTimeSubTab] = useState('timesheets');
   const [insightsSubTab, setInsightsSubTab] = useState('stats');
+  const [pushSubscription, setPushSubscription] = useState(null);
   const [generalClockInModal, setGeneralClockInModal] = useState(null); // { description: '' }
   const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
   const [postSuggestions, setPostSuggestions] = useState([]);
@@ -589,7 +591,11 @@ function EyeconMoments() {
         setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, role: 'admin' } : e));
       }
       setCurrentUser(resolvedUser);
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(subscribeToPush, 1000); }).catch(() => {});
+      } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        setTimeout(subscribeToPush, 1000);
+      }
 
       // Auto clock-out: close any open entry left past 7pm
       const openEntry = timeEntries.find(e => e.employeeId === resolvedUser.id && !e.clockOut);
@@ -679,7 +685,11 @@ function EyeconMoments() {
     const entry = { id: Date.now(), employee_id: currentUser.id, job_id: jobId || null, clock_in: new Date().toISOString(), clock_out: null, description: description || null };
     const { data, error } = await db.from('time_entries').insert([entry]).select();
     if (error) { alert('Clock in failed: ' + error.message); return; }
-    if (data && data[0]) setTimeEntries(prev => [...prev, rowToEntry(data[0])]);
+    if (data && data[0]) {
+      setTimeEntries(prev => [...prev, rowToEntry(data[0])]);
+      const jobLabel = jobId ? (editingJobs.find(j => j.id === jobId)?.jobName || 'a job') : (description || 'general work');
+      sendActivityPush('🟢 Clocked In', `${currentUser.name} clocked in — ${jobLabel}`);
+    }
   };
 
   const handleClockOut = async (entryId, progressPercent = null, progressNote = null) => {
@@ -692,6 +702,9 @@ function EyeconMoments() {
       if (progressNote) updateData.progress_note = progressNote;
       await db.from('time_entries').update(updateData).eq('id', entryId);
       setTimeEntries(prev => prev.map(e => e.id === entryId ? { ...e, clockOut, hoursWorked, progressPercent, progressNote } : e));
+      const jobLabel = entry.jobId ? (editingJobs.find(j => j.id === entry.jobId)?.jobName || 'a job') : (entry.description || 'general work');
+      const emp = employees.find(e => e.id === entry.employeeId);
+      sendActivityPush('🔴 Clocked Out', `${emp?.name || 'Staff'} clocked out — ${jobLabel} (${hoursWorked}h)`);
     }
   };
 
@@ -1749,6 +1762,44 @@ function EyeconMoments() {
   };
 
   // ── Google Drive Upload ────────────────────────────────────────────────────
+  // ── Web Push ─────────────────────────────────────────────────────────────
+  const subscribeToPush = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      if (Notification.permission !== 'granted') return;
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: VAPID_PUBLIC_KEY,
+        });
+      }
+      setPushSubscription(sub);
+      await db.from('push_subscriptions').upsert(
+        [{ employee_id: currentUser?.id, subscription: sub.toJSON() }],
+        { onConflict: 'employee_id' }
+      );
+    } catch (_) {}
+  };
+
+  const sendActivityPush = async (title, body) => {
+    try {
+      const { data } = await db.from('push_subscriptions').select('subscription, employee_id');
+      if (!data || !data.length) return;
+      // Only notify admins/managers — filter by role from employees state
+      const adminIds = new Set(employees.filter(e => e.role === 'admin' || e.role === 'manager').map(e => e.id));
+      const subs = data.filter(r => adminIds.has(r.employee_id)).map(r => r.subscription);
+      if (!subs.length) return;
+      await fetch('/.netlify/functions/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptions: subs, title, body }),
+      });
+    } catch (_) {}
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
   const requestDriveToken = () => new Promise((resolve, reject) => {
