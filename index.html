@@ -1004,13 +1004,19 @@ function EyeconMoments() {
     const key = 'eyecon_notif_sent_' + today.toISOString().slice(0,10);
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');
-    editingJobs.forEach(job => {
-      if (archivedJobIds.includes(job.id) || isJobFullyComplete(job)) return;
+    const due = editingJobs.filter(job => {
+      if (archivedJobIds.includes(job.id) || isJobFullyComplete(job) || !job.deadline) return false;
       const days = getDaysUntilDeadline(job.deadline);
-      if (days === 0) showNotification('Eyecon Moments – Due Today', `"${job.title}" is due today.`);
-      else if (days === 1) showNotification('Eyecon Moments – Due Tomorrow', `"${job.title}" is due tomorrow.`);
-      else if (days < 0) showNotification('Eyecon Moments – Overdue', `"${job.title}" is ${Math.abs(days)} day(s) overdue.`);
+      return days >= 0 && days <= 3;
     });
+    if (due.length === 0) return;
+    if (due.length === 1) {
+      const days = getDaysUntilDeadline(due[0].deadline);
+      const label = days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
+      showNotification('Eyecon Moments – Deadline Soon', `"${due[0].jobName}" is due ${label}.`);
+    } else {
+      showNotification('Eyecon Moments – Deadlines Soon', `${due.length} jobs are due within 3 days.`);
+    }
   }, [editingJobs, archivedJobIds]);
 
   React.useEffect(() => {
