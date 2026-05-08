@@ -239,6 +239,10 @@ function EyeconMoments() {
   const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
   const [projectFileModal, setProjectFileModal] = useState(null); // { jobId, jobName } — upload project file after video complete
   const [driveUploading, setDriveUploading] = useState(false);
+  const [gearChecklists, setGearChecklists] = useState([]);
+  const [activeGearCheck, setActiveGearCheck] = useState(null); // { jobName, items: [{name,checked}], notes }
+  const [gearCheckView, setGearCheckView] = useState('new'); // 'new' | 'history'
+  const [gearCheckSaving, setGearCheckSaving] = useState(false);
   const [generalClockInModal, setGeneralClockInModal] = useState(null); // { description: '' }
   const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
   const [postSuggestions, setPostSuggestions] = useState([]);
@@ -518,14 +522,15 @@ function EyeconMoments() {
   useEffect(() => {
     const loadAll = async () => {
       try {
-        const [empRes, jobRes, entryRes, inqRes, reqRes, revRes, sugRes] = await Promise.all([
+        const [empRes, jobRes, entryRes, inqRes, reqRes, revRes, sugRes, gearRes] = await Promise.all([
           db.from('employees').select('*').order('id'),
           db.from('jobs').select('*').order('created_at'),
           db.from('time_entries').select('*').order('clock_in', { ascending: false }),
           db.from('inquiries').select('*').order('submitted_date', { ascending: false }),
           db.from('assignment_requests').select('*'),
           db.from('revisions').select('*').order('id', { ascending: false }),
-          db.from('post_suggestions').select('*').order('created_at', { ascending: false })
+          db.from('post_suggestions').select('*').order('created_at', { ascending: false }),
+          db.from('gear_checklists').select('*').order('created_at', { ascending: false }).gte('created_at', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString())
         ]);
         if (empRes.data && empRes.data.length > 0) {
           setEmployees(empRes.data.map(rowToEmployee));
@@ -559,6 +564,7 @@ function EyeconMoments() {
           }
         }
         if (sugRes.data) setPostSuggestions(sugRes.data.map(rowToSuggestion));
+        if (gearRes.data) setGearChecklists(gearRes.data);
       } catch(e) {
         console.error('DB load error:', e);
         setEmployees(FALLBACK_EMPLOYEES);
@@ -3066,12 +3072,13 @@ LOGGING:
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-1 mt-1">
+            <div className="grid grid-cols-5 gap-1 mt-1">
               {[
                 { key: 'employee-dashboard', label: 'My Jobs' },
                 { key: 'files', label: 'Files' },
                 { key: 'availability', label: 'Avail.' },
                 { key: 'wages', label: 'Wages' },
+                { key: 'checklist', label: 'Gear ✓' },
               ].map(tab => (
                 <button key={tab.key} onClick={() => setCurrentView(tab.key)}
                   className={`py-2 px-1 rounded-lg text-center text-xs font-semibold tracking-wide transition-all ${currentView === tab.key ? 'nav-tab-active' : ''}`}
@@ -4115,6 +4122,7 @@ LOGGING:
       { key: 'feedback',   label: 'Feedback' },
       { key: 'post-ideas', label: 'Posts' },
       { key: 'reports',    label: 'Reports' },
+      { key: 'checklist',  label: 'Gear ✓' },
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
@@ -4124,6 +4132,7 @@ LOGGING:
       { key: 'wages',              label: 'Wages' },
       { key: 'feedback',           label: 'Feedback' },
       { key: 'post-ideas',         label: 'Posts' },
+      { key: 'checklist',          label: 'Gear ✓' },
     ];
     const tabs = isNavAdmin ? adminTabs : employeeTabs;
     const pendingPostCount = postSuggestions.filter(s => s.status === 'pending').length;
@@ -13935,6 +13944,248 @@ Eyecon Moments`);
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'checklist') {
+    const GEAR_ITEMS = [
+      '3 light stands', 'Neewer light', 'Neewer bag', 'Gimbal 1',
+      'Video tripod', 'Photo tripod', 'Axe light 1', 'Axe light 2',
+      'Battery suitcase 1', 'Battery suitcase 2', 'Drone',
+      '10 camera batteries', '9 gimbal batteries', '7 light batteries',
+      'Extension', 'Jackery', 'Syncos', 'Grey big light', 'Mics',
+    ];
+
+    const startNewCheck = () => {
+      setActiveGearCheck({
+        jobName: '',
+        items: GEAR_ITEMS.map(name => ({ name, checked: false })),
+        notes: '',
+      });
+    };
+
+    const toggleItem = (idx) => {
+      setActiveGearCheck(prev => {
+        const items = prev.items.map((it, i) => i === idx ? { ...it, checked: !it.checked } : it);
+        return { ...prev, items };
+      });
+    };
+
+    const submitCheck = async () => {
+      if (!activeGearCheck) return;
+      setGearCheckSaving(true);
+      try {
+        const row = {
+          checked_by: currentUser.name,
+          checked_by_id: currentUser.id,
+          job_name: activeGearCheck.jobName.trim(),
+          items: activeGearCheck.items,
+          notes: activeGearCheck.notes.trim(),
+        };
+        const { data, error } = await db.from('gear_checklists').insert([row]).select();
+        if (error) throw error;
+        if (data) setGearChecklists(prev => [data[0], ...prev]);
+        setActiveGearCheck(null);
+        setGearCheckView('history');
+      } catch (e) {
+        alert('Could not save checklist: ' + e.message);
+      } finally {
+        setGearCheckSaving(false);
+      }
+    };
+
+    const checkedCount = activeGearCheck ? activeGearCheck.items.filter(i => i.checked).length : 0;
+
+    // Group history by date
+    const historyByDate = gearChecklists.reduce((acc, entry) => {
+      const date = new Date(entry.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(entry);
+      return acc;
+    }, {});
+
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {NavBar()}
+        <div className="p-4 max-w-xl mx-auto space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🎒 Gear Checklist</h2>
+            <div className={`flex gap-1 p-1 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+              {['new', 'history'].map(v => (
+                <button key={v} onClick={() => setGearCheckView(v)}
+                  className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${gearCheckView === v ? 'bg-blue-500 text-white' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {v === 'new' ? '✅ New Check' : '📋 History'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── NEW CHECK ── */}
+          {gearCheckView === 'new' && (
+            <div className="space-y-3">
+              {!activeGearCheck ? (
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow p-6 text-center`}>
+                  <div className="text-5xl mb-3">🎒</div>
+                  <p className={`font-semibold mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Ready to do a gear check?</p>
+                  <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{GEAR_ITEMS.length} items to verify</p>
+                  <button onClick={startNewCheck}
+                    className="px-6 py-2.5 bg-blue-500 text-white rounded-xl font-bold text-sm hover:bg-blue-600">
+                    Start Check
+                  </button>
+                </div>
+              ) : (
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow overflow-hidden`}>
+                  {/* Progress bar */}
+                  <div className="px-4 pt-4 pb-2">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        {checkedCount} / {GEAR_ITEMS.length} items
+                      </span>
+                      <span className={`text-sm font-bold ${checkedCount === GEAR_ITEMS.length ? 'text-green-500' : darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                        {Math.round((checkedCount / GEAR_ITEMS.length) * 100)}%
+                      </span>
+                    </div>
+                    <div className={`h-2 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                      <div className="h-2 rounded-full bg-blue-500 transition-all duration-300"
+                        style={{ width: `${(checkedCount / GEAR_ITEMS.length) * 100}%`, background: checkedCount === GEAR_ITEMS.length ? '#22c55e' : '#3b82f6' }} />
+                    </div>
+                  </div>
+
+                  {/* Optional job name */}
+                  <div className="px-4 pb-3">
+                    <input
+                      type="text"
+                      placeholder="Job / shoot name (optional)"
+                      value={activeGearCheck.jobName}
+                      onChange={e => setActiveGearCheck(p => ({ ...p, jobName: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
+                    />
+                  </div>
+
+                  {/* Checklist items */}
+                  <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                    {activeGearCheck.items.map((item, idx) => (
+                      <button key={idx} onClick={() => toggleItem(idx)}
+                        className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
+                          item.checked
+                            ? darkMode ? 'bg-green-900 bg-opacity-30' : 'bg-green-50'
+                            : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                        }`}>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                          item.checked ? 'bg-green-500 border-green-500' : darkMode ? 'border-gray-500' : 'border-gray-300'
+                        }`}>
+                          {item.checked && <span className="text-white text-xs font-bold">✓</span>}
+                        </div>
+                        <span className={`text-sm font-medium ${item.checked ? 'line-through' : ''} ${
+                          item.checked ? darkMode ? 'text-green-400' : 'text-green-700'
+                            : darkMode ? 'text-gray-200' : 'text-gray-800'
+                        }`}>{item.name}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Notes */}
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        📝 Notes — anything missing or damaged?
+                      </label>
+                      <textarea
+                        value={activeGearCheck.notes}
+                        onChange={e => setActiveGearCheck(p => ({ ...p, notes: e.target.value }))}
+                        placeholder="e.g. Gimbal battery pack left in studio, drone propeller slightly chipped..."
+                        rows={3}
+                        className={`w-full px-3 py-2 rounded-lg border text-sm resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-800'}`}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setActiveGearCheck(null)}
+                        className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                        Cancel
+                      </button>
+                      <button onClick={submitCheck} disabled={gearCheckSaving}
+                        className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${
+                          gearCheckSaving ? 'bg-blue-300 cursor-not-allowed' : checkedCount === GEAR_ITEMS.length ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'
+                        }`}>
+                        {gearCheckSaving ? 'Saving…' : checkedCount === GEAR_ITEMS.length ? '✅ Submit — All Clear' : `Submit (${GEAR_ITEMS.length - checkedCount} unchecked)`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── HISTORY ── */}
+          {gearCheckView === 'history' && (
+            <div className="space-y-4">
+              {Object.keys(historyByDate).length === 0 ? (
+                <div className={`text-center py-16 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <p className="text-4xl mb-3">📋</p>
+                  <p className="font-medium">No checks recorded yet</p>
+                  <p className="text-sm mt-1">Complete your first gear check to see history here</p>
+                </div>
+              ) : Object.entries(historyByDate).map(([date, entries]) => (
+                <div key={date}>
+                  <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{date}</p>
+                  {entries.map(entry => {
+                    const checked = (entry.items || []).filter(i => i.checked);
+                    const unchecked = (entry.items || []).filter(i => !i.checked);
+                    const allClear = unchecked.length === 0;
+                    return (
+                      <div key={entry.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow mb-3 overflow-hidden`}>
+                        <div className={`px-4 py-3 flex items-center justify-between ${allClear ? darkMode ? 'bg-green-900 bg-opacity-40' : 'bg-green-50' : darkMode ? 'bg-red-900 bg-opacity-30' : 'bg-red-50'}`}>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{allClear ? '✅' : '⚠️'}</span>
+                              <span className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{entry.checked_by}</span>
+                              {entry.job_name && <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>{entry.job_name}</span>}
+                            </div>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {new Date(entry.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {checked.length}/{(entry.items || []).length} items
+                            </p>
+                          </div>
+                          <span className={`text-sm font-bold px-2 py-1 rounded-lg ${allClear ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                            {allClear ? 'All clear' : `${unchecked.length} missing`}
+                          </span>
+                        </div>
+                        {unchecked.length > 0 && (
+                          <div className="px-4 py-2">
+                            <p className={`text-xs font-semibold mb-1 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Not checked:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {unchecked.map((it, i) => (
+                                <span key={i} className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'}`}>{it.name}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {entry.notes && (
+                          <div className={`px-4 py-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                            <p className={`text-xs font-semibold mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📝 Notes</p>
+                            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{entry.notes}</p>
+                          </div>
+                        )}
+                        {checked.length > 0 && (
+                          <details className={`px-4 pb-3 pt-1 ${unchecked.length > 0 || entry.notes ? `border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}` : ''}`}>
+                            <summary className={`text-xs cursor-pointer select-none ${darkMode ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>
+                              Show {checked.length} confirmed items ▸
+                            </summary>
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {checked.map((it, i) => (
+                                <span key={i} className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>✓ {it.name}</span>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
