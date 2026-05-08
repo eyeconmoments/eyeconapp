@@ -1015,6 +1015,61 @@ function EyeconMoments() {
     checkDeadlineNotifications();
   }, [currentUser, checkDeadlineNotifications]);
 
+  // ── Smart clock reminder ──────────────────────────────────────────────────
+  const fmtMins = (mins) => {
+    const h = Math.floor(mins / 60) % 24, m = mins % 60;
+    return `${h % 12 || 12}:${m.toString().padStart(2,'0')}${h >= 12 ? 'pm' : 'am'}`;
+  };
+
+  const analyzeClockPattern = React.useCallback(() => {
+    if (!currentUser) return null;
+    const entries = timeEntries.filter(e => e.employeeId === currentUser.id && e.clockOut);
+    if (entries.length < 3) return null;
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
+    const recent = entries.filter(e => new Date(e.clockIn) > cutoff);
+    if (recent.length < 2) return null;
+    const toMins = d => new Date(d).getHours() * 60 + new Date(d).getMinutes();
+    const avg = arr => Math.round(arr.reduce((a,b) => a+b, 0) / arr.length);
+    const avgClockIn  = avg(recent.map(e => toMins(e.clockIn)));
+    const avgClockOut = avg(recent.map(e => toMins(e.clockOut)));
+    const dayFreq = [0,0,0,0,0,0,0];
+    recent.forEach(e => dayFreq[new Date(e.clockIn).getDay()]++);
+    const maxF = Math.max(...dayFreq);
+    const workDays = dayFreq.map((f,i) => f >= maxF * 0.3 ? i : -1).filter(i => i >= 0);
+    return { avgClockIn, avgClockOut, workDays };
+  }, [currentUser, timeEntries]);
+
+  const checkClockReminder = React.useCallback(() => {
+    if (!currentUser || currentUser.role === 'admin') return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const pattern = analyzeClockPattern();
+    if (!pattern) return;
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    if (!pattern.workDays.includes(now.getDay())) return;
+    const throttleKey = `eyecon_clock_hint_${now.toDateString()}`;
+    const lastSent = parseInt(sessionStorage.getItem(throttleKey) || '0');
+    if (Date.now() - lastSent < 2 * 60 * 60 * 1000) return;
+    const active = getUserActiveTimeEntry(currentUser.id);
+    if (!active && Math.abs(mins - pattern.avgClockIn) <= 30) {
+      sessionStorage.setItem(throttleKey, Date.now().toString());
+      showNotification('Time to clock in?', `You usually start around ${fmtMins(pattern.avgClockIn)} — open the app to clock in.`);
+    } else if (active && mins >= pattern.avgClockOut - 10 && mins <= pattern.avgClockOut + 60) {
+      const hrs = ((Date.now() - new Date(active.clockIn)) / 3600000).toFixed(1);
+      sessionStorage.setItem(throttleKey, Date.now().toString());
+      showNotification('Time to clock out?', `You've worked ${hrs}h today. You usually finish around ${fmtMins(pattern.avgClockOut)}.`);
+    }
+  }, [currentUser, timeEntries, analyzeClockPattern, getUserActiveTimeEntry]);
+
+  React.useEffect(() => {
+    if (!currentUser) return;
+    checkClockReminder();
+    const interval = setInterval(checkClockReminder, 10 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') checkClockReminder(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+  }, [currentUser, checkClockReminder]);
+
   const getOverdueJobs = () => editingJobs.filter(job => getDaysUntilDeadline(job.deadline) < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job));
   const getDueSoonJobs = () => editingJobs.filter(job => {
     const days = getDaysUntilDeadline(job.deadline);
