@@ -12242,6 +12242,18 @@ Eyecon Moments`);
         const dist = day.distance || 0;
         if (dist > 0) costs += calculateMileageCost(dist);
       });
+      // Editing costs — flat fee per day
+      // Video: single = £135 (cut £50 + music £50 + colour £25 + intros £10)
+      //        dual   = £155 (cut £70 + music £50 + colour £25 + intros £10)
+      // Photo: single photographer = £45, dual = £65
+      quoteData.dates.forEach(day => {
+        const dv = day.video ?? quoteData.wantVideo ?? true;
+        const dp = day.photo ?? quoteData.wantPhoto ?? true;
+        const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
+        const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
+        if (dv) costs += dvt === 'dual' ? 155 : 135;
+        if (dp) costs += dnp >= 2 ? 65 : 45;
+      });
       return costs;
     };
     
@@ -13060,7 +13072,7 @@ Eyecon Moments`);
                       <p className={`font-bold ${Number(profitMargin) >= 40 ? 'text-green-600' : Number(profitMargin) >= 20 ? 'text-yellow-600' : 'text-red-600'}`}>{profitMargin}%</p>
                     </div>
                   </div>
-                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Costs = staff at £13/hr (dual video counts 2 people) + travel</p>
+                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Shoot: £13/hr/person · Edit: video single £135 / dual £155 · photo single £45 / dual £65</p>
                 </div>
               )}
             </div>
