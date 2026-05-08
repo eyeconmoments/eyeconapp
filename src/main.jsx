@@ -311,6 +311,7 @@ function EyeconMoments() {
   const [showClockInPrompt, setShowClockInPrompt] = useState(false);
   const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
   const [clockInPickingJob, setClockInPickingJob] = useState(false);
+  const [clockInGeneralDesc, setClockInGeneralDesc] = useState('');
   const [showSendFeedbackModal, setShowSendFeedbackModal] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState({ toEmployeeId: '', jobName: '', fileRef: '', message: '' });
   const [showRundownModal, setShowRundownModal] = useState(false);
@@ -599,8 +600,8 @@ function EyeconMoments() {
         }
       }
 
-      // Show clock-in prompt for non-admin staff
-      if (resolvedUser.role !== 'admin') setShowClockInPrompt(true);
+      // Show clock-in prompt for all users
+      setShowClockInPrompt(true);
 
       setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : 'employee-dashboard');
       if (resolvedUser.role === 'admin') setShowRundownModal(true);
@@ -2849,16 +2850,28 @@ LOGGING:
                         {job.customerName && <span className="block text-xs mt-0.5" style={{color:'#8a9bb0'}}>{job.customerName}</span>}
                       </button>
                     ))}
-                    <button
-                      onClick={async () => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); await handleClockIn(null); }}
-                      className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors"
-                      style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'#8a9bb0'}}
-                    >
-                      🔧 General Work
-                    </button>
+                    <div style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'12px'}} className="p-3">
+                      <p className="text-sm font-medium mb-2" style={{color:'#8a9bb0'}}>🔧 General Work</p>
+                      <input
+                        type="text"
+                        placeholder="What are you working on? (required)"
+                        value={clockInGeneralDesc}
+                        onChange={e => setClockInGeneralDesc(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-sm text-white mb-2"
+                        style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}}
+                      />
+                      <button
+                        disabled={!clockInGeneralDesc.trim()}
+                        onClick={async () => { const d = clockInGeneralDesc.trim(); setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); await handleClockIn(null, d); }}
+                        className="w-full py-2 rounded-lg text-sm font-semibold transition-opacity"
+                        style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535', opacity: clockInGeneralDesc.trim() ? 1 : 0.4, cursor: clockInGeneralDesc.trim() ? 'pointer' : 'not-allowed'}}
+                      >
+                        Clock In
+                      </button>
+                    </div>
                   </div>
                   <button
-                    onClick={() => setClockInPickingJob(false)}
+                    onClick={() => { setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                     className="w-full py-2 text-xs"
                     style={{color:'#6a7d90'}}
                   >
