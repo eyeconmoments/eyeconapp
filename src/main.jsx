@@ -998,6 +998,11 @@ function EyeconMoments() {
         const hours = Math.round(((sevenPm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
         await db.from('time_entries').update({ clock_out: sevenPm.toISOString(), hours_worked: hours }).eq('id', entry.id);
         setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: sevenPm, hoursWorked: hours } : e));
+        const emp = employees.find(e => e.id === entry.employeeId);
+        if (emp) {
+          sendActivityPush('🔴 Auto Clocked Out', `${emp.name} was automatically clocked out at 7:00 PM (${hours}h logged)`);
+          sendPushToEmployee(entry.employeeId, '🔴 Clocked Out', `You've been automatically clocked out at 7:00 PM — ${hours}h logged today.`);
+        }
       }));
     };
     sweep();
@@ -1841,6 +1846,18 @@ function EyeconMoments() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscriptions: subs, title, body }),
+      });
+    } catch (_) {}
+  };
+
+  const sendPushToEmployee = async (employeeId, title, body) => {
+    try {
+      const { data } = await db.from('push_subscriptions').select('subscription').eq('employee_id', employeeId);
+      if (!data || !data.length) return;
+      await fetch('/.netlify/functions/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptions: data.map(r => r.subscription), title, body }),
       });
     } catch (_) {}
   };
