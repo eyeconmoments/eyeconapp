@@ -1,0 +1,2629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Miah Family Hub</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html { overscroll-behavior: none; height: 100%; }
+    body {
+      margin: 0; padding: 0;
+      background: #0f0f0f;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overscroll-behavior: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { min-height: 100vh; }
+    ::-webkit-scrollbar { width: 0; background: transparent; }
+    input, select, textarea {
+      -webkit-appearance: none;
+      outline: none;
+    }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .tab-content { height: 100vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .safe-bottom { padding-bottom: max(80px, calc(env(safe-area-inset-bottom) + 70px)); }
+    button { cursor: pointer; border: none; background: none; padding: 0; }
+    button:active { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
+    const { createClient } = supabase;
+
+    // ─── Supabase ────────────────────────────────────────────────────
+    const db = createClient(
+      'https://wgqamqzlfnjcqyprphkw.supabase.co',
+      'sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE'
+    );
+
+    // ─── Prayer Time Engine ──────────────────────────────────────────
+    const toM = (h, m) => h * 60 + m;
+
+    // 2026 Masjid-e-Anisul-Islam Blackburn timetable anchors
+    // Format: [month, day, [fajr, dhuhr, asr, maghrib, isha]] all in minutes from midnight
+    const ANCHORS = [
+      [1,  1,  [toM(6,47), toM(12,19), toM(14,13), toM(16, 5), toM(17,48)]],
+      [1,  15, [toM(6,39), toM(12,24), toM(14,32), toM(16,25), toM(18, 6)]],
+      [1,  31, [toM(6,17), toM(12,28), toM(15, 0), toM(16,55), toM(18,33)]],
+      [2,  1,  [toM(6,16), toM(12,29), toM(15, 2), toM(16,57), toM(18,35)]],
+      [2,  15, [toM(5,49), toM(12,29), toM(15,28), toM(17,25), toM(18,58)]],
+      [2,  28, [toM(5,20), toM(12,27), toM(15,51), toM(17,51), toM(19,19)]],
+      [3,  1,  [toM(5,18), toM(12,27), toM(15,53), toM(17,53), toM(19,21)]],
+      [3,  15, [toM(4,44), toM(12,24), toM(16,15), toM(18,19), toM(19,42)]],
+      [3,  29, [toM(5,13), toM(13,50), toM(18,30), toM(20,45), toM(21,20)]],
+      [4,  1,  [toM(5, 6), toM(13,19), toM(17,40), toM(19,51), toM(21,10)]],
+      [4,  15, [toM(4,35), toM(13,15), toM(17,58), toM(20,17), toM(21,29)]],
+      [4,  30, [toM(3,54), toM(13,12), toM(18,16), toM(20,44), toM(21,46)]],
+      [5,  1,  [toM(3,51), toM(13,12), toM(18,17), toM(20,46), toM(21,47)]],
+      [5,  15, [toM(3,20), toM(13,11), toM(18,32), toM(21,11), toM(22,12)]],
+      [5,  31, [toM(2,50), toM(13,13), toM(18,45), toM(21,34), toM(22,34)]],
+      [6,  1,  [toM(2,49), toM(13,13), toM(18,46), toM(21,35), toM(22,35)]],
+      [6,  15, [toM(2,35), toM(13,39), toM(18,53), toM(21,47), toM(22,47)]],
+      [6,  30, [toM(2,43), toM(13,19), toM(18,56), toM(21,49), toM(22,49)]],
+      [7,  1,  [toM(2,45), toM(13,19), toM(18,56), toM(21,48), toM(22,48)]],
+      [7,  15, [toM(3, 6), toM(13,21), toM(18,50), toM(21,35), toM(22,36)]],
+      [7,  31, [toM(3,34), toM(13,21), toM(18,38), toM(21,13), toM(22,15)]],
+      [8,  1,  [toM(3,36), toM(13,21), toM(18,36), toM(21,12), toM(22,14)]],
+      [8,  15, [toM(4, 5), toM(13,19), toM(18,18), toM(20,44), toM(21,53)]],
+      [8,  31, [toM(4,37), toM(13,15), toM(17,51), toM(20, 7), toM(21,22)]],
+      [9,  1,  [toM(4,40), toM(13,15), toM(17,50), toM(20, 5), toM(21,19)]],
+      [9,  15, [toM(5, 4), toM(13,10), toM(17,22), toM(19,30), toM(20,48)]],
+      [9,  30, [toM(5,36), toM(13, 5), toM(16,51), toM(18,53), toM(20,16)]],
+      [10, 1,  [toM(5,38), toM(13, 4), toM(16,49), toM(18,51), toM(20,15)]],
+      [10, 15, [toM(5,50), toM(13, 2), toM(16,17), toM(18,15), toM(19,44)]],
+      [10, 25, [toM(5, 6), toM(11,59), toM(14,59), toM(16,55), toM(18,25)]],
+      [10, 31, [toM(5,27), toM(11,59), toM(14,47), toM(16,43), toM(18,14)]],
+      [11, 1,  [toM(5,30), toM(11,59), toM(14,45), toM(16,41), toM(18,13)]],
+      [11, 15, [toM(5,49), toM(11,59), toM(14,23), toM(16,17), toM(17,58)]],
+      [11, 30, [toM(6,17), toM(12, 4), toM(14, 7), toM(15,59), toM(17,41)]],
+      [12, 1,  [toM(6,18), toM(12, 4), toM(14, 6), toM(15,58), toM(17,41)]],
+      [12, 15, [toM(6,30), toM(12, 8), toM(14, 2), toM(15,54), toM(17,38)]],
+      [12, 31, [toM(6,46), toM(12,18), toM(14,12), toM(16, 4), toM(17,47)]],
+    ];
+
+    function getPrayerTimes(date) {
+      const year = date.getFullYear();
+      const jan1 = new Date(year, 0, 1);
+      const targetDay = Math.round((new Date(year, date.getMonth(), date.getDate()) - jan1) / 86400000);
+
+      const days = ANCHORS.map(([month, day, times]) => ({
+        day: Math.round((new Date(year, month - 1, day) - jan1) / 86400000),
+        times,
+      }));
+
+      let before = days[0];
+      let after = days[days.length - 1];
+      for (const a of days) { if (a.day <= targetDay) before = a; }
+      for (const a of [...days].reverse()) { if (a.day >= targetDay) { after = a; break; } }
+
+      const t = before.day === after.day ? 0 : (targetDay - before.day) / (after.day - before.day);
+      const interp = before.times.map((bv, i) => Math.round(bv + t * (after.times[i] - bv)));
+      const fmt = m => `${Math.floor(m / 60)}:${(m % 60).toString().padStart(2, '0')}`;
+      return {
+        fajr: fmt(interp[0]),
+        dhuhr: fmt(interp[1]),
+        asr: fmt(interp[2]),
+        maghrib: fmt(interp[3]),
+        isha: fmt(interp[4]),
+      };
+    }
+
+    // ─── Utilities ───────────────────────────────────────────────────
+    const ordinal = n => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+    };
+
+    const fmtGBP = n => `£${parseFloat(n || 0).toFixed(2)}`;
+
+    const todayStr = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const monthYearStr = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+
+    const PRAYER_KEYS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+    const PRAYER_LABELS = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
+    const PRAYER_ICONS = { fajr: '🌙', dhuhr: '☀️', asr: '🌤️', maghrib: '🌅', isha: '🌃' };
+
+    const CATEGORIES = ['bill', 'direct debit', 'utility', 'subscription', 'insurance', 'mortgage', 'other'];
+    const CAT_STYLE = {
+      'bill':          { bg: '#052e16', text: '#6ee7b7', border: '#064e3b' },
+      'direct debit':  { bg: '#1e3a5f', text: '#93c5fd', border: '#1d4ed8' },
+      'utility':       { bg: '#3b2f00', text: '#fcd34d', border: '#b45309' },
+      'subscription':  { bg: '#2e1065', text: '#c4b5fd', border: '#6d28d9' },
+      'insurance':     { bg: '#431407', text: '#fca5a1', border: '#dc2626' },
+      'mortgage':      { bg: '#450a0a', text: '#fca5a1', border: '#b91c1c' },
+      'other':         { bg: '#1a1a1a', text: '#9ca3af', border: '#374151' },
+    };
+
+    const SAMPLE_BILLS = [
+      { name: 'Mortgage',       amount: 1200.00, due_day: 1,  category: 'mortgage'      },
+      { name: 'Council Tax',    amount: 185.00,  due_day: 5,  category: 'bill'          },
+      { name: 'Virgin Media',   amount: 65.00,   due_day: 8,  category: 'direct debit'  },
+      { name: 'British Gas',    amount: 115.00,  due_day: 12, category: 'utility'       },
+      { name: 'Car Insurance',  amount: 89.99,   due_day: 15, category: 'insurance'     },
+      { name: 'Water Bill',     amount: 42.00,   due_day: 22, category: 'utility'       },
+      { name: 'Netflix',        amount: 10.99,   due_day: 25, category: 'subscription'  },
+    ];
+
+    // ─── Spending categories ────────────────────────────────────────
+    const SPEND_CATS = {
+      groceries:     { label: 'Groceries',       color: '#10b981', kw: ['TESCO','ASDA','SAINSBURY','MORRISON','LIDL','ALDI','WAITROSE','CO-OP','COOP','M&S FOOD','MARKS & SP','ICELAND','FARMFOODS','SPAR','NISA','COSTCO','BOOTHS','BUDGENS'] },
+      eating_out:    { label: 'Eating Out',       color: '#f59e0b', kw: ['MCDONALD','KFC','SUBWAY','PIZZA','BURGER','CHICKEN','RESTAURANT','CAFE ','COFFEE','STARBUCKS','COSTA','GREGGS','NANDOS','DOMINO','JUST EAT','DELIVEROO','UBER EATS','KEBAB','TAKEAWAY','CHIPPY','WETHERSPOON','PUB ','BAR '] },
+      transport:     { label: 'Transport',        color: '#6366f1', kw: ['TFL ','TRANSPORT FOR','NATIONAL RAIL','TRAINLINE','UBER ','PETROL','BP ','SHELL','ESSO','TEXACO','PARKING','BUS ','TRAIN','FUEL','AUTOSERVE','NPOWER FUEL','RAC ','AA ','MOT ','GARAGE'] },
+      shopping:      { label: 'Shopping',         color: '#ec4899', kw: ['AMAZON','EBAY','ARGOS','PRIMARK','H&M','ZARA','ASOS','NEXT ','BOOHOO','SHEIN','NIKE','ADIDAS','SPORTS DIRECT','JD SPORT','CURRYS','AO.COM','VERY ','STUDIO','JOHN LEWIS','IKEA','B&M','WILKO','HOME BARGAIN'] },
+      entertainment: { label: 'Entertainment',    color: '#8b5cf6', kw: ['NETFLIX','SPOTIFY','AMAZON PRIME','DISNEY','SKY','NOW TV','CINEMA','VUE ','ODEON','CINEWORLD','APPLE ','GOOGLE PLAY','PLAYSTATION','XBOX','STEAM','TWITCH','YOUTUBE'] },
+      health:        { label: 'Health & Beauty',  color: '#06b6d4', kw: ['PHARMACY','BOOTS ','SUPERDRUG','LLOYDS PHARM','NHS','DENTIST','OPTICIAN','BARBER','HAIR ','SALON','GYM ','PURE GYM','DAVID LLOYD','NUFFIELD','ANYTIME FITNESS'] },
+      bills:         { label: 'Bills & DD',       color: '#ef4444', kw: ['DIRECT DEBIT','VIRGIN','BRITISH GAS','COUNCIL TAX','WATER','ELECTRIC','INSURANCE','MORTGAGE','VODAFONE','EE ','O2 ','THREE ','TALKTALK','UTILITY','NTLWORLD','SKY BROAD'] },
+      transfers:     { label: 'Transfers & Cash', color: '#374151', kw: ['TRANSFER','PAYPAL','MONZO','REVOLUT','CASH ','ATM ','WITHDRAWAL','CASHPOINT','STANDING ORDER','FASTER PAYMENT'] },
+      other:         { label: 'Other',            color: '#6b7280', kw: [] },
+    };
+
+    // ─── Prayer notification scheduling (via Service Worker) ────────
+    const schedulePrayerAlerts = async (times) => {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      if (!('serviceWorker' in navigator)) return;
+      const now = new Date();
+      const nowMs = now.getHours() * 3600000 + now.getMinutes() * 60000 + now.getSeconds() * 1000;
+      const prayers = PRAYER_KEYS.map(key => {
+        const [h, m] = times[key].split(':').map(Number);
+        return { key, label: PRAYER_LABELS[key], icon: PRAYER_ICONS[key], time: times[key], delayMs: (h * 3600000 + m * 60000) - nowMs };
+      }).filter(p => p.delayMs > 90000);
+      if (!prayers.length) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg.active) reg.active.postMessage({ type: 'PRAYER_SCHEDULE', prayers });
+      } catch(e) {}
+    };
+
+    // Register service worker on load
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    // ─── Modal ───────────────────────────────────────────────────────
+    function Modal({ title, onClose, children }) {
+      return (
+        <div
+          className="fixed inset-0 z-50 flex items-end"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={e => e.target === e.currentTarget && onClose()}
+        >
+          <div
+            className="w-full rounded-t-3xl"
+            style={{ background: '#1c1c1e', maxHeight: '90vh', overflowY: 'auto', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: '#3a3a3c' }} />
+            </div>
+            <div className="px-5 pb-2 pt-2 flex justify-between items-center">
+              <h3 className="text-lg font-bold">{title}</h3>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 text-xl"
+                style={{ background: '#2c2c2e' }}
+              >×</button>
+            </div>
+            <div className="px-5 pt-1">{children}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Field ───────────────────────────────────────────────────────
+    function Field({ label, children }) {
+      return (
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: '#8e8e93' }}>{label}</label>
+          {children}
+        </div>
+      );
+    }
+
+    const inputCls = "w-full px-4 py-3 rounded-xl text-white text-sm";
+    const inputStyle = { background: '#2c2c2e', border: '1px solid #3a3a3c' };
+
+    // ─── Login Screen ─────────────────────────────────────────────────
+    function LoginScreen({ onLogin }) {
+      const [users, setUsers] = useState([]);
+      const [selected, setSelected] = useState(null);
+      const [pin, setPin] = useState('');
+      const [error, setError] = useState('');
+      const [shaking, setShaking] = useState(false);
+
+      useEffect(() => {
+        db.from('family_users').select('*').order('name').then(({ data }) => setUsers(data || []));
+      }, []);
+
+      const handleDigit = d => {
+        if (pin.length >= 4) return;
+        const next = pin + d;
+        setPin(next);
+        setError('');
+        if (next.length === 4) {
+          setTimeout(() => {
+            if (next === selected.pin) {
+              onLogin(selected);
+            } else {
+              setShaking(true);
+              setTimeout(() => { setShaking(false); setPin(''); setError('Wrong PIN — try again'); }, 500);
+            }
+          }, 100);
+        }
+      };
+
+      const handleBack = () => { setPin(p => p.slice(0, -1)); setError(''); };
+
+      const PadBtn = ({ label, onClick, sub }) => (
+        <button
+          onClick={onClick}
+          className="flex flex-col items-center justify-center rounded-full transition-all active:scale-90"
+          style={{ background: '#1c1c1e', width: 78, height: 78, border: '1px solid #2c2c2e' }}
+        >
+          <span className="text-2xl font-light text-white">{label}</span>
+          {sub && <span className="text-xs" style={{ color: '#6b7280', letterSpacing: 1 }}>{sub}</span>}
+        </button>
+      );
+
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: '#0f0f0f' }}>
+          <div className="mb-8 text-center">
+            <div className="text-5xl mb-3">🏡</div>
+            <h1 className="text-3xl font-bold tracking-tight">Miah Family</h1>
+            <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Family Hub</p>
+          </div>
+
+          {!selected ? (
+            <div className="w-full max-w-xs space-y-3">
+              <p className="text-center text-sm mb-5" style={{ color: '#8e8e93' }}>Who's logging in?</p>
+              {users.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => { setSelected(u); setPin(''); setError(''); }}
+                  className="w-full py-4 rounded-2xl font-semibold text-lg transition-all active:scale-98"
+                  style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}
+                >
+                  {u.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="w-full max-w-xs flex flex-col items-center">
+              <button
+                onClick={() => { setSelected(null); setPin(''); setError(''); }}
+                className="self-start mb-6 text-sm flex items-center gap-1"
+                style={{ color: '#10b981' }}
+              >
+                ← Back
+              </button>
+              <p className="text-lg font-semibold mb-1">Hi, {selected.name}!</p>
+              <p className="text-sm mb-8" style={{ color: '#8e8e93' }}>Enter your 4-digit PIN</p>
+
+              {/* Dots */}
+              <div className={`flex gap-5 mb-3 transition-all ${shaking ? 'animate-bounce' : ''}`}>
+                {[0,1,2,3].map(i => (
+                  <div
+                    key={i}
+                    className="w-4 h-4 rounded-full transition-all duration-150"
+                    style={{ background: i < pin.length ? '#10b981' : 'transparent', border: '2px solid', borderColor: i < pin.length ? '#10b981' : '#4b5563' }}
+                  />
+                ))}
+              </div>
+              {error && <p className="text-sm mb-4" style={{ color: '#ef4444' }}>{error}</p>}
+              {!error && <div className="mb-4 h-5" />}
+
+              {/* Numpad */}
+              <div className="grid grid-cols-3 gap-4">
+                {[1,2,3,4,5,6,7,8,9].map(d => (
+                  <PadBtn key={d} label={d} onClick={() => handleDigit(String(d))} />
+                ))}
+                <div />
+                <PadBtn label="0" onClick={() => handleDigit('0')} />
+                <button
+                  onClick={handleBack}
+                  className="flex items-center justify-center rounded-full text-2xl text-gray-400 transition-all active:scale-90"
+                  style={{ width: 78, height: 78 }}
+                >⌫</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── Home Tab ─────────────────────────────────────────────────────
+    function HomeTab({ user, switchTab }) {
+      const [now, setNow] = useState(new Date());
+      const [prayerLogs, setPrayerLogs] = useState([]);
+      const [bills, setBills] = useState([]);
+      const [payments, setPayments] = useState([]);
+      const [tasks, setTasks] = useState([]);
+      const [shopping, setShopping] = useState([]);
+      const [gymLogs, setGymLogs] = useState([]);
+      const [steps, setSteps] = useState(() => {
+        try { const c = JSON.parse(localStorage.getItem('gfit_steps_today') || 'null'); if (c && c.date === todayStr()) return c.count; } catch(e) {}
+        return null;
+      });
+      const [stepTarget, setStepTarget] = useState(() => parseInt(localStorage.getItem('step_target') || '10000'));
+      const [syncing, setSyncing] = useState(false);
+      const [showGFitSetup, setShowGFitSetup] = useState(false);
+
+      useEffect(() => {
+        const iv = setInterval(() => setNow(new Date()), 30000);
+        return () => clearInterval(iv);
+      }, []);
+
+      useEffect(() => {
+        const t = todayStr(), my = monthYearStr();
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        Promise.all([
+          db.from('prayer_log').select('*').eq('user_id', user.id).eq('prayer_date', t),
+          db.from('bills').select('*').eq('is_active', true),
+          db.from('bill_payments').select('*').eq('month_year', my),
+          db.from('family_tasks').select('*').eq('completed', false),
+          db.from('shopping_items').select('*').eq('completed', false),
+          db.from('family_gym_logs').select('*').eq('user_id', user.id).gte('date', cutoffStr),
+        ]).then(([pl, bl, bp, tk, sh, gl]) => {
+          setPrayerLogs(pl.data || []);
+          setBills(bl.data || []);
+          setPayments(bp.data || []);
+          setTasks(tk.data || []);
+          setShopping(sh.data || []);
+          setGymLogs(gl.data || []);
+        });
+      }, [user.id]);
+
+      const prayerTimes = useMemo(() => getPrayerTimes(now), [now.toDateString()]);
+      const donePrayers = prayerLogs.length;
+      const todayScore = prayerLogs.reduce((s, l) => s + (l.status === 'kazaa' ? 0.5 : 1), 0);
+
+      const greeting = () => {
+        const h = now.getHours();
+        if (h < 5)  return 'Assalamu Alaikum \u{1F319}';
+        if (h < 12) return 'Good morning \u{2600}\uFE0F';
+        if (h < 17) return 'Good afternoon 🌤️';
+        if (h < 20) return 'Good evening \u{1F305}';
+        return 'Good night \u{1F303}';
+      };
+
+      const nextPrayer = useMemo(() => {
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        for (const key of PRAYER_KEYS) {
+          const [h, m] = prayerTimes[key].split(':').map(Number);
+          const pMins = h * 60 + m;
+          if (pMins > nowMins) {
+            const diff = pMins - nowMins;
+            const hrs = Math.floor(diff / 60), mins = diff % 60;
+            return {
+              name: PRAYER_LABELS[key],
+              icon: PRAYER_ICONS[key],
+              time: prayerTimes[key],
+              in: hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`,
+            };
+          }
+        }
+        return { name: 'Fajr', icon: '\u{1F319}', time: prayerTimes.fajr, in: 'Tomorrow' };
+      }, [now, prayerTimes]);
+
+      const paidIds = new Set(payments.map(p => p.bill_id));
+      const day = now.getDate();
+      const dueSoon = bills.filter(b => b.due_day >= day && b.due_day <= day + 7 && !paidIds.has(b.id));
+      const myTasks = tasks.filter(t => !t.assigned_to || t.assigned_to === user.id).slice(0, 3);
+      const totalBills = bills.reduce((s, b) => s + parseFloat(b.amount || 0), 0);
+      const paidAmt = payments.reduce((s, p) => s + parseFloat(p.amount_paid || 0), 0);
+      const remaining = totalBills - paidAmt;
+
+      const syncGFitSteps = () => {
+        const clientId = localStorage.getItem('gfit_client_id') || '';
+        if (!clientId) { setShowGFitSetup(true); return; }
+        if (!window.google || !window.google.accounts) { alert('Google services not loaded yet. Try again in a moment.'); return; }
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/fitness.activity.read',
+          callback: async (resp) => {
+            if (resp.error) { alert('Google sign-in failed: ' + resp.error); return; }
+            setSyncing(true);
+            try {
+              const start = new Date(); start.setHours(0, 0, 0, 0);
+              const body = {
+                aggregateBy: [{ dataTypeName: 'com.google.step_count.delta', dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps' }],
+                bucketByTime: { durationMillis: 86400000 },
+                startTimeMillis: start.getTime(),
+                endTimeMillis: Date.now()
+              };
+              const r = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + resp.access_token, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+              });
+              const data = await r.json();
+              const count = (data.bucket || []).reduce((total, bucket) => {
+                return total + ((bucket.dataset || [])[0]?.point || []).reduce((s, p) => s + ((p.value || [])[0]?.intVal || 0), 0);
+              }, 0);
+              setSteps(count);
+              localStorage.setItem('gfit_steps_today', JSON.stringify({ date: todayStr(), count }));
+            } catch(e) { alert('Error fetching steps: ' + e.message); }
+            setSyncing(false);
+          }
+        });
+        client.requestAccessToken({ prompt: '' });
+      };
+
+      // Gym this week
+      const getMon = ds => {
+        const d = new Date(ds + 'T12:00:00');
+        const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+        d.setDate(d.getDate() + diff);
+        return d.toISOString().slice(0, 10);
+      };
+      const thisWeekMon = getMon(todayStr());
+      const thisWeekDays = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(thisWeekMon + 'T12:00:00'); d.setDate(d.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+      const wentGymThisWeek = thisWeekDays.some(ds => gymLogs.some(r => r.date === ds));
+
+      // SVG prayer ring constants
+      const R = 46;
+      const CIRC = 2 * Math.PI * R;
+
+      return (
+        <div className="tab-content safe-bottom">
+          {/* Hero section with circular prayer ring */}
+          <div style={{ background: 'linear-gradient(170deg, #061510 0%, #0b1c12 45%, #0f0f0f 100%)' }} className="px-4 pt-16 pb-6">
+            <div className="flex items-start justify-between mb-5">
+              <div>
+                <p className="text-sm font-medium" style={{ color: '#6ee7b7' }}>{greeting()}</p>
+                <h1 className="text-3xl font-bold mt-0.5 tracking-tight">{user.name}</h1>
+                <p className="text-xs mt-1" style={{ color: '#4b5563' }}>
+                  {now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+              {donePrayers === 5 && <span className="text-4xl mt-1">⭐</span>}
+            </div>
+
+            {/* Ring + next prayer info */}
+            <div className="flex items-center gap-5">
+              <div className="relative flex-shrink-0" style={{ width: 116, height: 116 }}>
+                <svg viewBox="0 0 116 116" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                  <circle cx="58" cy="58" r={R} fill="none" stroke="#102018" strokeWidth="12"/>
+                  <circle cx="58" cy="58" r={R} fill="none"
+                    stroke={donePrayers === 5 ? '#10b981' : '#059669'}
+                    strokeWidth="12"
+                    strokeDasharray={CIRC}
+                    strokeDashoffset={CIRC - (donePrayers / 5) * CIRC}
+                    strokeLinecap="round"
+                    style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="font-bold leading-none" style={{ fontSize: 28, color: '#10b981' }}>{donePrayers}</span>
+                  <span className="text-xs leading-none mt-1" style={{ color: '#4b5563' }}>of 5</span>
+                  {todayScore > 0 && (
+                    <span className="font-bold mt-1" style={{ fontSize: 11, color: '#6ee7b7' }}>{todayScore}pts</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold mb-2" style={{ color: '#374151', letterSpacing: 1 }}>NEXT PRAYER</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">{nextPrayer.icon}</span>
+                  <div>
+                    <p className="text-xl font-bold leading-tight">{nextPrayer.name}</p>
+                    <p className="text-sm font-medium" style={{ color: '#10b981' }}>{nextPrayer.time}</p>
+                  </div>
+                </div>
+                <div className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold"
+                  style={{ background: '#102018', color: '#6ee7b7' }}>
+                  ⏱ in {nextPrayer.in}
+                </div>
+              </div>
+            </div>
+
+            {/* Prayer strip indicators */}
+            <div className="flex gap-2 mt-5">
+              {PRAYER_KEYS.map(k => {
+                const log = prayerLogs.find(l => l.prayer_name === k);
+                const isKazaa = log?.status === 'kazaa';
+                const isOnTime = log && !isKazaa;
+                return (
+                  <div key={k} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full rounded-full" style={{ height: 4, background: isOnTime ? '#10b981' : isKazaa ? '#f59e0b' : '#1a2e22' }} />
+                    <span style={{ fontSize: 9, color: isOnTime ? '#6ee7b7' : isKazaa ? '#fbbf24' : '#374151' }}>
+                      {PRAYER_LABELS[k].slice(0, 3)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Prayers missed/overdue today */}
+            {donePrayers < 5 && (() => {
+              const nowMins = now.getHours() * 60 + now.getMinutes();
+              const pastMissed = PRAYER_KEYS.filter(k => {
+                if (prayerLogs.some(l => l.prayer_name === k)) return false;
+                const [h, m] = prayerTimes[k].split(':').map(Number);
+                return (h * 60 + m) <= nowMins;
+              });
+              if (pastMissed.length === 0) return null;
+              return (
+                <button onClick={() => switchTab('prayers')}
+                  className="mt-3 w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl active:opacity-80"
+                  style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                  <span className="text-sm">⚠️</span>
+                  <p className="text-xs font-medium flex-1" style={{ color: '#fca5a5' }}>
+                    Missed: {pastMissed.map(k => PRAYER_LABELS[k]).join(' · ')}
+                  </p>
+                  <span className="text-xs" style={{ color: '#f87171' }}>Log now →</span>
+                </button>
+              );
+            })()}
+          </div>
+
+          {/* Dashboard cards */}
+          <div className="px-4 pt-3 space-y-3">
+            {/* Bills card */}
+            <button
+              onClick={() => switchTab('bills')}
+              className="w-full rounded-2xl p-4 text-left active:opacity-80 transition-opacity"
+              style={{ background: '#1c1c1e' }}
+            >
+              <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>BILLS THIS MONTH</p>
+              <div className="flex items-end justify-between mb-3">
+                <div>
+                  <p className="text-3xl font-bold">{fmtGBP(totalBills)}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>total going out</p>
+                </div>
+                <div className="text-right space-y-0.5">
+                  <p className="text-lg font-bold" style={{ color: '#10b981' }}>{fmtGBP(paidAmt)} <span className="text-xs font-normal" style={{ color: '#6b7280' }}>paid</span></p>
+                  <p className="text-lg font-bold" style={{ color: remaining > 0 ? '#f59e0b' : '#4b5563' }}>{fmtGBP(remaining)} <span className="text-xs font-normal" style={{ color: '#6b7280' }}>left</span></p>
+                </div>
+              </div>
+              <div className="h-2 rounded-full mb-2" style={{ background: '#2c2c2e' }}>
+                <div className="h-2 rounded-full transition-all duration-500"
+                  style={{ background: '#10b981', width: totalBills > 0 ? `${Math.min((paidAmt / totalBills) * 100, 100)}%` : '0%' }} />
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs" style={{ color: '#4b5563' }}>{paidIds.size}/{bills.length} bills paid</p>
+                {dueSoon.length > 0 && (
+                  <p className="text-xs" style={{ color: '#f59e0b' }}>⚠️ {dueSoon.length} due soon</p>
+                )}
+              </div>
+            </button>
+
+            {/* Stat cards row */}
+            <div className="grid grid-cols-3 gap-2.5">
+              <button onClick={() => switchTab('tasks')} className="rounded-2xl p-4 text-left active:opacity-80" style={{ background: '#1c1c1e' }}>
+                <p className="text-2xl mb-2">✅</p>
+                <p className="text-2xl font-bold">{tasks.length}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>tasks</p>
+              </button>
+              <button onClick={() => switchTab('tasks')} className="rounded-2xl p-4 text-left active:opacity-80" style={{ background: '#1c1c1e' }}>
+                <p className="text-2xl mb-2">🛒</p>
+                <p className="text-2xl font-bold">{shopping.length}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>shopping</p>
+              </button>
+              <button
+                onClick={() => switchTab('prayers')}
+                className="rounded-2xl p-4 text-left active:opacity-80 transition-all"
+                style={{ background: wentGymThisWeek ? '#052e16' : '#1c1c1e', border: `1px solid ${wentGymThisWeek ? '#059669' : 'transparent'}` }}
+              >
+                <p className="text-2xl mb-2">💪</p>
+                <p className="text-2xl font-bold" style={{ color: wentGymThisWeek ? '#10b981' : '#fff' }}>
+                  {wentGymThisWeek ? '\u2713' : '\u2014'}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: wentGymThisWeek ? '#6ee7b7' : '#6b7280' }}>
+                  {wentGymThisWeek ? 'done!' : 'gym'}
+                </p>
+              </button>
+            </div>
+
+            {/* Steps card */}
+            <div className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold" style={{ color: '#8e8e93', letterSpacing: 1 }}>TODAY'S STEPS</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowGFitSetup(true)}
+                    className="flex items-center justify-center rounded-lg text-sm"
+                    style={{ width: 30, height: 30, background: '#2c2c2e', color: '#6b7280' }}>
+                    ⚙️
+                  </button>
+                  <button onClick={syncGFitSteps} disabled={syncing}
+                    className="text-xs px-3 py-1.5 rounded-full font-semibold transition-all active:scale-95"
+                    style={{ background: syncing ? '#1a2e22' : '#0d2318', color: syncing ? '#4b5563' : '#34d399', border: '1px solid #1a3a2a' }}>
+                    {syncing ? '⏳' : '↻ Sync'}
+                  </button>
+                </div>
+              </div>
+              {steps !== null ? (
+                <>
+                  <div className="flex items-end gap-2 mb-3">
+                    <p className="font-bold" style={{ fontSize: 38, lineHeight: 1 }}>{steps.toLocaleString()}</p>
+                    <p className="pb-1 text-sm" style={{ color: '#6b7280' }}>/ {stepTarget.toLocaleString()}</p>
+                  </div>
+                  <div className="h-2.5 rounded-full mb-2" style={{ background: '#2c2c2e' }}>
+                    <div className="h-2.5 rounded-full transition-all duration-700"
+                      style={{ background: steps >= stepTarget ? '#10b981' : '#6366f1', width: Math.min((steps / stepTarget) * 100, 100) + '%' }} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs" style={{ color: steps >= stepTarget ? '#10b981' : '#6b7280' }}>
+                      {steps >= stepTarget ? '🎉 Target reached!' : (stepTarget - steps).toLocaleString() + ' to go'}
+                    </p>
+                    <p className="text-xs font-bold" style={{ color: steps >= stepTarget ? '#10b981' : '#818cf8' }}>
+                      {Math.round((steps / stepTarget) * 100)}%
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center py-3 gap-2">
+                  <span style={{ fontSize: 36 }}>&#x1F45F;</span>
+                  {localStorage.getItem('gfit_client_id') ? (
+                    <p className="text-sm text-center" style={{ color: '#6b7280' }}>Tap Sync to load today's steps from Google Fit</p>
+                  ) : (
+                    <>
+                      <p className="text-sm text-center" style={{ color: '#6b7280' }}>Connect Google Fit to sync steps automatically</p>
+                      <button onClick={() => setShowGFitSetup(true)}
+                        className="text-sm px-4 py-2 rounded-full font-semibold active:scale-95 transition-transform"
+                        style={{ background: '#1a2a4a', color: '#60a5fa' }}>
+                        Set up Google Fit
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Tasks calendar */}
+            {tasks.length > 0 && (
+              <button
+                onClick={() => switchTab('tasks')}
+                className="w-full rounded-2xl p-4 text-left active:opacity-80"
+                style={{ background: '#1c1c1e' }}
+              >
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>UPCOMING TASKS</p>
+                {/* 14-day calendar strip from today */}
+                <div className="flex gap-1 mb-3">
+                  {Array.from({ length: 14 }, (_, i) => {
+                    const d = new Date(); d.setDate(d.getDate() + i);
+                    const ds = d.toISOString().slice(0, 10);
+                    const dayTasks = tasks.filter(t => t.due_date === ds);
+                    const isToday = i === 0;
+                    const DAY_INITIALS = ['S','M','T','W','T','F','S'];
+                    return (
+                      <div key={ds} className="flex-1 flex flex-col items-center gap-0.5">
+                        <span style={{ fontSize: 9, color: isToday ? '#10b981' : '#4b5563' }}>
+                          {DAY_INITIALS[d.getDay()]}
+                        </span>
+                        <div className="w-full flex flex-col items-center justify-center rounded-lg py-1.5"
+                          style={{ background: isToday ? '#1a2e22' : dayTasks.length > 0 ? '#1a1a2e' : 'transparent', border: `1px solid ${isToday ? '#10b981' : dayTasks.length > 0 ? '#4338ca' : 'transparent'}` }}>
+                          <span style={{ fontSize: 11, fontWeight: isToday ? 700 : 400, color: isToday ? '#10b981' : '#9ca3af' }}>
+                            {d.getDate()}
+                          </span>
+                          {dayTasks.length > 0 && (
+                            <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#818cf8', marginTop: 2 }} />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Overdue + next up tasks */}
+                <div className="space-y-1.5">
+                  {(() => {
+                    const overdue = tasks.filter(t => t.due_date && t.due_date < todayStr()).slice(0, 2);
+                    const upcoming = tasks.filter(t => !t.due_date || t.due_date >= todayStr()).slice(0, 3 - overdue.length);
+                    return [...overdue, ...upcoming].map(t => {
+                      const isOverdue = t.due_date && t.due_date < todayStr();
+                      return (
+                        <div key={t.id} className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: isOverdue ? '#ef4444' : '#818cf8' }} />
+                          <p className="text-xs flex-1 truncate" style={{ color: '#d1d5db' }}>{t.title}</p>
+                          {t.due_date && (
+                            <span style={{ fontSize: 10, color: isOverdue ? '#ef4444' : '#4b5563', flexShrink: 0 }}>
+                              {isOverdue ? 'overdue' : new Date(t.due_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+                {tasks.length > 3 && (
+                  <p className="text-xs mt-2" style={{ color: '#4b5563' }}>+{tasks.length - 3} more →</p>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Google Fit setup modal */}
+        {showGFitSetup && (
+          <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(0,0,0,0.8)' }}
+            onClick={() => setShowGFitSetup(false)}>
+            <div className="w-full rounded-t-3xl p-6 pb-10" style={{ background: '#1c1c1e' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#3a3a3c' }} />
+              <h3 className="text-xl font-bold mb-1">Google Fit Setup</h3>
+              <p className="text-sm mb-5" style={{ color: '#8e8e93' }}>Steps are pulled from Google Fit via OAuth. One-time setup:</p>
+              <ol className="text-sm space-y-2 mb-5" style={{ color: '#d1d5db' }}>
+                <li><span style={{ color: '#60a5fa' }}>1.</span> Go to <strong>console.cloud.google.com</strong></li>
+                <li><span style={{ color: '#60a5fa' }}>2.</span> New project &rarr; APIs &amp; Services &rarr; Enable <strong>Fitness API</strong></li>
+                <li><span style={{ color: '#60a5fa' }}>3.</span> Credentials &rarr; Create OAuth 2.0 Client ID &rarr; Web application</li>
+                <li><span style={{ color: '#60a5fa' }}>4.</span> Add your Netlify URL as an <strong>Authorised JavaScript origin</strong></li>
+                <li><span style={{ color: '#60a5fa' }}>5.</span> Paste the Client ID below</li>
+              </ol>
+              <input
+                className="w-full rounded-xl px-4 py-3 mb-3 text-sm"
+                style={{ background: '#2c2c2e', color: '#fff', border: '1px solid #3a3a3c' }}
+                placeholder="Paste OAuth 2.0 Client ID (ends in .apps.googleusercontent.com)..."
+                defaultValue={localStorage.getItem('gfit_client_id') || ''}
+                onChange={e => localStorage.setItem('gfit_client_id', e.target.value.trim())}
+              />
+              <div className="flex gap-3 mb-3">
+                <button
+                  onClick={() => {
+                    const t = parseInt(prompt('Daily step target (current: ' + stepTarget + '):', stepTarget));
+                    if (t > 0) { setStepTarget(t); localStorage.setItem('step_target', String(t)); }
+                  }}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold"
+                  style={{ background: '#2c2c2e', color: '#d1d5db' }}>
+                  Target: {stepTarget.toLocaleString()} steps
+                </button>
+                <button
+                  onClick={() => setShowGFitSetup(false)}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold"
+                  style={{ background: '#052e16', color: '#10b981' }}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      );
+    }
+    // ─── Prayers Tab ──────────────────────────────────────────────────
+    function PrayersTab({ user, allUsers, noPadTop }) {
+      const [date, setDate] = useState(todayStr());
+      const [logs, setLogs] = useState([]);
+      const [busy, setBusy] = useState({});
+      const [historyLogs, setHistoryLogs] = useState([]); // last 30 days for streak
+      const [allTodayLogs, setAllTodayLogs] = useState([]); // all users today
+      const [notifOn, setNotifOn] = useState(() => localStorage.getItem('salahNotif') === 'true' && Notification.permission === 'granted');
+
+      const prayerTimes = useMemo(() => getPrayerTimes(new Date(date + 'T12:00:00')), [date]);
+
+      const fetchLogs = () => {
+        db.from('prayer_log').select('*').eq('user_id', user.id).eq('prayer_date', date)
+          .then(({ data }) => setLogs(data || []));
+      };
+
+      useEffect(() => { fetchLogs(); }, [date, user.id]);
+
+      // Fetch history for streak + all users for comparison (only when on today)
+      useEffect(() => {
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        db.from('prayer_log').select('*').eq('user_id', user.id).gte('prayer_date', cutoffStr)
+          .then(({ data }) => setHistoryLogs(data || []));
+        db.from('prayer_log').select('*').eq('prayer_date', todayStr())
+          .then(({ data }) => setAllTodayLogs(data || []));
+      }, [user.id]);
+
+      // Cycle: none → on_time → kazaa → none
+      const toggle = async key => {
+        if (busy[key]) return;
+        setBusy(b => ({ ...b, [key]: true }));
+        const existing = logs.find(l => l.prayer_name === key);
+        if (!existing) {
+          // not prayed → on time
+          const { data } = await db.from('prayer_log')
+            .insert({ user_id: user.id, prayer_name: key, prayer_date: date, status: 'on_time' })
+            .select().single();
+          if (data) { setLogs(prev => [...prev, data]); setAllTodayLogs(prev => [...prev, data]); }
+        } else if (existing.status !== 'kazaa') {
+          // on time → kazaa
+          await db.from('prayer_log').update({ status: 'kazaa' }).eq('id', existing.id);
+          const updated = { ...existing, status: 'kazaa' };
+          setLogs(prev => prev.map(l => l.id === existing.id ? updated : l));
+          setAllTodayLogs(prev => prev.map(l => l.id === existing.id ? updated : l));
+        } else {
+          // kazaa → remove
+          await db.from('prayer_log').delete().eq('id', existing.id);
+          setLogs(prev => prev.filter(l => l.id !== existing.id));
+          setAllTodayLogs(prev => prev.filter(l => l.id !== existing.id));
+        }
+        setBusy(b => ({ ...b, [key]: false }));
+      };
+
+      const done = logs.length;
+      const isToday = date === todayStr();
+
+      // Next prayer
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const nextKey = isToday ? PRAYER_KEYS.find(k => {
+        const [h, m] = prayerTimes[k].split(':').map(Number);
+        return (h * 60 + m) > nowMins;
+      }) : null;
+
+      // Scoring: on_time = 1pt, kazaa = 0.5pt (max 5 per day)
+      const scoreDay = ds => {
+        const dayLogs = historyLogs.filter(l => l.prayer_date === ds);
+        return dayLogs.reduce((s, l) => s + (l.status === 'kazaa' ? 0.5 : 1), 0);
+      };
+      const todayScore = logs.reduce((s, l) => s + (l.status === 'kazaa' ? 0.5 : 1), 0);
+
+      // Streak: consecutive days ending today with all 5 prayed (any status)
+      const streak = (() => {
+        let s = 0;
+        const d = new Date();
+        for (let i = 0; i < 30; i++) {
+          const ds = d.toISOString().slice(0, 10);
+          const count = historyLogs.filter(l => l.prayer_date === ds).length;
+          if (count === 5) { s++; d.setDate(d.getDate() - 1); }
+          else break;
+        }
+        return s;
+      })();
+
+      // Last 14 days dot history
+      const last14 = Array.from({ length: 14 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - (13 - i));
+        const ds = d.toISOString().slice(0, 10);
+        const dayLogs = historyLogs.filter(l => l.prayer_date === ds);
+        return { ds, count: dayLogs.length, score: scoreDay(ds), allOnTime: dayLogs.length === 5 && dayLogs.every(l => l.status !== 'kazaa') };
+      });
+
+      // Family comparison for today
+      const familyComparison = allUsers.map(u => ({
+        ...u,
+        count: allTodayLogs.filter(l => l.user_id === u.id).length,
+      })).sort((a, b) => b.count - a.count);
+
+      return (
+        <div className="tab-content safe-bottom">
+          <div className={`px-4 pb-3 ${noPadTop ? 'pt-3' : 'pt-14'}`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-2xl font-bold">Prayers</h2>
+                <p className="text-sm mt-0.5" style={{ color: '#8e8e93' }}>
+                  {done}/5 prayed · <span style={{ color: todayScore === 5 ? '#10b981' : todayScore >= 3 ? '#f59e0b' : '#6b7280' }}>{todayScore}/5 pts</span>
+                  {' · '}{isToday ? 'Today' : new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {streak > 0 && (
+                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: '#431407', color: '#fb923c' }}>
+                    🔥 {streak}d
+                  </div>
+                )}
+                <button
+                  onClick={async () => {
+                    if (notifOn) {
+                      localStorage.removeItem('salahNotif');
+                      setNotifOn(false);
+                    } else {
+                      const perm = await Notification.requestPermission();
+                      if (perm === 'granted') {
+                        localStorage.setItem('salahNotif', 'true');
+                        setNotifOn(true);
+                        schedulePrayerAlerts(getPrayerTimes(new Date()));
+                      } else {
+                        alert('Notification permission denied. Enable it in your browser settings.');
+                      }
+                    }
+                  }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-lg transition-all active:scale-90"
+                  style={{ background: notifOn ? '#059669' : '#2c2c2e', border: notifOn ? '1px solid #10b981' : '1px solid #3a3a3c' }}
+                  title={notifOn ? 'Prayer alerts ON – tap to disable' : 'Enable prayer alerts'}
+                >
+                  {notifOn ? '🔔' : '🔕'}
+                </button>
+                <input type="date" value={date} max={todayStr()} onChange={e => setDate(e.target.value)}
+                  className="text-xs rounded-xl px-3 py-2"
+                  style={{ background: '#2c2c2e', color: '#fff', border: '1px solid #3a3a3c' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="px-4 mb-4">
+            <div className="h-2 rounded-full" style={{ background: '#2c2c2e' }}>
+              <div className="h-2 rounded-full transition-all duration-500" style={{ background: '#10b981', width: `${(done / 5) * 100}%` }} />
+            </div>
+          </div>
+
+          {/* Salah times strip */}
+          <div className="mx-4 mb-3 rounded-2xl overflow-hidden" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+            <div className="flex">
+              {PRAYER_KEYS.map(key => {
+                const log = logs.find(l => l.prayer_name === key);
+                const isNext = key === nextKey;
+                const isDone = !!log;
+                const isKazaa = log?.status === 'kazaa';
+                return (
+                  <div key={key} className="flex-1 flex flex-col items-center py-3 px-0.5"
+                    style={{
+                      background: isNext ? '#0d2318' : 'transparent',
+                      borderTop: '2px solid ' + (isNext ? '#10b981' : isDone ? (isKazaa ? '#d97706' : '#059669') : 'transparent'),
+                    }}>
+                    <span style={{ fontSize: 13 }}>{PRAYER_ICONS[key]}</span>
+                    <p className="font-semibold mt-0.5" style={{ fontSize: 10, color: isNext ? '#10b981' : isDone ? (isKazaa ? '#fbbf24' : '#6ee7b7') : '#9ca3af' }}>
+                      {PRAYER_LABELS[key]}
+                    </p>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: isNext ? '#34d399' : isDone ? (isKazaa ? '#d97706' : '#059669') : '#4b5563', marginTop: 1 }}>
+                      {prayerTimes[key]}
+                    </p>
+                    {isNext && !isDone && (
+                      <p style={{ fontSize: 8, letterSpacing: 0.5, color: '#10b981', marginTop: 2 }}>NEXT</p>
+                    )}
+                    {isDone && (
+                      <div style={{ width: 4, height: 4, borderRadius: '50%', background: isKazaa ? '#f59e0b' : '#10b981', marginTop: 3 }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tap hint */}
+          <div className="px-4 mb-2">
+            <p className="text-xs" style={{ color: '#4b5563' }}>Tap once = on time · Tap again = kazaa · Tap again = remove</p>
+          </div>
+
+          {/* Catch-ups needed – past days with incomplete prayers */}
+          {isToday && (() => {
+            const catchUpDays = [];
+            for (let i = 1; i <= 7; i++) {
+              const d = new Date(); d.setDate(d.getDate() - i);
+              const ds = d.toISOString().slice(0, 10);
+              const dayLogs = historyLogs.filter(l => l.prayer_date === ds);
+              const missing = PRAYER_KEYS.filter(k => !dayLogs.some(l => l.prayer_name === k));
+              if (missing.length > 0) catchUpDays.push({ ds, missing, done: dayLogs.length });
+            }
+            if (catchUpDays.length === 0) return null;
+            return (
+              <div className="mx-4 mb-3 rounded-2xl p-4" style={{ background: '#1c1208', border: '1px solid #92400e' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold" style={{ color: '#f59e0b', letterSpacing: 1 }}>🔄 CATCH-UPS NEEDED</p>
+                  <p className="text-xs" style={{ color: '#78350f' }}>{catchUpDays.length} day{catchUpDays.length > 1 ? 's' : ''}</p>
+                </div>
+                <div className="space-y-2">
+                  {catchUpDays.slice(0, 4).map(({ ds, missing, done }) => {
+                    const label = new Date(ds + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                    return (
+                      <button key={ds} onClick={() => setDate(ds)}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl active:opacity-80"
+                        style={{ background: '#2a1600' }}>
+                        <div className="text-left">
+                          <p className="text-sm font-semibold">{label}</p>
+                          <p className="text-xs mt-0.5" style={{ color: '#fbbf24' }}>
+                            {missing.map(k => PRAYER_LABELS[k]).join(' · ')}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0 ml-3">
+                          <p className="text-sm font-bold" style={{ color: done > 0 ? '#f59e0b' : '#6b7280' }}>{done}/5</p>
+                          <p className="text-xs" style={{ color: '#92400e' }}>log →</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Prayer buttons */}
+          <div className="px-4 space-y-2.5">
+            {PRAYER_KEYS.map(key => {
+              const log = logs.find(l => l.prayer_name === key);
+              const isKazaa = log?.status === 'kazaa';
+              const isOnTime = log && !isKazaa;
+              const isNext = key === nextKey;
+              const isBusy = busy[key];
+
+              const bgColor = isOnTime ? '#052e16' : isKazaa ? '#2d1a00' : isNext ? '#1a2e1a' : '#1c1c1e';
+              const borderColor = isOnTime ? '#059669' : isKazaa ? '#d97706' : isNext ? '#14532d' : '#2c2c2e';
+              const iconBg = isOnTime ? '#059669' : isKazaa ? '#d97706' : '#2c2c2e';
+              const iconLabel = isOnTime ? '✓' : isKazaa ? '⏰' : PRAYER_ICONS[key];
+
+              return (
+                <button key={key} onClick={() => toggle(key)} disabled={isBusy}
+                  className="w-full rounded-2xl px-4 py-4 flex items-center gap-4 text-left transition-all active:scale-98"
+                  style={{ background: bgColor, border: `1px solid ${borderColor}` }}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl flex-shrink-0 transition-all"
+                    style={{ background: iconBg }}>
+                    {iconLabel}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold">{PRAYER_LABELS[key]}</p>
+                    <p className="text-sm" style={{ color: isOnTime ? '#6ee7b7' : isKazaa ? '#fbbf24' : '#6b7280' }}>
+                      {prayerTimes[key]}
+                      {isNext && !log && <span style={{ color: '#10b981' }}> · up next</span>}
+                    </p>
+                  </div>
+                  {isOnTime && <span className="text-sm font-semibold" style={{ color: '#10b981' }}>On time ✓</span>}
+                  {isKazaa && <span className="text-sm font-semibold" style={{ color: '#f59e0b' }}>Kazaa ½pt</span>}
+                  {!log && <div className="w-6 h-6 rounded-full border-2" style={{ borderColor: '#4b5563' }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {done === 5 && (
+            <div className="mx-4 mt-5 rounded-2xl p-5 text-center" style={{ background: '#052e16', border: '1px solid #059669' }}>
+              <p className="text-3xl mb-2">{todayScore === 5 ? '🌟' : '✅'}</p>
+              <p className="font-bold text-lg" style={{ color: '#6ee7b7' }}>All 5 prayers done!</p>
+              <p className="text-sm mt-1" style={{ color: '#059669' }}>
+                {todayScore === 5 ? 'Alhamdulillah — all on time! 🌟' : `Score: ${todayScore}/5 pts — keep improving!`}
+              </p>
+              {streak >= 3 && <p className="text-xs mt-2" style={{ color: '#fb923c' }}>🔥 {streak}-day streak! Keep it going!</p>}
+            </div>
+          )}
+
+          {/* 14-day history */}
+          <div className="mx-4 mt-5 rounded-2xl p-4" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>LAST 14 DAYS</p>
+            <div className="flex gap-1">
+              {last14.map(({ ds, count, score, allOnTime }) => {
+                const bg = allOnTime ? '#059669' : count === 5 ? '#d97706' : count >= 3 ? '#b45309' : count > 0 ? '#dc2626' : '#2c2c2e';
+                const isT = ds === todayStr();
+                return (
+                  <div key={ds} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full rounded" style={{ height: 28, background: bg, outline: isT ? '2px solid #fff' : 'none' }}
+                      title={`${ds}: ${count}/5 prayers, ${score}pts`} />
+                    <span style={{ fontSize: 9, color: '#4b5563' }}>{new Date(ds + 'T12:00:00').getDate()}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-3 mt-2 flex-wrap">
+              {[{c:'#059669',l:'5 on time'},{c:'#d97706',l:'5 w/ kazaa'},{c:'#b45309',l:'3-4'},{c:'#dc2626',l:'1-2'},{c:'#2c2c2e',l:'None'}].map(({c,l}) => (
+                <span key={l} className="flex items-center gap-1 text-xs" style={{ color: '#6b7280' }}>
+                  <span style={{ width:8, height:8, borderRadius:2, background:c, display:'inline-block' }}/>{l}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Family comparison */}
+          {familyComparison.length > 1 && (
+            <div className="mx-4 mt-4 rounded-2xl p-4" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>FAMILY TODAY</p>
+              <div className="space-y-2.5">
+                {familyComparison.map(u => {
+                  const uScore = allTodayLogs.filter(l => l.user_id === u.id).reduce((s, l) => s + (l.status === 'kazaa' ? 0.5 : 1), 0);
+                  return (
+                    <div key={u.id} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                        style={{ background: '#059669', color: '#fff' }}>{u.name[0]}</div>
+                      <div className="flex-1">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-medium">{u.name}</span>
+                          <span className="font-bold" style={{ color: uScore === 5 ? '#10b981' : uScore >= 3 ? '#f59e0b' : '#6b7280' }}>
+                            {uScore}/5 pts
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full" style={{ background: '#2c2c2e' }}>
+                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${(uScore/5)*100}%`, background: uScore === 5 ? '#10b981' : uScore >= 3 ? '#f59e0b' : '#6b7280' }}/>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // ─── Bills Tab ────────────────────────────────────────────────────
+    function BillsTab({ noPadTop }) {
+      const [bills, setBills] = useState([]);
+      const [payments, setPayments] = useState([]);
+      const [showAdd, setShowAdd] = useState(false);
+      const [editing, setEditing] = useState(null);
+      const [deleteConfirm, setDeleteConfirm] = useState(null);
+      const [form, setForm] = useState({ name: '', amount: '', due_day: '', category: 'bill' });
+      const [seeded, setSeeded] = useState(false);
+
+      const my = monthYearStr();
+      const today = new Date();
+      const currentDay = today.getDate();
+      const monthName = today.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+      const fetchAll = useCallback(async () => {
+        const [{ data: b }, { data: p }] = await Promise.all([
+          db.from('bills').select('*').eq('is_active', true).order('due_day'),
+          db.from('bill_payments').select('*').eq('month_year', my),
+        ]);
+        setBills(b || []);
+        setPayments(p || []);
+      }, [my]);
+
+      // Auto-seed sample data if table is empty
+      const maybeSeed = useCallback(async () => {
+        const { data } = await db.from('bills').select('id').limit(1);
+        if (!data || data.length === 0) {
+          await db.from('bills').insert(SAMPLE_BILLS.map(b => ({ ...b, is_active: true })));
+        }
+        setSeeded(true);
+      }, []);
+
+      useEffect(() => { maybeSeed(); }, []);
+      useEffect(() => { if (seeded) fetchAll(); }, [seeded, fetchAll]);
+
+      const paidIds = new Set(payments.map(p => p.bill_id));
+      const totalOut = bills.reduce((s, b) => s + parseFloat(b.amount || 0), 0);
+      const paidAmt = payments.reduce((s, p) => s + parseFloat(p.amount_paid || 0), 0);
+      const remaining = totalOut - paidAmt;
+      const paidCount = bills.filter(b => paidIds.has(b.id)).length;
+
+      const openAdd = () => {
+        setForm({ name: '', amount: '', due_day: '', category: 'bill' });
+        setEditing(null);
+        setShowAdd(true);
+      };
+
+      const openEdit = bill => {
+        setForm({ name: bill.name, amount: String(bill.amount), due_day: String(bill.due_day), category: bill.category || 'bill' });
+        setEditing(bill);
+        setShowAdd(true);
+      };
+
+      const saveBill = async () => {
+        if (!form.name.trim() || !form.amount || !form.due_day) return;
+        const payload = {
+          name: form.name.trim(),
+          amount: parseFloat(form.amount),
+          due_day: parseInt(form.due_day),
+          category: form.category,
+        };
+        if (editing) {
+          await db.from('bills').update(payload).eq('id', editing.id);
+        } else {
+          await db.from('bills').insert({ ...payload, is_active: true });
+        }
+        setShowAdd(false);
+        setEditing(null);
+        fetchAll();
+      };
+
+      const deleteBill = async id => {
+        await db.from('bills').update({ is_active: false }).eq('id', id);
+        setDeleteConfirm(null);
+        fetchAll();
+      };
+
+      const markPaid = async bill => {
+        if (paidIds.has(bill.id)) {
+          await db.from('bill_payments').delete().eq('bill_id', bill.id).eq('month_year', my);
+        } else {
+          await db.from('bill_payments').insert({
+            bill_id: bill.id,
+            paid_date: todayStr(),
+            amount_paid: bill.amount,
+            month_year: my,
+          });
+        }
+        fetchAll();
+      };
+
+      const catStyle = cat => CAT_STYLE[cat] || CAT_STYLE.other;
+
+      return (
+        <div className="tab-content safe-bottom">
+          {/* Header */}
+          <div className={`px-4 pb-4 ${noPadTop ? 'pt-3' : 'pt-14'}`}>
+            <h2 className="text-2xl font-bold">Bills & Direct Debits</h2>
+            <p className="text-sm mt-0.5" style={{ color: '#8e8e93' }}>{monthName}</p>
+          </div>
+
+          {/* Summary Card */}
+          <div className="mx-4 rounded-2xl p-4 mb-4" style={{ background: '#1c1c1e' }}>
+            <div className="grid grid-cols-3 gap-1 text-center mb-3">
+              <div>
+                <p className="text-xl font-bold">{fmtGBP(totalOut)}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#8e8e93' }}>Total going out</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold" style={{ color: '#10b981' }}>{fmtGBP(paidAmt)}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#8e8e93' }}>Paid</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold" style={{ color: remaining > 0 ? '#f59e0b' : '#6b7280' }}>{fmtGBP(remaining)}</p>
+                <p className="text-xs mt-0.5" style={{ color: '#8e8e93' }}>Remaining</p>
+              </div>
+            </div>
+            <div className="h-2 rounded-full mb-1.5" style={{ background: '#2c2c2e' }}>
+              <div className="h-2 rounded-full transition-all" style={{ background: '#10b981', width: totalOut > 0 ? `${Math.min((paidAmt / totalOut) * 100, 100)}%` : '0%' }} />
+            </div>
+            <p className="text-center text-xs" style={{ color: '#6b7280' }}>{paidCount} of {bills.length} bills paid</p>
+          </div>
+
+          {/* Bills list */}
+          <div className="px-4">
+            {bills.length === 0 && seeded ? (
+              <div className="text-center py-16">
+                <p className="text-5xl mb-4">💳</p>
+                <p className="font-semibold text-lg mb-2">No bills yet</p>
+                <p className="text-sm mb-6" style={{ color: '#6b7280' }}>Add your first bill to start tracking</p>
+                <button onClick={openAdd} className="px-6 py-3 rounded-xl font-semibold" style={{ background: '#10b981', color: '#fff' }}>
+                  + Add First Bill
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {bills.map(bill => {
+                  const isPaid = paidIds.has(bill.id);
+                  const isToday2 = bill.due_day === currentDay;
+                  const isOverdue = bill.due_day < currentDay && !isPaid;
+                  const isDueSoon = bill.due_day > currentDay && bill.due_day <= currentDay + 7 && !isPaid;
+                  const cs = catStyle(bill.category);
+
+                  return (
+                    <div
+                      key={bill.id}
+                      className="rounded-2xl p-4 transition-all"
+                      style={{
+                        background: isPaid ? '#111' : '#1c1c1e',
+                        border: `1px solid ${isOverdue ? '#7f1d1d' : isToday2 && !isPaid ? '#78350f' : '#2c2c2e'}`,
+                        opacity: isPaid ? 0.65 : 1,
+                      }}
+                    >
+                      {/* Top row */}
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <p className={`font-semibold ${isPaid ? 'line-through' : ''}`} style={{ color: isPaid ? '#6b7280' : '#fff' }}>
+                              {bill.name}
+                            </p>
+                            {isOverdue && !isPaid && (
+                              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#7f1d1d', color: '#fca5a5' }}>Overdue</span>
+                            )}
+                            {isToday2 && !isPaid && (
+                              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#78350f', color: '#fcd34d' }}>Due today</span>
+                            )}
+                            {isDueSoon && (
+                              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#1c1917', color: '#d6d3d1' }}>Due {ordinal(bill.due_day)}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: cs.bg, color: cs.text, border: `1px solid ${cs.border}` }}
+                            >
+                              {bill.category}
+                            </span>
+                            {!isDueSoon && !isToday2 && !isOverdue && (
+                              <span className="text-xs" style={{ color: '#6b7280' }}>due {ordinal(bill.due_day)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xl font-bold">{fmtGBP(bill.amount)}</p>
+                          <p className="text-xs" style={{ color: '#6b7280' }}>/month</p>
+                        </div>
+                      </div>
+
+                      {/* Action row */}
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => markPaid(bill)}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95"
+                          style={{
+                            background: isPaid ? '#052e16' : '#10b981',
+                            color: isPaid ? '#6ee7b7' : '#fff',
+                            border: isPaid ? '1px solid #059669' : 'none',
+                          }}
+                        >
+                          {isPaid ? '✓ Paid' : 'Mark Paid'}
+                        </button>
+                        <button
+                          onClick={() => openEdit(bill)}
+                          className="px-3.5 py-2.5 rounded-xl text-sm transition-all active:scale-95"
+                          style={{ background: '#2c2c2e', color: '#9ca3af' }}
+                        >✏️</button>
+                        <button
+                          onClick={() => setDeleteConfirm(bill.id)}
+                          className="px-3.5 py-2.5 rounded-xl text-sm transition-all active:scale-95"
+                          style={{ background: '#2c2c2e', color: '#9ca3af' }}
+                        >🗑️</button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Add button */}
+                <button
+                  onClick={openAdd}
+                  className="w-full py-4 rounded-2xl text-sm font-semibold transition-all active:scale-98"
+                  style={{ border: '1px dashed #374151', color: '#10b981' }}
+                >
+                  + Add Bill or Direct Debit
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Add / Edit modal */}
+          {showAdd && (
+            <Modal title={editing ? 'Edit Bill' : 'Add Bill'} onClose={() => { setShowAdd(false); setEditing(null); }}>
+              <div className="space-y-4 pb-2">
+                <Field label="Bill / Direct Debit name">
+                  <input
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. Virgin Media, Mortgage…"
+                    className={inputCls}
+                    style={inputStyle}
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Amount (£)">
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={form.amount}
+                      onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                      placeholder="0.00"
+                      className={inputCls}
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Day of month due">
+                    <input
+                      type="number" min="1" max="31"
+                      value={form.due_day}
+                      onChange={e => setForm(f => ({ ...f, due_day: e.target.value }))}
+                      placeholder="1–31"
+                      className={inputCls}
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+                <Field label="Category">
+                  <select
+                    value={form.category}
+                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                    className={inputCls}
+                    style={inputStyle}
+                  >
+                    {CATEGORIES.map(c => (
+                      <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                    ))}
+                  </select>
+                </Field>
+                <button
+                  onClick={saveBill}
+                  className="w-full py-3.5 rounded-xl font-semibold mt-2 transition-all active:scale-98"
+                  style={{ background: '#10b981', color: '#fff' }}
+                >
+                  {editing ? 'Save Changes' : 'Add Bill'}
+                </button>
+              </div>
+            </Modal>
+          )}
+
+          {/* Delete confirm */}
+          {deleteConfirm && (
+            <Modal title="Delete Bill?" onClose={() => setDeleteConfirm(null)}>
+              <p className="text-sm mb-5" style={{ color: '#9ca3af' }}>
+                This will remove the bill and all payment history for it. This cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-3 rounded-xl font-semibold"
+                  style={{ background: '#2c2c2e', color: '#fff' }}
+                >Cancel</button>
+                <button
+                  onClick={() => deleteBill(deleteConfirm)}
+                  className="flex-1 py-3 rounded-xl font-semibold"
+                  style={{ background: '#dc2626', color: '#fff' }}
+                >Delete</button>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    // ─── Spending Tab ─────────────────────────────────────────────────
+    function SpendingTab({ user }) {
+      const [transactions, setTransactions] = useState([]);
+      const [selectedMonth, setSelectedMonth] = useState(monthYearStr());
+      const [availMonths, setAvailMonths] = useState([]);
+      const [parsing, setParsing] = useState(false);
+      const [parseMsg, setParseMsg] = useState('');
+      const fileRef = useRef(null);
+
+      const loadData = useCallback(async () => {
+        const [txRes, mRes] = await Promise.all([
+          db.from('family_spending').select('*').eq('user_id', user.id).eq('month_year', selectedMonth).order('date', { ascending: false }),
+          db.from('family_spending').select('month_year').eq('user_id', user.id),
+        ]);
+        setTransactions(txRes.data || []);
+        const ms = [...new Set((mRes.data || []).map(r => r.month_year))].sort().reverse();
+        setAvailMonths(ms.length ? ms : [monthYearStr()]);
+      }, [user.id, selectedMonth]);
+
+      useEffect(() => { loadData(); }, [loadData]);
+
+      const categorize = desc => {
+        const u = desc.toUpperCase();
+        for (const [key, cat] of Object.entries(SPEND_CATS)) {
+          if (key === 'other') continue;
+          if (cat.kw.some(k => u.includes(k))) return key;
+        }
+        return 'other';
+      };
+
+      const parsePDF = async (file) => {
+        if (!file) return;
+        setParsing(true); setParseMsg('Reading PDF...');
+        try {
+          const pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
+          if (!pdfjsLib) throw new Error('PDF library not loaded — please refresh and try again.');
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const buf = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+          setParseMsg('Scanning ' + pdf.numPages + ' page(s)...');
+          const MMAP = {JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+          const INCOME = ['SALARY','WAGES','BACS CREDIT','FASTER PAYMENT RECEIVED','PAYMENT RECEIVED','DIVIDEND','INTEREST PAID','REFUND','CASHBACK'];
+          const txns = [];
+          for (let pn = 1; pn <= pdf.numPages; pn++) {
+            const page = await pdf.getPage(pn);
+            const content = await page.getTextContent();
+            const rowMap = {};
+            content.items.forEach(item => {
+              if (!item.str.trim()) return;
+              const y = Math.round(item.transform[5] / 3) * 3;
+              if (!rowMap[y]) rowMap[y] = [];
+              rowMap[y].push({ text: item.str, x: item.transform[4] });
+            });
+            Object.entries(rowMap).sort(([a],[b]) => parseFloat(b)-parseFloat(a)).forEach(([,items]) => {
+              items.sort((a,b) => a.x - b.x);
+              const row = items.map(i => i.text).join(' ').trim();
+              const dm = row.match(/^(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i)
+                      || row.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+              if (!dm) return;
+              let dateStr;
+              if (dm[0].includes('/')) {
+                dateStr = dm[3]+'-'+dm[2]+'-'+dm[1];
+              } else {
+                const mon = String(MMAP[dm[2].toUpperCase()]).padStart(2,'0');
+                dateStr = dm[3]+'-'+mon+'-'+dm[1].padStart(2,'0');
+              }
+              const amtRe = /£?(\d{1,3}(?:,\d{3})*\.\d{2})/g;
+              const amts = [...row.matchAll(amtRe)].map(m => parseFloat(m[1].replace(/,/g,'')));
+              if (!amts.length) return;
+              const firstAmtPos = row.search(/£?\d{1,3}(?:,\d{3})*\.\d{2}/);
+              const desc = row.slice(dm[0].length, firstAmtPos).replace(/\s+/g,' ').trim().toUpperCase();
+              if (!desc || desc.length < 2) return;
+              const txnAmt = amts.length >= 2 ? amts[amts.length-2] : amts[0];
+              const isIncome = INCOME.some(k => desc.includes(k));
+              txns.push({ date: dateStr, description: desc, amount: txnAmt, type: isIncome ? 'credit' : 'debit', category: categorize(desc), month_year: dateStr.slice(0,7), user_id: user.id, source: 'pdf_upload' });
+            });
+          }
+          if (!txns.length) { setParseMsg('No transactions found — make sure this is a NatWest current account statement.'); setParsing(false); return; }
+          setParseMsg('Saving ' + txns.length + ' transactions...');
+          const months = [...new Set(txns.map(t => t.month_year))];
+          for (const my of months) await db.from('family_spending').delete().eq('user_id', user.id).eq('month_year', my).eq('source', 'pdf_upload');
+          for (let i = 0; i < txns.length; i += 100) await db.from('family_spending').insert(txns.slice(i, i+100));
+          setSelectedMonth(months[0]);
+          setParseMsg('✓ Imported ' + txns.length + ' transactions from ' + months.length + ' month(s)');
+          await loadData();
+        } catch(e) { setParseMsg('Error: ' + (e.message || 'Failed to read PDF')); }
+        finally { setParsing(false); if(fileRef.current) fileRef.current.value=''; }
+      };
+
+      const debits = transactions.filter(t => t.type === 'debit');
+      const credits = transactions.filter(t => t.type === 'credit');
+      const totalSpend = debits.reduce((s,t) => s + parseFloat(t.amount), 0);
+      const totalIn = credits.reduce((s,t) => s + parseFloat(t.amount), 0);
+      const catTotals = Object.entries(SPEND_CATS).map(([key, cat]) => ({
+        key, ...cat,
+        total: debits.filter(t => t.category === key).reduce((s,t) => s + parseFloat(t.amount), 0),
+        count: debits.filter(t => t.category === key).length,
+      })).filter(c => c.total > 0).sort((a,b) => b.total - a.total);
+
+      const mlabel = my => {
+        if (!my) return '';
+        const [y,m] = my.split('-');
+        return new Date(parseInt(y), parseInt(m)-1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      };
+
+      return (
+        <div className="tab-content safe-bottom">
+          <div className="px-4 pt-4 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-2xl font-bold">Spending</h2>
+                {availMonths.length > 1 && <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>{availMonths.length} months on record</p>}
+              </div>
+              <button onClick={() => fileRef.current?.click()} disabled={parsing}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold active:scale-95 transition-all"
+                style={{ background: '#10b981', color: '#fff', opacity: parsing ? 0.6 : 1 }}>
+                📄 {parsing ? 'Parsing…' : 'Upload PDF'}
+              </button>
+              <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => parsePDF(e.target.files[0])} />
+            </div>
+            {parseMsg && (
+              <div className="mb-3 px-3 py-2 rounded-xl text-xs"
+                style={{ background: parseMsg.startsWith('✓') ? '#052e16' : parseMsg.startsWith('Error') ? '#450a0a' : '#1c1c1e', color: parseMsg.startsWith('✓') ? '#6ee7b7' : parseMsg.startsWith('Error') ? '#fca5a5' : '#9ca3af', border: '1px solid ' + (parseMsg.startsWith('✓') ? '#059669' : parseMsg.startsWith('Error') ? '#dc2626' : '#2c2c2e') }}>
+                {parseMsg}
+              </div>
+            )}
+            {availMonths.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                {availMonths.map(my => (
+                  <button key={my} onClick={() => setSelectedMonth(my)}
+                    className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold"
+                    style={{ background: my === selectedMonth ? '#10b981' : '#1c1c1e', color: my === selectedMonth ? '#fff' : '#6b7280' }}>
+                    {mlabel(my)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {transactions.length === 0 && !parsing ? (
+            <div className="text-center py-16 px-8">
+              <p className="text-5xl mb-4">📊</p>
+              <p className="font-semibold text-lg mb-2">No spending data yet</p>
+              <p className="text-sm mb-6" style={{ color: '#6b7280' }}>Upload your NatWest PDF bank statement to see a full spending breakdown</p>
+              <button onClick={() => fileRef.current?.click()} className="px-6 py-3 rounded-xl font-semibold text-sm" style={{ background: '#10b981', color: '#fff' }}>
+                📄 Upload Statement
+              </button>
+            </div>
+          ) : (
+            <div className="px-4 space-y-3">
+              <div className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>{mlabel(selectedMonth).toUpperCase()}</p>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-3xl font-bold" style={{ color: '#ef4444' }}>{fmtGBP(totalSpend)}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>spent · {debits.length} transactions</p>
+                  </div>
+                  {totalIn > 0 && (
+                    <div className="text-right">
+                      <p className="text-xl font-bold" style={{ color: '#10b981' }}>{fmtGBP(totalIn)}</p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>money in</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {catTotals.length > 0 && (
+                <div className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+                  <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>BY CATEGORY</p>
+                  <div className="space-y-3.5">
+                    {catTotals.map(cat => (
+                      <div key={cat.key}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm font-medium">{cat.label}</span>
+                          <div>
+                            <span className="text-sm font-bold">{fmtGBP(cat.total)}</span>
+                            <span className="text-xs ml-1.5" style={{ color: '#6b7280' }}>{totalSpend > 0 ? Math.round((cat.total/totalSpend)*100) : 0}%</span>
+                          </div>
+                        </div>
+                        <div className="h-2 rounded-full" style={{ background: '#2c2c2e' }}>
+                          <div className="h-2 rounded-full transition-all duration-700" style={{ background: cat.color, width: totalSpend > 0 ? `${(cat.total/totalSpend)*100}%` : '0%' }} />
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: '#4b5563' }}>{cat.count} transaction{cat.count !== 1 ? 's' : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>TRANSACTIONS ({debits.length})</p>
+                <div className="space-y-2">
+                  {debits.slice(0, 40).map((t, i) => {
+                    const cat = SPEND_CATS[t.category] || SPEND_CATS.other;
+                    return (
+                      <div key={t.id || i} className="flex items-center gap-2.5 py-1">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs truncate" style={{ color: '#d1d5db' }}>{t.description}</p>
+                          <p style={{ fontSize: 10, color: '#4b5563' }}>{t.date} · {cat.label}</p>
+                        </div>
+                        <p className="text-sm font-semibold flex-shrink-0" style={{ color: '#ef4444' }}>{fmtGBP(t.amount)}</p>
+                      </div>
+                    );
+                  })}
+                  {debits.length > 40 && <p className="text-xs text-center pt-1" style={{ color: '#4b5563' }}>+{debits.length - 40} more</p>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── Bills + Spending wrapper ──────────────────────────────────────
+    function BillsSpendingTab({ user }) {
+      const [sub, setSub] = useState('bills');
+      return (
+        <div style={{ background: '#0f0f0f', minHeight: '100vh' }}>
+          <div className="fixed top-0 left-0 right-0 z-30 px-4"
+            style={{ paddingTop: 'max(14px, env(safe-area-inset-top))', background: 'rgba(15,15,15,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #1c1c1e', paddingBottom: 10 }}>
+            <div className="flex gap-2">
+              {[{ id:'bills', icon:'💳', label:'Bills' }, { id:'spending', icon:'📊', label:'Spending' }].map(t => (
+                <button key={t.id} onClick={() => setSub(t.id)}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: sub === t.id ? '#10b981' : '#1c1c1e', color: sub === t.id ? '#fff' : '#6b7280' }}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ paddingTop: 70 }}>
+            {sub === 'bills' && <BillsTab noPadTop />}
+            {sub === 'spending' && <SpendingTab user={user} />}
+          </div>
+        </div>
+      );
+    }
+
+
+    // ─── Tasks Tab ────────────────────────────────────────────────────
+    function TasksTab({ user, allUsers, noPadTop }) {
+      const [tasks, setTasks] = useState([]);
+      const [showAdd, setShowAdd] = useState(false);
+      const [form, setForm] = useState({ title: '', assigned_to: '', due_date: '', recurrence: '' });
+      const [filter, setFilter] = useState('all'); // all | mine
+
+      const fetchTasks = () => {
+        db.from('family_tasks').select('*').order('due_date', { ascending: true, nullsFirst: false }).order('created_at')
+          .then(({ data }) => setTasks(data || []));
+      };
+
+      useEffect(() => { fetchTasks(); }, []);
+
+      const toggle = async task => {
+        await db.from('family_tasks').update({ completed: !task.completed, last_done: todayStr() }).eq('id', task.id);
+        fetchTasks();
+      };
+
+      const addTask = async () => {
+        if (!form.title.trim()) return;
+        await db.from('family_tasks').insert({
+          title: form.title.trim(),
+          assigned_to: form.assigned_to || null,
+          due_date: form.due_date || null,
+          recurrence: form.recurrence || null,
+          completed: false,
+        });
+        setForm({ title: '', assigned_to: '', due_date: '', recurrence: '' });
+        setShowAdd(false);
+        fetchTasks();
+      };
+
+      const deleteTask = async id => {
+        await db.from('family_tasks').delete().eq('id', id);
+        fetchTasks();
+      };
+
+      const getUserName = id => allUsers.find(u => u.id === id)?.name || '';
+
+      let displayed = filter === 'mine'
+        ? tasks.filter(t => t.assigned_to === user.id || !t.assigned_to)
+        : tasks;
+
+      const pending = displayed.filter(t => !t.completed);
+      const done = displayed.filter(t => t.completed);
+      const today2 = todayStr();
+
+      const TaskRow = ({ task }) => {
+        const assignee = getUserName(task.assigned_to);
+        const isOverdue = task.due_date && task.due_date < today2 && !task.completed;
+        return (
+          <div
+            className="rounded-2xl px-4 py-3 flex items-start gap-3 transition-all"
+            style={{ background: '#1c1c1e', opacity: task.completed ? 0.55 : 1 }}
+          >
+            <button onClick={() => toggle(task)} className="mt-0.5 flex-shrink-0">
+              <div
+                className="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                style={{ background: task.completed ? '#10b981' : 'transparent', borderColor: task.completed ? '#10b981' : '#4b5563' }}
+              >
+                {task.completed && <span className="text-xs text-white font-bold">✓</span>}
+              </div>
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-medium leading-snug ${task.completed ? 'line-through' : ''}`} style={{ color: task.completed ? '#6b7280' : '#fff' }}>
+                {task.title}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {assignee && <span className="text-xs" style={{ color: '#10b981' }}>👤 {assignee}</span>}
+                {task.due_date && (
+                  <span className="text-xs" style={{ color: isOverdue ? '#ef4444' : '#6b7280' }}>
+                    📅 {new Date(task.due_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {isOverdue && ' · overdue'}
+                  </span>
+                )}
+                {task.recurrence && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: '#2e1065', color: '#c4b5fd' }}>🔁 {task.recurrence}</span>
+                )}
+              </div>
+            </div>
+            <button onClick={() => deleteTask(task.id)} className="text-xs mt-0.5 px-1" style={{ color: '#4b5563' }}>✕</button>
+          </div>
+        );
+      };
+
+      return (
+        <div className="tab-content safe-bottom">
+          <div className={`px-4 pb-3 ${noPadTop ? 'pt-3' : 'pt-14'}`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-2xl font-bold">Tasks</h2>
+                <p className="text-sm mt-0.5" style={{ color: '#8e8e93' }}>{pending.length} pending</p>
+              </div>
+              <button
+                onClick={() => { setForm({ title: '', assigned_to: '', due_date: '', recurrence: '' }); setShowAdd(true); }}
+                className="px-4 py-2 rounded-xl text-sm font-semibold"
+                style={{ background: '#10b981', color: '#fff' }}
+              >+ Add</button>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-2 mt-3">
+              {[['all', 'All'], ['mine', 'Mine']].map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setFilter(val)}
+                  className="px-4 py-1.5 rounded-xl text-sm font-medium transition-all"
+                  style={{ background: filter === val ? '#10b981' : '#2c2c2e', color: filter === val ? '#fff' : '#9ca3af' }}
+                >{label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="px-4">
+            {tasks.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-5xl mb-4">✅</p>
+                <p className="font-semibold text-lg mb-2">No tasks yet</p>
+                <p className="text-sm mb-6" style={{ color: '#6b7280' }}>Add tasks to stay organised as a family</p>
+              </div>
+            ) : (
+              <>
+                {pending.length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    {pending.map(t => <TaskRow key={t.id} task={t} />)}
+                  </div>
+                )}
+                {done.length > 0 && (
+                  <>
+                    <p className="text-xs font-medium mb-2" style={{ color: '#6b7280' }}>COMPLETED ({done.length})</p>
+                    <div className="space-y-2">
+                      {done.slice(0, 8).map(t => <TaskRow key={t.id} task={t} />)}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {showAdd && (
+            <Modal title="Add Task" onClose={() => setShowAdd(false)}>
+              <div className="space-y-4 pb-2">
+                <Field label="What needs doing?">
+                  <input
+                    value={form.title}
+                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="Task title…"
+                    className={inputCls}
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Assign to">
+                  <select value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))} className={inputCls} style={inputStyle}>
+                    <option value="">Anyone</option>
+                    {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Due date">
+                    <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} className={inputCls} style={inputStyle} />
+                  </Field>
+                  <Field label="Repeats">
+                    <select value={form.recurrence} onChange={e => setForm(f => ({ ...f, recurrence: e.target.value }))} className={inputCls} style={inputStyle}>
+                      <option value="">One-time</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </Field>
+                </div>
+                <button onClick={addTask} className="w-full py-3.5 rounded-xl font-semibold transition-all active:scale-98" style={{ background: '#10b981', color: '#fff' }}>
+                  Add Task
+                </button>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    // ─── Shopping Tab ─────────────────────────────────────────────────
+    function ShoppingTab({ user, allUsers, noPadTop }) {
+      const [items, setItems] = useState([]);
+      const [newItem, setNewItem] = useState('');
+      const inputRef = useRef(null);
+
+      const fetchItems = () => {
+        db.from('shopping_items').select('*').order('completed').order('created_at')
+          .then(({ data }) => setItems(data || []));
+      };
+
+      useEffect(() => { fetchItems(); }, []);
+
+      const addItem = async () => {
+        const name = newItem.trim();
+        if (!name) return;
+        setNewItem('');
+        await db.from('shopping_items').insert({ name, added_by: user.id, completed: false });
+        fetchItems();
+      };
+
+      const toggle = async item => {
+        await db.from('shopping_items').update({ completed: !item.completed }).eq('id', item.id);
+        fetchItems();
+      };
+
+      const deleteItem = async id => {
+        await db.from('shopping_items').delete().eq('id', id);
+        fetchItems();
+      };
+
+      const clearDone = async () => {
+        const ids = items.filter(i => i.completed).map(i => i.id);
+        if (ids.length) await db.from('shopping_items').delete().in('id', ids);
+        fetchItems();
+      };
+
+      const getUserName = id => allUsers.find(u => u.id === id)?.name || '';
+      const pending = items.filter(i => !i.completed);
+      const done = items.filter(i => i.completed);
+
+      return (
+        <div className="tab-content safe-bottom">
+          <div className={`px-4 pb-3 ${noPadTop ? 'pt-3' : 'pt-14'}`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-2xl font-bold">Shopping List</h2>
+                <p className="text-sm mt-0.5" style={{ color: '#8e8e93' }}>{pending.length} items needed</p>
+              </div>
+              {done.length > 0 && (
+                <button onClick={clearDone} className="text-sm font-medium" style={{ color: '#ef4444' }}>
+                  Clear {done.length} done
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Add input */}
+          <div className="px-4 mb-4">
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                value={newItem}
+                onChange={e => setNewItem(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addItem()}
+                placeholder="Add an item…"
+                className="flex-1 px-4 py-3 rounded-xl text-sm"
+                style={{ background: '#1c1c1e', color: '#fff', border: '1px solid #2c2c2e' }}
+              />
+              <button
+                onClick={addItem}
+                className="px-5 py-3 rounded-xl font-bold text-lg transition-all active:scale-95"
+                style={{ background: '#10b981', color: '#fff' }}
+              >+</button>
+            </div>
+          </div>
+
+          <div className="px-4">
+            {items.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-5xl mb-4">🛒</p>
+                <p className="font-semibold text-lg mb-2">List is empty</p>
+                <p className="text-sm" style={{ color: '#6b7280' }}>Type above to add items</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {pending.map(item => (
+                  <div key={item.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: '#1c1c1e' }}>
+                    <button onClick={() => toggle(item)}>
+                      <div className="w-6 h-6 rounded-full border-2 flex-shrink-0 transition-all" style={{ borderColor: '#4b5563' }} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">{item.name}</p>
+                      {item.added_by && (
+                        <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
+                          Added by {getUserName(item.added_by)}
+                        </p>
+                      )}
+                    </div>
+                    <button onClick={() => deleteItem(item.id)} className="text-xs px-1 flex-shrink-0" style={{ color: '#4b5563' }}>✕</button>
+                  </div>
+                ))}
+
+                {done.length > 0 && (
+                  <>
+                    <p className="text-xs font-medium pt-1 pb-0.5" style={{ color: '#6b7280' }}>IN BASKET ({done.length})</p>
+                    {done.map(item => (
+                      <div key={item.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: '#111', opacity: 0.6 }}>
+                        <button onClick={() => toggle(item)}>
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#10b981' }}>
+                            <span className="text-xs text-white font-bold">✓</span>
+                          </div>
+                        </button>
+                        <p className="flex-1 text-sm line-through" style={{ color: '#6b7280' }}>{item.name}</p>
+                        <button onClick={() => deleteItem(item.id)} className="text-xs px-1" style={{ color: '#4b5563' }}>✕</button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Wellness Tab ─────────────────────────────────────────────────
+    /*
+    -- Run in Supabase SQL editor:
+    CREATE TABLE family_gym_logs (
+      id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id uuid NOT NULL,
+      date text NOT NULL,
+      UNIQUE(user_id, date)
+    );
+    CREATE TABLE family_step_logs (
+      id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id uuid NOT NULL,
+      date text NOT NULL,
+      steps integer DEFAULT 0,
+      UNIQUE(user_id, date)
+    );
+    */
+    function WellnessTab({ user, initialTab }) {
+      const [innerTab, setInnerTab] = useState(initialTab || 'gym');
+      const [gymLogs, setGymLogs] = useState([]);
+      const [stepLogs, setStepLogs] = useState([]);
+      const [stepInput, setStepInput] = useState('');
+      const [liveSteps, setLiveSteps] = useState(0);
+      const [counting, setCounting] = useState(false);
+      const listenerRef = useRef(null);
+      const countRef = useRef(0);
+      const lastMagRef = useRef(null);
+
+      useEffect(() => {
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        Promise.all([
+          db.from('family_gym_logs').select('*').eq('user_id', user.id).gte('date', cutoffStr),
+          db.from('family_step_logs').select('*').eq('user_id', user.id).gte('date', cutoffStr),
+        ]).then(([g, s]) => {
+          setGymLogs(g.data || []);
+          setStepLogs(s.data || []);
+          const t = todayStr();
+          const todayStep = (s.data || []).find(r => r.date === t);
+          if (todayStep) setStepInput(String(todayStep.steps));
+        });
+      }, [user.id]);
+
+      const today = todayStr();
+
+      // ── GYM ──
+      const wentGym = date => gymLogs.some(r => r.date === date);
+
+      const toggleGym = async date => {
+        const existing = gymLogs.find(r => r.date === date);
+        if (existing) {
+          setGymLogs(prev => prev.filter(r => r.date !== date));
+          await db.from('family_gym_logs').delete().eq('id', existing.id);
+        } else {
+          const row = { user_id: user.id, date };
+          setGymLogs(prev => [...prev, row]);
+          await db.from('family_gym_logs').upsert([row], { onConflict: 'user_id,date' });
+        }
+      };
+
+      const getMon = ds => {
+        const d = new Date(ds + 'T12:00:00');
+        const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+        d.setDate(d.getDate() + diff);
+        return d.toISOString().slice(0, 10);
+      };
+
+      const thisWeekMon = getMon(today);
+      const thisWeekDays = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(thisWeekMon + 'T12:00:00'); d.setDate(d.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+      const wentThisWeek = thisWeekDays.some(ds => wentGym(ds));
+
+      const gymWeekStreak = (() => {
+        let s = 0;
+        const d = new Date();
+        for (let i = 0; i < 52; i++) {
+          const mon = getMon(d.toISOString().slice(0, 10));
+          const days = Array.from({ length: 7 }, (_, j) => {
+            const x = new Date(mon + 'T12:00:00'); x.setDate(x.getDate() + j);
+            return x.toISOString().slice(0, 10);
+          });
+          if (days.some(ds => wentGym(ds))) { s++; d.setDate(d.getDate() - 7); }
+          else break;
+        }
+        return s;
+      })();
+
+      const last8Weeks = Array.from({ length: 8 }, (_, i) => {
+        const anchor = new Date(); anchor.setDate(anchor.getDate() - i * 7);
+        const mon = getMon(anchor.toISOString().slice(0, 10));
+        const days = Array.from({ length: 7 }, (_, j) => {
+          const d = new Date(mon + 'T12:00:00'); d.setDate(d.getDate() + j);
+          return d.toISOString().slice(0, 10);
+        });
+        return { mon, days, hit: days.some(ds => wentGym(ds)) };
+      }).reverse();
+
+      const DAY_LABELS = ['M','T','W','T','F','S','S'];
+
+      // ── STEPS ──
+      const STEP_GOAL = 10000;
+      const todayStepRec = stepLogs.find(r => r.date === today);
+      const todaySteps = todayStepRec?.steps || 0;
+      const stepPct = Math.min(100, Math.round((todaySteps / STEP_GOAL) * 100));
+
+      const last14 = Array.from({ length: 14 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - (13 - i));
+        const ds = d.toISOString().slice(0, 10);
+        return { ds, steps: (stepLogs.find(r => r.date === ds)?.steps) || 0 };
+      });
+      const maxSteps = Math.max(STEP_GOAL, ...last14.map(d => d.steps));
+
+      const saveSteps = async steps => {
+        const row = { user_id: user.id, date: today, steps: parseInt(steps) || 0 };
+        setStepLogs(prev => [...prev.filter(r => r.date !== today), row]);
+        await db.from('family_step_logs').upsert([row], { onConflict: 'user_id,date' });
+      };
+
+      const startCounter = () => {
+        if (!window.DeviceMotionEvent) return alert('Motion sensor not available on this device.');
+        countRef.current = 0; lastMagRef.current = null;
+        const handler = e => {
+          const a = e.accelerationIncludingGravity;
+          if (!a) return;
+          const mag = Math.sqrt(a.x**2 + a.y**2 + a.z**2);
+          if (lastMagRef.current !== null && lastMagRef.current < 11 && mag >= 11) {
+            countRef.current += 1; setLiveSteps(countRef.current);
+          }
+          lastMagRef.current = mag;
+        };
+        const start = () => { window.addEventListener('devicemotion', handler); listenerRef.current = handler; setCounting(true); };
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+          DeviceMotionEvent.requestPermission().then(s => { if (s === 'granted') start(); else alert('Permission denied.'); });
+        } else start();
+      };
+
+      const stopCounter = () => {
+        if (listenerRef.current) { window.removeEventListener('devicemotion', listenerRef.current); listenerRef.current = null; }
+        setCounting(false);
+        const total = todaySteps + liveSteps;
+        setStepInput(String(total));
+        saveSteps(total);
+        setLiveSteps(0);
+      };
+
+      return (
+        <div className="tab-content safe-bottom">
+          <div className="px-4 pt-4 pb-1" />
+
+          {/* ── GYM ── */}
+          {innerTab === 'gym' && (
+            <div className="px-4 space-y-4">
+              {/* This week card */}
+              <div className="rounded-2xl p-4" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="font-bold text-lg">This Week</p>
+                    <p className="text-sm" style={{ color: '#6b7280' }}>Goal: at least 1 session</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-bold" style={{ color: wentThisWeek ? '#10b981' : '#ef4444' }}>
+                      {wentThisWeek ? '✅ Done!' : 'Not yet'}
+                    </p>
+                    {gymWeekStreak > 0 && (
+                      <p className="text-xs font-bold mt-0.5" style={{ color: '#fb923c' }}>🔥 {gymWeekStreak} wk streak</p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {thisWeekDays.map((ds, i) => {
+                    const went = wentGym(ds);
+                    const isT = ds === today;
+                    const isPast = ds <= today;
+                    return (
+                      <button key={ds} onClick={() => isPast && toggleGym(ds)} disabled={!isPast}
+                        className="flex flex-col items-center py-2.5 rounded-xl transition-all"
+                        style={{ background: went ? '#052e16' : isT ? '#1a2e1a' : '#2c2c2e', border: `1px solid ${went ? '#059669' : isT ? '#14532d' : '#3a3a3c'}`, opacity: !isPast ? 0.3 : 1 }}>
+                        <span className="text-xs font-bold" style={{ color: went ? '#6ee7b7' : '#6b7280' }}>{DAY_LABELS[i]}</span>
+                        <span className="text-sm mt-0.5">{went ? '💪' : isT ? '⏳' : '—'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!wentThisWeek && (
+                  <button onClick={() => toggleGym(today)}
+                    className="mt-4 w-full py-3 rounded-2xl font-bold text-sm"
+                    style={{ background: '#059669', color: '#fff' }}>
+                    💪 Log Gym Today
+                  </button>
+                )}
+              </div>
+
+              {/* 8-week history */}
+              <div className="rounded-2xl p-4" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>LAST 8 WEEKS</p>
+                <div className="space-y-2">
+                  {last8Weeks.map(({ mon, days, hit }) => {
+                    const isThisWeek = mon === thisWeekMon;
+                    return (
+                      <div key={mon} className="flex items-center gap-2">
+                        <span className="text-xs w-14 flex-shrink-0" style={{ color: '#6b7280' }}>
+                          {isThisWeek ? 'This wk' : new Date(mon + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </span>
+                        <div className="flex gap-1 flex-1">
+                          {days.map(ds => (
+                            <div key={ds} className="flex-1 h-5 rounded"
+                              style={{ background: wentGym(ds) ? '#059669' : ds > today ? '#1c1c1e' : '#2c2c2e' }} />
+                          ))}
+                        </div>
+                        <span className="text-sm w-4 text-center font-bold" style={{ color: hit ? '#10b981' : mon < thisWeekMon ? '#ef4444' : '#4b5563' }}>
+                          {hit ? '✓' : mon < thisWeekMon ? '✗' : '–'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEPS ── */}
+          {innerTab === 'steps' && (
+            <div className="px-4 space-y-4">
+              {/* Progress ring */}
+              <div className="rounded-2xl p-5" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+                <p className="font-bold text-lg mb-4">Today's Steps</p>
+                <div className="flex items-center justify-center mb-4">
+                  <div className="relative" style={{ width: 140, height: 140 }}>
+                    <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="#2c2c2e" strokeWidth="10"/>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke={stepPct >= 100 ? '#10b981' : '#6366f1'} strokeWidth="10"
+                        strokeDasharray={`${2 * Math.PI * 50}`}
+                        strokeDashoffset={`${2 * Math.PI * 50 * (1 - stepPct / 100)}`}
+                        strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.5s' }}/>
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-2xl font-bold" style={{ color: stepPct >= 100 ? '#10b981' : '#818cf8' }}>
+                        {(todaySteps + (counting ? liveSteps : 0)).toLocaleString()}
+                      </span>
+                      <span className="text-xs" style={{ color: '#6b7280' }}>/ {STEP_GOAL.toLocaleString()}</span>
+                      <span className="text-xs font-bold" style={{ color: stepPct >= 100 ? '#10b981' : '#818cf8' }}>
+                        {counting ? `+${liveSteps} live` : `${stepPct}%`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {stepPct >= 100 && <p className="text-center text-sm font-bold mb-3" style={{ color: '#10b981' }}>🎉 Goal reached!</p>}
+                <div className="flex gap-2 mb-3">
+                  {!counting ? (
+                    <button onClick={startCounter} className="flex-1 py-2.5 rounded-2xl font-bold text-sm" style={{ background: '#4f46e5', color: '#fff' }}>
+                      📱 Start Live Counter
+                    </button>
+                  ) : (
+                    <button onClick={stopCounter} className="flex-1 py-2.5 rounded-2xl font-bold text-sm" style={{ background: '#ef4444', color: '#fff' }}>
+                      ⏹ Stop & Save ({liveSteps} steps)
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input type="number" value={stepInput} onChange={e => setStepInput(e.target.value)}
+                    placeholder="Enter steps manually"
+                    className="flex-1 px-3 py-2.5 rounded-xl text-sm"
+                    style={{ background: '#2c2c2e', color: '#fff', border: '1px solid #3a3a3c' }} />
+                  <button onClick={() => saveSteps(stepInput)}
+                    className="px-4 py-2.5 rounded-xl font-bold text-sm" style={{ background: '#059669', color: '#fff' }}>
+                    Save
+                  </button>
+                </div>
+              </div>
+
+              {/* 14-day bar chart */}
+              <div className="rounded-2xl p-4" style={{ background: '#1c1c1e', border: '1px solid #2c2c2e' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>LAST 14 DAYS</p>
+                <div className="flex items-end gap-1" style={{ height: 80 }}>
+                  {last14.map(({ ds, steps }) => {
+                    const pct = maxSteps > 0 ? (steps / maxSteps) * 100 : 0;
+                    const isT = ds === today;
+                    return (
+                      <div key={ds} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                        <div className="w-full rounded-t transition-all"
+                          style={{ height: `${Math.max(4, pct)}%`, background: steps >= STEP_GOAL ? '#10b981' : '#6366f1', outline: isT ? '1.5px solid #fff' : 'none' }}
+                          title={`${ds}: ${steps.toLocaleString()}`} />
+                        <span style={{ fontSize: 9, color: '#4b5563' }}>{new Date(ds + 'T12:00:00').getDate()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 mt-2">
+                  <span className="flex items-center gap-1 text-xs" style={{ color: '#6b7280' }}><span style={{ width:8,height:8,borderRadius:2,background:'#10b981',display:'inline-block'}}/>10k+ steps</span>
+                  <span className="flex items-center gap-1 text-xs" style={{ color: '#6b7280' }}><span style={{ width:8,height:8,borderRadius:2,background:'#6366f1',display:'inline-block'}}/>Below goal</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── Prayers + Wellness wrapper ───────────────────────────────────
+    function PrayersWellnessTab({ user, allUsers }) {
+      const [sub, setSub] = useState('prayers');
+      const subTabs = [
+        { id: 'prayers', icon: '🕌', label: 'Prayers' },
+        { id: 'gym',     icon: '💪', label: 'Gym'     },
+        { id: 'steps',   icon: '👟', label: 'Steps'   },
+      ];
+      return (
+        <div style={{ background: '#0f0f0f', minHeight: '100vh' }}>
+          {/* Sub-tab bar */}
+          <div className="fixed top-0 left-0 right-0 z-30 px-4"
+            style={{ paddingTop: 'max(14px, env(safe-area-inset-top))', background: 'rgba(15,15,15,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #1c1c1e', paddingBottom: 10 }}>
+            <div className="flex gap-2">
+              {subTabs.map(t => (
+                <button key={t.id} onClick={() => setSub(t.id)}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: sub === t.id ? '#10b981' : '#1c1c1e', color: sub === t.id ? '#fff' : '#6b7280' }}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ paddingTop: 70 }}>
+            {sub === 'prayers' && <PrayersTab user={user} allUsers={allUsers} noPadTop />}
+            {sub !== 'prayers' && <WellnessTab user={user} initialTab={sub} />}
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Shopping Wrapper (List + Log) ────────────────────────────────
+    function ShoppingLogTab({ user }) {
+      const [trips, setTrips] = useState([]);
+      const [showAdd, setShowAdd] = useState(false);
+      const [form, setForm] = useState({ date: todayStr(), store: '', amount: '', notes: '' });
+      const [receipt, setReceipt] = useState(null); // base64
+      const imgRef = useRef(null);
+
+      const fetchTrips = () => {
+        db.from('family_shopping_trips').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(50)
+          .then(({ data }) => setTrips(data || []));
+      };
+
+      useEffect(() => { fetchTrips(); }, [user.id]);
+
+      const compressImage = file => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 900;
+          let w = img.width, h = img.height;
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', 0.55));
+        };
+        img.src = URL.createObjectURL(file);
+      });
+
+      const handleImage = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const compressed = await compressImage(file);
+        setReceipt(compressed);
+      };
+
+      const saveTrip = async () => {
+        if (!form.amount) return;
+        await db.from('family_shopping_trips').insert({
+          user_id: user.id,
+          date: form.date,
+          store: form.store || null,
+          amount: parseFloat(form.amount),
+          notes: form.notes || null,
+          receipt_img: receipt || null,
+        });
+        setForm({ date: todayStr(), store: '', amount: '', notes: '' });
+        setReceipt(null);
+        setShowAdd(false);
+        fetchTrips();
+      };
+
+      const deleteTrip = async id => {
+        await db.from('family_shopping_trips').delete().eq('id', id);
+        fetchTrips();
+      };
+
+      // Last 8 weeks spending trend
+      const last8 = Array.from({ length: 8 }, (_, i) => {
+        const d = new Date(); d.setDate(d.getDate() - i * 7);
+        const weekEnd = d.toISOString().slice(0, 10);
+        const weekStart = new Date(d); weekStart.setDate(weekStart.getDate() - 6);
+        const ws = weekStart.toISOString().slice(0, 10);
+        const weekTrips = trips.filter(t => t.date >= ws && t.date <= weekEnd);
+        return { ws, total: weekTrips.reduce((s, t) => s + parseFloat(t.amount || 0), 0), count: weekTrips.length };
+      }).reverse();
+      const maxWeek = Math.max(1, ...last8.map(w => w.total));
+      const totalSpend = trips.slice(0, 30).reduce((s, t) => s + parseFloat(t.amount || 0), 0);
+
+      return (
+        <div className="tab-content safe-bottom">
+          <div className="px-4 pt-4 pb-3 flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold">Shopping Log</h2>
+              <p className="text-sm mt-0.5" style={{ color: '#8e8e93' }}>{trips.length} trips recorded</p>
+            </div>
+            <button onClick={() => setShowAdd(true)} className="px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: '#10b981', color: '#fff' }}>
+              + Log Trip
+            </button>
+          </div>
+
+          <div className="px-4 space-y-3">
+            {/* Trend chart */}
+            {trips.length > 0 && (
+              <div className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+                <p className="text-xs font-semibold mb-3" style={{ color: '#8e8e93', letterSpacing: 1 }}>LAST 8 WEEKS</p>
+                <div className="flex items-end gap-1.5" style={{ height: 72 }}>
+                  {last8.map((w, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                      {w.total > 0 && (
+                        <p style={{ fontSize: 8, color: '#6b7280' }}>{fmtGBP(w.total)}</p>
+                      )}
+                      <div className="w-full rounded-t transition-all"
+                        style={{ height: `${Math.max(4, (w.total / maxWeek) * 100)}%`, background: i === 7 ? '#10b981' : '#6366f1' }} />
+                      <span style={{ fontSize: 8, color: '#4b5563' }}>
+                        {new Date(w.ws + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Trips list */}
+            {trips.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-5xl mb-4">🧾</p>
+                <p className="font-semibold text-lg mb-2">No trips logged yet</p>
+                <p className="text-sm" style={{ color: '#6b7280' }}>Log a shopping trip to start tracking your spend</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {trips.map(trip => (
+                  <div key={trip.id} className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+                    <div className="flex items-start justify-between mb-1">
+                      <div>
+                        <p className="font-semibold">{trip.store || 'Shopping trip'}</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>
+                          {new Date(trip.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold" style={{ color: '#10b981' }}>{fmtGBP(trip.amount)}</p>
+                        <button onClick={() => deleteTrip(trip.id)} className="text-xs mt-1" style={{ color: '#4b5563' }}>remove</button>
+                      </div>
+                    </div>
+                    {trip.notes && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{trip.notes}</p>}
+                    {trip.receipt_img && (
+                      <img src={trip.receipt_img} alt="Receipt" className="mt-2 rounded-xl w-full object-cover" style={{ maxHeight: 200 }} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {showAdd && (
+            <Modal title="Log Shopping Trip" onClose={() => { setShowAdd(false); setReceipt(null); }}>
+              <div className="space-y-4 pb-2">
+                <Field label="Date">
+                  <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={inputCls} style={inputStyle} />
+                </Field>
+                <Field label="Store / Supermarket">
+                  <input value={form.store} onChange={e => setForm(f => ({ ...f, store: e.target.value }))} placeholder="e.g. Tesco, Aldi…" className={inputCls} style={inputStyle} />
+                </Field>
+                <Field label="Amount spent (£)">
+                  <input type="number" step="0.01" min="0" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" className={inputCls} style={inputStyle} />
+                </Field>
+                <Field label="Notes (optional)">
+                  <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Weekly shop, top-up…" className={inputCls} style={inputStyle} />
+                </Field>
+                <Field label="Receipt photo (optional)">
+                  <input ref={imgRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleImage} />
+                  <button onClick={() => imgRef.current?.click()}
+                    className="w-full py-3 rounded-xl text-sm font-semibold transition-all active:scale-98"
+                    style={{ background: '#2c2c2e', color: receipt ? '#10b981' : '#9ca3af', border: '1px solid #3a3a3c' }}>
+                    {receipt ? '✓ Photo added — tap to replace' : '📷 Take photo / choose from gallery'}
+                  </button>
+                  {receipt && <img src={receipt} alt="preview" className="mt-2 rounded-xl w-full object-cover" style={{ maxHeight: 160 }} />}
+                </Field>
+                <button onClick={saveTrip} className="w-full py-3.5 rounded-xl font-semibold transition-all active:scale-98" style={{ background: '#10b981', color: '#fff' }}>
+                  Save Trip
+                </button>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    function ShoppingWrapper({ user, allUsers }) {
+      const [sub, setSub] = useState('list');
+      return (
+        <div style={{ background: '#0f0f0f', minHeight: '100vh' }}>
+          <div className="fixed top-0 left-0 right-0 z-30 px-4"
+            style={{ paddingTop: 'max(14px, env(safe-area-inset-top))', background: 'rgba(15,15,15,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #1c1c1e', paddingBottom: 10 }}>
+            <div className="flex gap-2">
+              {[{ id:'list', icon:'🛒', label:'List' }, { id:'log', icon:'🧾', label:'Log' }].map(t => (
+                <button key={t.id} onClick={() => setSub(t.id)}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+                  style={{ background: sub === t.id ? '#10b981' : '#1c1c1e', color: sub === t.id ? '#fff' : '#6b7280' }}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ paddingTop: 70 }}>
+            {sub === 'list' && <ShoppingTab user={user} allUsers={allUsers} noPadTop />}
+            {sub === 'log'  && <ShoppingLogTab user={user} />}
+          </div>
+        </div>
+      );
+    }
+
+
+    // ─── Bottom Nav ───────────────────────────────────────────────────
+    function BottomNav({ active, onChange }) {
+      const tabs = [
+        { id: 'home',     icon: '🏠', label: 'Home'     },
+        { id: 'prayers',  icon: '🕌', label: 'Prayers'  },
+        { id: 'bills',    icon: '💳', label: 'Bills'    },
+        { id: 'tasks',    icon: '✅', label: 'Tasks'    },
+        { id: 'shopping', icon: '🛒', label: 'Shopping' },
+      ];
+
+      return (
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-40"
+          style={{
+            background: 'rgba(15,15,15,0.96)',
+            backdropFilter: 'blur(20px)',
+            borderTop: '1px solid #1c1c1e',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
+        >
+          <div className="flex items-stretch">
+            {tabs.map(tab => {
+              const isActive = active === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => onChange(tab.id)}
+                  className="flex-1 flex flex-col items-center justify-center gap-1 py-3 relative transition-all"
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {isActive && (
+                    <div className="absolute top-1.5 left-1/2 -translate-x-1/2 h-1 rounded-full"
+                      style={{ background: '#10b981', width: 28 }} />
+                  )}
+                  <span className="text-2xl leading-none" style={{ filter: isActive ? 'none' : 'grayscale(1) opacity(0.4)' }}>
+                    {tab.icon}
+                  </span>
+                  <span className="text-xs font-semibold leading-none"
+                    style={{ color: isActive ? '#10b981' : '#4b5563' }}>
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      );
+    }
+
+    // ─── App Root ─────────────────────────────────────────────────────
+    function App() {
+      const [user, setUser] = useState(null);
+      const [allUsers, setAllUsers] = useState([]);
+      const [tab, setTab] = useState('home');
+
+      useEffect(() => {
+        if (user) {
+          db.from('family_users').select('*').then(({ data }) => setAllUsers(data || []));
+          // Auto-schedule prayer notifications on login if previously enabled
+          if (localStorage.getItem('salahNotif') === 'true' && Notification.permission === 'granted') {
+            schedulePrayerAlerts(getPrayerTimes(new Date())).catch(() => {});
+          }
+        }
+      }, [user?.id]);
+
+      const logout = () => { setUser(null); setTab('home'); };
+
+      if (!user) return <LoginScreen onLogin={u => setUser(u)} />;
+
+      return (
+        <div style={{ background: '#0f0f0f', minHeight: '100vh' }}>
+          {/* User avatar / logout */}
+          <div className="fixed top-0 right-0 z-50 px-4 pt-safe-top" style={{ paddingTop: 'max(16px, env(safe-area-inset-top))' }}>
+            <button
+              onClick={logout}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shadow-lg"
+              style={{ background: '#10b981', color: '#fff' }}
+              title={`${user.name} — tap to log out`}
+            >
+              {user.name[0]}
+            </button>
+          </div>
+
+          {/* Tabs */}
+          {tab === 'home'     && <HomeTab           user={user} switchTab={setTab} />}
+          {tab === 'prayers'  && <PrayersWellnessTab user={user} allUsers={allUsers} />}
+          {tab === 'bills'    && <BillsSpendingTab  user={user} />}
+          {tab === 'tasks'    && <TasksTab           user={user} allUsers={allUsers} />}
+          {tab === 'shopping' && <ShoppingWrapper   user={user} allUsers={allUsers} />}
+
+          <BottomNav active={tab} onChange={setTab} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
