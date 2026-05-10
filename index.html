@@ -12,6 +12,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html { overscroll-behavior: none; height: 100%; }
@@ -361,6 +362,13 @@
       const [tasks, setTasks] = useState([]);
       const [shopping, setShopping] = useState([]);
       const [gymLogs, setGymLogs] = useState([]);
+      const [steps, setSteps] = useState(() => {
+        try { const c = JSON.parse(localStorage.getItem('gfit_steps_today') || 'null'); if (c && c.date === todayStr()) return c.count; } catch(e) {}
+        return null;
+      });
+      const [stepTarget, setStepTarget] = useState(() => parseInt(localStorage.getItem('step_target') || '10000'));
+      const [syncing, setSyncing] = useState(false);
+      const [showGFitSetup, setShowGFitSetup] = useState(false);
 
       useEffect(() => {
         const iv = setInterval(() => setNow(new Date()), 30000);
@@ -427,6 +435,42 @@
       const totalBills = bills.reduce((s, b) => s + parseFloat(b.amount || 0), 0);
       const paidAmt = payments.reduce((s, p) => s + parseFloat(p.amount_paid || 0), 0);
       const remaining = totalBills - paidAmt;
+
+      const syncGFitSteps = () => {
+        const clientId = localStorage.getItem('gfit_client_id') || '';
+        if (!clientId) { setShowGFitSetup(true); return; }
+        if (!window.google || !window.google.accounts) { alert('Google services not loaded yet. Try again in a moment.'); return; }
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/fitness.activity.read',
+          callback: async (resp) => {
+            if (resp.error) { alert('Google sign-in failed: ' + resp.error); return; }
+            setSyncing(true);
+            try {
+              const start = new Date(); start.setHours(0, 0, 0, 0);
+              const body = {
+                aggregateBy: [{ dataTypeName: 'com.google.step_count.delta', dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps' }],
+                bucketByTime: { durationMillis: 86400000 },
+                startTimeMillis: start.getTime(),
+                endTimeMillis: Date.now()
+              };
+              const r = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + resp.access_token, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+              });
+              const data = await r.json();
+              const count = (data.bucket || []).reduce((total, bucket) => {
+                return total + ((bucket.dataset || [])[0]?.point || []).reduce((s, p) => s + ((p.value || [])[0]?.intVal || 0), 0);
+              }, 0);
+              setSteps(count);
+              localStorage.setItem('gfit_steps_today', JSON.stringify({ date: todayStr(), count }));
+            } catch(e) { alert('Error fetching steps: ' + e.message); }
+            setSyncing(false);
+          }
+        });
+        client.requestAccessToken({ prompt: '' });
+      };
 
       // Gym this week
       const getMon = ds => {
@@ -598,6 +642,61 @@
               </button>
             </div>
 
+            {/* Steps card */}
+            <div className="rounded-2xl p-4" style={{ background: '#1c1c1e' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold" style={{ color: '#8e8e93', letterSpacing: 1 }}>TODAY'S STEPS</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowGFitSetup(true)}
+                    className="flex items-center justify-center rounded-lg text-sm"
+                    style={{ width: 30, height: 30, background: '#2c2c2e', color: '#6b7280' }}>
+                    ⚙️
+                  </button>
+                  <button onClick={syncGFitSteps} disabled={syncing}
+                    className="text-xs px-3 py-1.5 rounded-full font-semibold transition-all active:scale-95"
+                    style={{ background: syncing ? '#1a2e22' : '#0d2318', color: syncing ? '#4b5563' : '#34d399', border: '1px solid #1a3a2a' }}>
+                    {syncing ? '⏳' : '↻ Sync'}
+                  </button>
+                </div>
+              </div>
+              {steps !== null ? (
+                <>
+                  <div className="flex items-end gap-2 mb-3">
+                    <p className="font-bold" style={{ fontSize: 38, lineHeight: 1 }}>{steps.toLocaleString()}</p>
+                    <p className="pb-1 text-sm" style={{ color: '#6b7280' }}>/ {stepTarget.toLocaleString()}</p>
+                  </div>
+                  <div className="h-2.5 rounded-full mb-2" style={{ background: '#2c2c2e' }}>
+                    <div className="h-2.5 rounded-full transition-all duration-700"
+                      style={{ background: steps >= stepTarget ? '#10b981' : '#6366f1', width: Math.min((steps / stepTarget) * 100, 100) + '%' }} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs" style={{ color: steps >= stepTarget ? '#10b981' : '#6b7280' }}>
+                      {steps >= stepTarget ? '🎉 Target reached!' : (stepTarget - steps).toLocaleString() + ' to go'}
+                    </p>
+                    <p className="text-xs font-bold" style={{ color: steps >= stepTarget ? '#10b981' : '#818cf8' }}>
+                      {Math.round((steps / stepTarget) * 100)}%
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center py-3 gap-2">
+                  <span style={{ fontSize: 36 }}>&#x1F45F;</span>
+                  {localStorage.getItem('gfit_client_id') ? (
+                    <p className="text-sm text-center" style={{ color: '#6b7280' }}>Tap Sync to load today's steps from Google Fit</p>
+                  ) : (
+                    <>
+                      <p className="text-sm text-center" style={{ color: '#6b7280' }}>Connect Google Fit to sync steps automatically</p>
+                      <button onClick={() => setShowGFitSetup(true)}
+                        className="text-sm px-4 py-2 rounded-full font-semibold active:scale-95 transition-transform"
+                        style={{ background: '#1a2a4a', color: '#60a5fa' }}>
+                        Set up Google Fit
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Tasks calendar */}
             {tasks.length > 0 && (
               <button
@@ -660,6 +759,50 @@
             )}
           </div>
         </div>
+
+        {/* Google Fit setup modal */}
+        {showGFitSetup && (
+          <div className="fixed inset-0 z-50 flex items-end" style={{ background: 'rgba(0,0,0,0.8)' }}
+            onClick={() => setShowGFitSetup(false)}>
+            <div className="w-full rounded-t-3xl p-6 pb-10" style={{ background: '#1c1c1e' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: '#3a3a3c' }} />
+              <h3 className="text-xl font-bold mb-1">Google Fit Setup</h3>
+              <p className="text-sm mb-5" style={{ color: '#8e8e93' }}>Steps are pulled from Google Fit via OAuth. One-time setup:</p>
+              <ol className="text-sm space-y-2 mb-5" style={{ color: '#d1d5db' }}>
+                <li><span style={{ color: '#60a5fa' }}>1.</span> Go to <strong>console.cloud.google.com</strong></li>
+                <li><span style={{ color: '#60a5fa' }}>2.</span> New project &rarr; APIs &amp; Services &rarr; Enable <strong>Fitness API</strong></li>
+                <li><span style={{ color: '#60a5fa' }}>3.</span> Credentials &rarr; Create OAuth 2.0 Client ID &rarr; Web application</li>
+                <li><span style={{ color: '#60a5fa' }}>4.</span> Add your Netlify URL as an <strong>Authorised JavaScript origin</strong></li>
+                <li><span style={{ color: '#60a5fa' }}>5.</span> Paste the Client ID below</li>
+              </ol>
+              <input
+                className="w-full rounded-xl px-4 py-3 mb-3 text-sm"
+                style={{ background: '#2c2c2e', color: '#fff', border: '1px solid #3a3a3c' }}
+                placeholder="Paste OAuth 2.0 Client ID (ends in .apps.googleusercontent.com)..."
+                defaultValue={localStorage.getItem('gfit_client_id') || ''}
+                onChange={e => localStorage.setItem('gfit_client_id', e.target.value.trim())}
+              />
+              <div className="flex gap-3 mb-3">
+                <button
+                  onClick={() => {
+                    const t = parseInt(prompt('Daily step target (current: ' + stepTarget + '):', stepTarget));
+                    if (t > 0) { setStepTarget(t); localStorage.setItem('step_target', String(t)); }
+                  }}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold"
+                  style={{ background: '#2c2c2e', color: '#d1d5db' }}>
+                  Target: {stepTarget.toLocaleString()} steps
+                </button>
+                <button
+                  onClick={() => setShowGFitSetup(false)}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold"
+                  style={{ background: '#052e16', color: '#10b981' }}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       );
     }
     // ─── Prayers Tab ──────────────────────────────────────────────────
