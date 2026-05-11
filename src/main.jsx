@@ -4177,7 +4177,7 @@ LOGGING:
 
                             {loc.setBy && (
                               <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                Set by {loc.setBy}{loc.setAt ? ` · ${new Date(loc.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}` : ''}
+                                👤 {loc.setBy}{loc.setAt ? ` · ${new Date(loc.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit', hour:'2-digit', minute:'2-digit'})}` : ''}
                                 {loc.stage ? ` · ${loc.stage}` : ''}
                               </p>
                             )}
@@ -4186,17 +4186,19 @@ LOGGING:
                             {loc.history && loc.history.length > 0 && (
                               <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                 <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📋 Change History</p>
-                                <div className="space-y-1">
+                                <div className="space-y-2">
                                   {loc.history.map((h, hi) => (
-                                    <div key={hi} className={`flex items-start gap-1.5 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                      <span className="mt-0.5 shrink-0">↩</span>
-                                      <span>
-                                        <span className="font-medium">{h.drive || '?'}</span>
-                                        {h.path ? <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}> · {h.path}</span> : ''}
-                                        <span className={`mx-1 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>—</span>
-                                        {h.changedBy || h.setBy || '?'}
-                                        {(h.changedAt || h.setAt) ? <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}> · {new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}</span> : ''}
-                                      </span>
+                                    <div key={hi} className={`text-xs pl-2 border-l-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                      {(h.stage || h.notes || h.path) && (
+                                        <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.stage || h.notes || h.path}</p>
+                                      )}
+                                      {h.drive && <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📁 {h.drive}</p>}
+                                      <p className={`mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                        {(h.changedBy || h.setBy) && (h.changedBy || h.setBy) !== 'Unknown'
+                                          ? `👤 ${h.changedBy || h.setBy}`
+                                          : '👤 Unknown'}
+                                        {(h.changedAt || h.setAt) ? ` · ${new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit', hour:'2-digit', minute:'2-digit'})}` : ''}
+                                      </p>
                                     </div>
                                   ))}
                                 </div>
@@ -9961,17 +9963,19 @@ Eyecon Moments`);
                         {loc.history && loc.history.length > 0 && (
                           <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                             <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📋 Change History</p>
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                               {loc.history.map((h, hi) => (
-                                <div key={hi} className={`flex items-start gap-1.5 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                  <span className="mt-0.5 shrink-0">↩</span>
-                                  <span>
-                                    <span className="font-medium">{h.drive || '?'}</span>
-                                    {h.path ? <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}> · {h.path}</span> : ''}
-                                    <span className={`mx-1 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>—</span>
-                                    {h.changedBy || h.setBy || '?'}
-                                    {(h.changedAt || h.setAt) ? <span className={darkMode ? 'text-gray-600' : 'text-gray-300'}> · {new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}</span> : ''}
-                                  </span>
+                                <div key={hi} className={`text-xs pl-2 border-l-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                  {(h.stage || h.notes || h.path) && (
+                                    <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.stage || h.notes || h.path}</p>
+                                  )}
+                                  {h.drive && <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📁 {h.drive}</p>}
+                                  <p className={`mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                    {(h.changedBy || h.setBy) && (h.changedBy || h.setBy) !== 'Unknown'
+                                      ? `👤 ${h.changedBy || h.setBy}`
+                                      : '👤 Unknown'}
+                                    {(h.changedAt || h.setAt) ? ` · ${new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit', hour:'2-digit', minute:'2-digit'})}` : ''}
+                                  </p>
                                 </div>
                               ))}
                             </div>
