@@ -116,6 +116,8 @@ const Eye = () => <span>👁️</span>;
 function EyeconMoments() {
   const [currentView, setCurrentView] = useState('login');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [loginUsername, setLoginUsername] = useState('');
@@ -4320,6 +4322,12 @@ LOGGING:
               <p className="text-xs" style={{color:'rgba(193,167,106,0.6)', letterSpacing:'2px', fontSize:'9px'}}>BUSINESS MANAGEMENT</p>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={() => { setGlobalSearchOpen(true); setGlobalSearchQuery(''); }}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-sm"
+                title="Search everything"
+                style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
+                🔍
+              </button>
               <button onClick={() => setHelpOpen(true)}
                 className="w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold"
                 title="Help — ask anything"
@@ -7426,6 +7434,97 @@ Capturing Your Special Day
                       {driveUploading ? '⏳ Uploading…' : '☁️ Upload'}
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Global Search Modal */}
+        {globalSearchOpen && (() => {
+          const q = globalSearchQuery.trim().toLowerCase();
+          const matches = (s) => s && String(s).toLowerCase().includes(q);
+          const jobHits = !q ? [] : editingJobs.filter(j =>
+            matches(j.jobName) || matches(j.customerName) || matches(j.notes)
+          ).slice(0, 20);
+          const inqHits = !q ? [] : inquiries.filter(i =>
+            matches(i.customerName) || matches(i.phone) || matches(i.email) || matches(i.notes)
+          ).slice(0, 20);
+          const empHits = !q ? [] : employees.filter(e =>
+            matches(e.name) || matches(e.phone)
+          ).slice(0, 10);
+          const fileHits = !q ? [] : editingJobs.flatMap(j =>
+            (j.fileLocations || []).filter(f =>
+              matches(f.drive) || matches(f.path) || matches(f.notes) || matches(f.filename) || matches(f.fileName)
+            ).map(f => ({ ...f, _jobName: j.jobName, _jobId: j.id }))
+          ).slice(0, 20);
+          const total = jobHits.length + inqHits.length + empHits.length + fileHits.length;
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-start justify-center p-4 pt-16">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col`}>
+                <div className={`p-4 border-b flex items-center gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                  <span className="text-2xl">🔍</span>
+                  <input autoFocus type="text" placeholder="Search jobs, clients, files, staff…"
+                    value={globalSearchQuery} onChange={e => setGlobalSearchQuery(e.target.value)}
+                    className={`flex-1 bg-transparent outline-none text-base ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`} />
+                  <button onClick={() => setGlobalSearchOpen(false)}
+                    className={`text-2xl leading-none ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}>✕</button>
+                </div>
+                <div className="overflow-y-auto flex-1 p-3">
+                  {!q && (
+                    <p className={`text-center text-sm py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Start typing to search everything in the system.</p>
+                  )}
+                  {q && total === 0 && (
+                    <p className={`text-center text-sm py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No matches for "{globalSearchQuery}"</p>
+                  )}
+                  {jobHits.length > 0 && (
+                    <div className="mb-3">
+                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Jobs ({jobHits.length})</p>
+                      {jobHits.map(j => (
+                        <button key={j.id} onClick={() => { setCurrentView('jobs'); setGlobalSearchOpen(false); }}
+                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {j.jobName}</div>
+                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.customerName}{j.shootDate ? ` · ${new Date(j.shootDate).toLocaleDateString('en-GB')}` : ''}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {inqHits.length > 0 && (
+                    <div className="mb-3">
+                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>CRM Contacts ({inqHits.length})</p>
+                      {inqHits.map(i => (
+                        <button key={i.id} onClick={() => { setCurrentView('crm'); setGlobalSearchOpen(false); }}
+                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>👤 {i.customerName}</div>
+                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{[i.phone, i.email].filter(Boolean).join(' · ') || '—'}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {fileHits.length > 0 && (
+                    <div className="mb-3">
+                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Files ({fileHits.length})</p>
+                      {fileHits.map((f, idx) => (
+                        <button key={idx} onClick={() => { setCurrentView('files'); setGlobalSearchOpen(false); }}
+                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📁 {f.fileName || f.filename || f.drive || 'File'}</div>
+                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{f._jobName}{f.path ? ` · ${f.path}` : ''}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {empHits.length > 0 && (
+                    <div className="mb-3">
+                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Staff ({empHits.length})</p>
+                      {empHits.map(e => (
+                        <button key={e.id} onClick={() => { setCurrentView('employees'); setGlobalSearchOpen(false); }}
+                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🧑 {e.name}</div>
+                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{e.role}{e.phone ? ` · ${e.phone}` : ''}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -14473,18 +14572,83 @@ Eyecon Moments`);
 }
 
 class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  componentDidCatch(error) { this.setState({ error }); }
+  constructor(props) { super(props); this.state = { error: null, info: null }; }
+  componentDidCatch(error, info) { this.setState({ error, info }); console.error('[ErrorBoundary]', error, info); }
   render() {
     if (this.state.error) return (
-      <div style={{padding:20,background:'#fee',fontFamily:'monospace',whiteSpace:'pre-wrap'}}>
-        <h2>App Error:</h2><p>{this.state.error.toString()}</p>
+      <div style={{minHeight:'100vh',background:'#1a2535',color:'#fff',fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <div style={{maxWidth:520,width:'100%',background:'#243049',borderRadius:16,padding:24,border:'1px solid #C1A76A33'}}>
+          <div style={{fontSize:48,textAlign:'center',marginBottom:8}}>⚠️</div>
+          <h2 style={{margin:'0 0 8px',textAlign:'center',color:'#C1A76A'}}>Something went wrong</h2>
+          <p style={{margin:'0 0 16px',textAlign:'center',color:'#cbd5e1',fontSize:14}}>The app hit an unexpected error. Try reloading — your data is safe.</p>
+          <div style={{display:'flex',gap:8,marginBottom:16}}>
+            <button onClick={() => window.location.reload()} style={{flex:1,background:'#C1A76A',color:'#1a2535',border:'none',padding:'12px',borderRadius:8,fontWeight:700,cursor:'pointer'}}>Reload App</button>
+            <button onClick={() => this.setState({error:null,info:null})} style={{flex:1,background:'transparent',color:'#cbd5e1',border:'1px solid #475569',padding:'12px',borderRadius:8,fontWeight:600,cursor:'pointer'}}>Try Again</button>
+          </div>
+          <details style={{fontSize:12,color:'#94a3b8'}}>
+            <summary style={{cursor:'pointer',userSelect:'none'}}>Technical details</summary>
+            <pre style={{whiteSpace:'pre-wrap',marginTop:8,background:'#0f172a',padding:12,borderRadius:6,maxHeight:200,overflow:'auto'}}>{this.state.error.toString()}{this.state.info?.componentStack || ''}</pre>
+          </details>
+        </div>
       </div>
     );
     return this.props.children;
   }
 }
+
+function ToastHost() {
+  const [toasts, setToasts] = React.useState([]);
+  React.useEffect(() => {
+    const onToast = (e) => {
+      const id = Date.now() + Math.random();
+      const { msg, type = 'info', duration = 4000 } = e.detail || {};
+      setToasts(prev => [...prev, { id, msg, type }]);
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
+    };
+    window.addEventListener('eyecon-toast', onToast);
+    return () => window.removeEventListener('eyecon-toast', onToast);
+  }, []);
+  const dismiss = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+  const colors = {
+    info: { bg: '#243049', border: '#C1A76A', icon: 'ℹ️' },
+    success: { bg: '#14532d', border: '#22c55e', icon: '✅' },
+    error: { bg: '#7f1d1d', border: '#ef4444', icon: '⚠️' },
+    warning: { bg: '#78350f', border: '#f59e0b', icon: '⚠️' }
+  };
+  return (
+    <div style={{position:'fixed',top:'env(safe-area-inset-top, 12px)',left:0,right:0,zIndex:99999,pointerEvents:'none',display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:'12px'}}>
+      {toasts.map(t => {
+        const c = colors[t.type] || colors.info;
+        return (
+          <div key={t.id} onClick={() => dismiss(t.id)} style={{pointerEvents:'auto',background:c.bg,color:'#fff',border:`1px solid ${c.border}`,borderRadius:12,padding:'12px 16px',maxWidth:420,width:'90%',fontSize:14,fontFamily:'system-ui,-apple-system,sans-serif',boxShadow:'0 8px 24px rgba(0,0,0,0.3)',cursor:'pointer',display:'flex',alignItems:'flex-start',gap:10,animation:'eyecon-toast-in 0.25s ease-out'}}>
+            <span style={{fontSize:18,flexShrink:0}}>{c.icon}</span>
+            <span style={{flex:1,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{t.msg}</span>
+          </div>
+        );
+      })}
+      <style>{`@keyframes eyecon-toast-in { from { opacity:0; transform: translateY(-12px); } to { opacity:1; transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+window.__toast = (msg, type = 'info', duration = 4000) => {
+  window.dispatchEvent(new CustomEvent('eyecon-toast', { detail: { msg: String(msg), type, duration } }));
+};
+const _origAlert = window.alert.bind(window);
+window.alert = (msg) => {
+  const text = String(msg);
+  const lower = text.toLowerCase();
+  const type = /fail|error|cannot|invalid|sorry|wrong/.test(lower) ? 'error'
+    : /✅|success|saved|added|complete|sent|uploaded/.test(text) ? 'success'
+    : 'info';
+  window.__toast(text, type, 4500);
+};
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = e.reason?.message || String(e.reason || 'Unknown error');
+  if (msg.length < 200) window.__toast('Error: ' + msg, 'error', 6000);
+});
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<ErrorBoundary><EyeconMoments /></ErrorBoundary>);
+root.render(<ErrorBoundary><><EyeconMoments /><ToastHost /></></ErrorBoundary>);
 const _splash = document.getElementById('em-splash');
 if (_splash) _splash.style.display = 'none';
