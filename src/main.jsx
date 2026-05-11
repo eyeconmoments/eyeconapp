@@ -810,6 +810,11 @@ function EyeconMoments() {
     }
     await db.from('jobs').update({ stages: newStages, wage_entries: newWageEntries }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, stages: newStages, wageEntries: newWageEntries } : j));
+    if (newStatus === 'completed') {
+      const photoDoneNow = !job.hasPhotos || job.photoStatus === 'completed';
+      const videoDoneNow = !job.hasVideo || newStages.every(s => s.status === 'completed');
+      if (photoDoneNow && videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+    }
   };
 
   const updateJobStageAssignment = async (jobId, stageId, employeeId) => {
@@ -843,6 +848,10 @@ function EyeconMoments() {
       setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, photoStatus: newStatus } : j));
     }
     await db.from('jobs').update({ photo_status: newStatus, ...extraUpdate }).eq('id', jobId);
+    if (newStatus === 'completed' && job) {
+      const videoDoneNow = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
+      if (videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+    }
   };
 
   const updatePhotoAssignment = async (jobId, employeeId) => {
@@ -1457,11 +1466,6 @@ function EyeconMoments() {
 
     setStageFileModal(null);
     setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' });
-
-    // Prompt for project file upload when all video editing is done
-    if (!isPhoto && videoDoneNow) {
-      setProjectFileModal({ jobId, jobName: job.jobName });
-    }
   };
 
   const saveEmployeeNote = async (text) => {
