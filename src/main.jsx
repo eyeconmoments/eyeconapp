@@ -82,7 +82,8 @@ const rowToInquiry = (r) => ({
   submittedDate: r.submitted_date ? new Date(r.submitted_date) : new Date(),
   contactedDate: r.contacted_date ? new Date(r.contacted_date) : null,
   followUpDate: r.follow_up_date ? new Date(r.follow_up_date) : null,
-  notes: r.notes || ''
+  notes: r.notes || '',
+  contactPhoto: r.contact_photo || null
 });
 
 const { useState, useEffect } = React;
@@ -1185,6 +1186,28 @@ function EyeconMoments() {
     if (newStatus === 'quoted') updates.quoted_date = new Date().toISOString();
     await db.from('inquiries').update(updates).eq('id', inquiryId);
     setInquiries(prev => prev.map(inq => inq.id === inquiryId ? { ...inq, status: newStatus } : inq));
+  };
+
+  const uploadInquiryPhoto = async (inquiryId, file) => {
+    try {
+      const compressed = await new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const MAX = 300;
+          const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.5));
+        };
+        img.src = url;
+      });
+      await db.from('inquiries').update({ contact_photo: compressed }).eq('id', inquiryId);
+      setInquiries(prev => prev.map(inq => inq.id === inquiryId ? { ...inq, contactPhoto: compressed } : inq));
+    } catch (_) {}
   };
 
   const deleteInquiry = async (inquiryId) => {
@@ -9334,10 +9357,20 @@ Eyecon Moments`);
             return (
               <div key={inquiry.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4 ${needsResponse ? 'border-2 border-red-400' : ''} ${needsFollowUp ? 'border-2 border-red-600' : ''}`}>
                 <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inquiry.customerName}</h3>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{inquiry.eventType} - {formatDate(inquiry.eventDate)}</p>
-                    <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Submitted {daysSince} days ago</p>
+                  <div className="flex items-start gap-3">
+                    {/* Contact photo thumbnail */}
+                    <label className="cursor-pointer shrink-0" title="Tap to upload screenshot">
+                      <input type="file" accept="image/*" className="hidden" onChange={e => { if (e.target.files[0]) uploadInquiryPhoto(inquiry.id, e.target.files[0]); }} />
+                      {inquiry.contactPhoto
+                        ? <img src={inquiry.contactPhoto} alt="contact" className="w-14 h-14 rounded-lg object-cover border-2 border-gray-200" />
+                        : <div className={`w-14 h-14 rounded-lg flex items-center justify-center text-2xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>📷</div>
+                      }
+                    </label>
+                    <div>
+                      <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inquiry.customerName}</h3>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{inquiry.eventType} - {formatDate(inquiry.eventDate)}</p>
+                      <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Submitted {daysSince} days ago</p>
+                    </div>
                   </div>
                   <div className="text-right flex flex-col items-end gap-1">
                     <button onClick={() => deleteInquiry(inquiry.id)} className="text-red-400 hover:text-red-600 text-xs mb-1" title="Delete inquiry">🗑️</button>
