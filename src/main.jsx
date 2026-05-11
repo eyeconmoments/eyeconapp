@@ -730,6 +730,10 @@ function EyeconMoments() {
       const jobLabel = entry.jobId ? (editingJobs.find(j => j.id === entry.jobId)?.jobName || 'a job') : (entry.description || 'general work');
       const emp = employees.find(e => e.id === entry.employeeId);
       sendActivityPush('🔴 Clocked Out', `${emp?.name || 'Staff'} clocked out — ${jobLabel} (${hoursWorked}h)`);
+      if (progressPercent === 100 && entry.jobId) {
+        const job = editingJobs.find(j => j.id === entry.jobId);
+        if (job) setProjectFileModal({ jobId: job.id, jobName: job.jobName });
+      }
     }
   };
 
