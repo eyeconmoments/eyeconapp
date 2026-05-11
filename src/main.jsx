@@ -1308,7 +1308,8 @@ function EyeconMoments() {
       status: 'new',
       notes: crmAIEditForm.notes,
       submitted_date: new Date().toISOString(),
-      details: 'Added via Instagram screenshot'
+      details: 'Added via Instagram screenshot',
+      contact_photo: crmAIImage || null
     }]).select().single();
     if (error) { alert('Failed to save: ' + error.message); return; }
     setInquiries(prev => [rowToInquiry(data), ...prev]);
