@@ -9793,10 +9793,24 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         const dateISO = inquiry.eventDate
                           ? inquiry.eventDate.toISOString().split('T')[0]
                           : '';
+                        const extractTimesFromText = (text) => {
+                          const str = String(text || '').toLowerCase();
+                          const re = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b([01]?\d|2[0-3]):([0-5]\d)\b/g;
+                          return [...str.matchAll(re)].map(m => {
+                            if (m[3]) {
+                              let h = parseInt(m[1]); const mins = m[2] ? parseInt(m[2]) : 0;
+                              if (m[3] === 'pm' && h !== 12) h += 12;
+                              if (m[3] === 'am' && h === 12) h = 0;
+                              return `${String(h).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
+                            }
+                            return `${String(m[4]).padStart(2,'0')}:${m[5]}`;
+                          });
+                        };
+                        const extractedTimes = extractTimesFromText([inquiry.notes, inquiry.details].join(' '));
                         setTimeout(() => {
                           setBookingDate(dateISO);
-                          setBookingStartTime('10:00');
-                          setBookingEndTime('17:00');
+                          setBookingStartTime(extractedTimes[0] || '10:00');
+                          setBookingEndTime(extractedTimes[1] || '17:00');
                           setBookingVenue('');
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
