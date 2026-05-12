@@ -9646,7 +9646,7 @@ Here's a summary of your booking details:
 Please take a moment to review the above. If anything looks incorrect or needs to be updated, please reply to this email within 24 hours and we'll get it sorted straight away.
 
 📄 Terms & Conditions
-As a reminder, your booking is subject to our standard terms and conditions, a copy of which was included with your original quote. Please don't hesitate to get in touch if you'd like us to resend these.
+As a reminder, your booking is subject to our standard terms and conditions, which you can view at any time here: https://www.eyeconmoments.co.uk/terms
 
 We're really looking forward to being part of your event!
 
