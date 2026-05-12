@@ -227,7 +227,6 @@ function EyeconMoments() {
   const [helpInput, setHelpInput] = useState('');
   const [helpMessages, setHelpMessages] = useState([{ role:'assistant', content:'👋 Hi! I\'m your Eyecon Moments assistant. Ask me anything about using the app — clocking in, sharing itineraries, creating quotes, managing jobs, or anything else!' }]);
   const [helpLoading, setHelpLoading] = useState(false);
-  const [helpApiKey, setHelpApiKey] = useState(() => localStorage.getItem('eyecon_ai_key') || '');
   const [isListening, setIsListening] = useState(false);
   const [voiceState, setVoiceState] = useState('idle'); // idle | listening | thinking | speaking
   const [voiceInput, setVoiceInput] = useState('');
@@ -2759,13 +2758,6 @@ LOGGING:
     setVoiceResponse('');
     setVoiceState('thinking');
     try {
-      let key = helpApiKey;
-      if (!key) {
-        key = window.prompt('Enter your Anthropic API key (stored locally):\nconsole.anthropic.com');
-        if (!key) { setVoiceState('idle'); return; }
-        setHelpApiKey(key);
-        localStorage.setItem('eyecon_ai_key', key);
-      }
       const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
       const allJobs = editingJobs;
       const pendingCount = activeJobs.filter(j => {
@@ -2797,10 +2789,10 @@ LOGGING:
       const liveData = `\n\nLIVE DATA SNAPSHOT:\nActive jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in now: ${clockedIn}, total wages owed: £${wagesOwed.toFixed(2)}\n\nSTAFF (${employees.length} total):\n  ${staffSummary}\n\nJOB LIST (active):\n  ${jobDetails}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/.netlify/functions/claude-chat', {
         method: 'POST',
         signal: controller.signal,
-        headers: { 'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 8000,
@@ -2857,12 +2849,6 @@ LOGGING:
   const sendHelp = async (overrideText) => {
     const q = (overrideText !== undefined ? overrideText : helpInput).trim();
     if (!q || helpLoading) return;
-    if (!helpApiKey) {
-      const key = window.prompt('Enter your Anthropic API key (stored locally, never sent anywhere else):\nGet one at console.anthropic.com');
-      if (!key) return;
-      setHelpApiKey(key);
-      localStorage.setItem('eyecon_ai_key', key);
-    }
     const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
     const pendingJobs = activeJobs.filter(j => !isJobFullyComplete(j));
     const overdueJobs = getOverdueJobs ? getOverdueJobs() : [];
@@ -2874,14 +2860,9 @@ LOGGING:
     setHelpInput('');
     setHelpLoading(true);
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/.netlify/functions/claude-chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': helpApiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 16000,
@@ -2901,8 +2882,8 @@ LOGGING:
     } catch(e) {
       const isNetwork = e.message === 'Failed to fetch' || e.message === 'NetworkError when attempting to fetch resource.';
       const msg = isNetwork
-        ? '⚠️ Network error — the API could not be reached. This may be a CORS issue with direct browser calls. Try: update your API key using the 🔑 button, or check your internet connection.'
-        : `⚠️ Error: ${e.message}. Use 🔑 to update your API key if needed.`;
+        ? '⚠️ Network error — could not reach the AI service. Check your internet connection and try again.'
+        : `⚠️ Error: ${e.message}`;
       setHelpMessages(prev => [...prev, { role: 'assistant', content: msg }]);
     }
     setHelpLoading(false);
@@ -2987,10 +2968,6 @@ LOGGING:
                 <p className="text-xs text-gray-400">Ask me anything about the app</p>
               </div>
               <div className="flex items-center gap-2">
-                {helpApiKey && (
-                  <button onClick={() => { const k = window.prompt('Update API key:', helpApiKey); if (k) { setHelpApiKey(k); localStorage.setItem('eyecon_ai_key', k); }}}
-                    className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded">🔑</button>
-                )}
                 <button onClick={() => setHelpOpen(false)} className="text-gray-400 hover:text-white text-lg leading-none">✕</button>
               </div>
             </div>
@@ -3044,7 +3021,6 @@ LOGGING:
                   ➤
                 </button>
               </div>
-              {!helpApiKey && <p className="text-xs text-gray-500 mt-1.5 text-center">Needs an Anthropic API key — you'll be prompted on first question</p>}
             </div>
           </div>
         </div>
@@ -13893,13 +13869,6 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
 
     const scanRevisionScreenshot = async (revId, file) => {
       if (!file) return;
-      let key = helpApiKey;
-      if (!key) {
-        key = window.prompt('Enter your Anthropic API key to use AI scanning:');
-        if (!key) return;
-        setHelpApiKey(key);
-        localStorage.setItem('eyecon_ai_key', key);
-      }
       setRevisionScanLoading(true);
       setRevisionScanPreview(null);
       try {
@@ -13908,10 +13877,9 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
         }));
         const base64 = compressed.split(',')[1];
         const mediaType = compressed.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+        const res = await fetch('/.netlify/functions/claude-chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'claude-opus-4-5',
             max_tokens: 1024,
