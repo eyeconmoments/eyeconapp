@@ -302,6 +302,12 @@ function EyeconMoments() {
   const [assignmentRequests, setAssignmentRequests] = useState([]);
   const [jobsPipelineView, setJobsPipelineView] = useState(true);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [showBookingConfirmModal, setShowBookingConfirmModal] = useState(false);
+  const [bookingConfirmInquiry, setBookingConfirmInquiry] = useState(null);
+  const [bookingAgreedTimes, setBookingAgreedTimes] = useState('');
+  const [bookingVenue, setBookingVenue] = useState('');
+  const [bookingTotalPrice, setBookingTotalPrice] = useState('');
+  const [bookingDeposit, setBookingDeposit] = useState('');
   const [showCRMAIModal, setShowCRMAIModal] = useState(false);
   const [crmAIImage, setCrmAIImage] = useState(null);
   const [crmAIExtracted, setCrmAIExtracted] = useState(null);
@@ -9609,6 +9615,104 @@ Eyecon Moments`);
             </div>
           )}
           
+          {/* Booking confirmation modal */}
+          {showBookingConfirmModal && bookingConfirmInquiry && (() => {
+            const inq = bookingConfirmInquiry;
+            const firstName = inq.customerName.split(' ')[0];
+            const totalNum = parseFloat(bookingTotalPrice) || 0;
+            const depositNum = parseFloat(bookingDeposit) || 0;
+            const remaining = Math.max(0, totalNum - depositNum);
+            const sendEmail = () => {
+              const eventDateFmt = inq.eventDate
+                ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
+                : '';
+              const dayBefore = inq.eventDate
+                ? new Date(inq.eventDate.getTime() - 86400000).toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
+                : 'the day before the event';
+              const subject = encodeURIComponent(`Booking Confirmed — Eyecon Moments`);
+              const body = encodeURIComponent(`Hi ${firstName},
+
+Thank you for your deposit of £${depositNum.toFixed(2)} — your booking is now confirmed.
+
+BOOKING CONFIRMATION
+________________________________
+
+Event:             ${inq.eventType}
+Date & Time:       ${bookingAgreedTimes || eventDateFmt}
+Venue:             ${bookingVenue || 'TBC'}
+Total:             £${totalNum.toFixed(2)}
+Deposit Paid:      £${depositNum.toFixed(2)}
+Remaining Balance: £${remaining.toFixed(2)} (due ${dayBefore})
+________________________________
+
+Please take a moment to review the above. If anything looks incorrect or needs to be updated, please reply within 24 hours and we will get it sorted straight away.
+
+We look forward to being part of your event.
+
+Kind regards,
+
+Eyecon Moments
+eyecon.moments@gmail.com
+www.eyeconmoments.co.uk
+
+________________________________
+This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`);
+              window.location.href = `mailto:${encodeURIComponent(inq.email)}?subject=${subject}&body=${body}`;
+            };
+            return (
+              <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl`}>
+                  <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Booking Confirmation</h2>
+                  <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inq.customerName} · {inq.email}</p>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Agreed shoot date & time</label>
+                      <input type="text" value={bookingAgreedTimes} onChange={e => setBookingAgreedTimes(e.target.value)}
+                        placeholder="e.g. Saturday 14 June 2025 — 10:00am – 4:00pm"
+                        className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Venue</label>
+                      <input type="text" value={bookingVenue} onChange={e => setBookingVenue(e.target.value)}
+                        placeholder="e.g. The Grand Hotel, Manchester"
+                        className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Total price (£)</label>
+                        <input type="number" value={bookingTotalPrice} onChange={e => { setBookingTotalPrice(e.target.value); setBookingDeposit(String(Math.round(parseFloat(e.target.value || 0) * 0.5))); }}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                      <div className="flex-1">
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Deposit taken (£)</label>
+                        <input type="number" value={bookingDeposit} onChange={e => setBookingDeposit(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                    </div>
+                    {totalNum > 0 && depositNum > 0 && (
+                      <p className={`text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Remaining balance: <strong>£{remaining.toFixed(2)}</strong> due the day before the event
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button onClick={() => { setShowBookingConfirmModal(false); setBookingConfirmInquiry(null); }}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                      Cancel
+                    </button>
+                    <button onClick={sendEmail}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
+                      style={{background:'var(--gold)'}}>
+                      ✉️ Open Email
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Inquiry cards */}
           {filteredInquiries.map(inquiry => {
             const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
@@ -9647,11 +9751,27 @@ Eyecon Moments`);
                       // If changing to quoted, show follow-up prompt
                       if (newStatus === 'quoted' && inquiry.status !== 'quoted') {
                         inquiry.quotedDate = new Date().toISOString();
-                        // Show follow-up modal after a short delay
                         setTimeout(() => {
                           setFollowUpInquiry({...inquiry, status: 'quoted'});
                           setShowFollowUpModal(true);
                         }, 500);
+                      }
+                      // If changing to booked, show booking confirmation modal
+                      if (newStatus === 'booked' && inquiry.status !== 'booked') {
+                        const budgetNum = parseFloat(String(inquiry.budget || '').replace(/[^0-9.]/g, ''));
+                        const total = isNaN(budgetNum) ? '' : String(budgetNum);
+                        const deposit = isNaN(budgetNum) ? '' : String(Math.round(budgetNum * 0.5));
+                        const dateStr = inquiry.eventDate
+                          ? inquiry.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
+                          : '';
+                        setTimeout(() => {
+                          setBookingAgreedTimes(dateStr);
+                          setBookingVenue('');
+                          setBookingTotalPrice(total);
+                          setBookingDeposit(deposit);
+                          setBookingConfirmInquiry({...inquiry, status: 'booked'});
+                          setShowBookingConfirmModal(true);
+                        }, 300);
                       }
                       updateInquiryStatus(inquiry.id, newStatus);
                     }}
