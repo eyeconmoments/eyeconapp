@@ -9648,7 +9648,7 @@ Please take a moment to review the above. If anything looks incorrect or needs t
 📄 Terms & Conditions
 As a reminder, your booking is subject to our standard terms and conditions, a copy of which was included with your original quote. Please don't hesitate to get in touch if you'd like us to resend these.
 
-We're really looking forward to working with you!
+We're really looking forward to being part of your event!
 
 Kind regards,
 Eyecon Moments
