@@ -3,6 +3,9 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[functions]
+  node_bundler = "esbuild"
+
 [functions."scheduled-backup"]
   schedule = "0 3 * * *"
 
