@@ -304,7 +304,9 @@ function EyeconMoments() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showBookingConfirmModal, setShowBookingConfirmModal] = useState(false);
   const [bookingConfirmInquiry, setBookingConfirmInquiry] = useState(null);
-  const [bookingAgreedTimes, setBookingAgreedTimes] = useState('');
+  const [bookingDate, setBookingDate] = useState('');
+  const [bookingStartTime, setBookingStartTime] = useState('10:00');
+  const [bookingEndTime, setBookingEndTime] = useState('17:00');
   const [bookingVenue, setBookingVenue] = useState('');
   const [bookingTotalPrice, setBookingTotalPrice] = useState('');
   const [bookingDeposit, setBookingDeposit] = useState('');
@@ -9622,13 +9624,28 @@ Eyecon Moments`);
             const totalNum = parseFloat(bookingTotalPrice) || 0;
             const depositNum = parseFloat(bookingDeposit) || 0;
             const remaining = Math.max(0, totalNum - depositNum);
-            const sendEmail = () => {
-              const eventDateFmt = inq.eventDate
+            const fmtTime = (t) => {
+              const [h, m] = (t || '').split(':').map(Number);
+              const ampm = h < 12 ? 'am' : 'pm';
+              const h12 = h % 12 || 12;
+              return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
+            };
+            const dateTimeFmt = (() => {
+              if (bookingDate) {
+                const d = new Date(bookingDate + 'T12:00:00');
+                const datePart = d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+                return `${datePart}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              }
+              return inq.eventDate
                 ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
                 : '';
-              const dayBefore = inq.eventDate
-                ? new Date(inq.eventDate.getTime() - 86400000).toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
-                : 'the day before the event';
+            })();
+            const sendEmail = () => {
+              const dayBefore = bookingDate
+                ? new Date(bookingDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
+                : inq.eventDate
+                  ? new Date(inq.eventDate.getTime() - 86400000).toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
+                  : 'the day before the event';
               const subject = encodeURIComponent(`Booking Confirmed — Eyecon Moments`);
               const body = encodeURIComponent(`Hi ${firstName},
 
@@ -9638,7 +9655,7 @@ BOOKING CONFIRMATION
 ________________________________
 
 Event:             ${inq.eventType}
-Date & Time:       ${bookingAgreedTimes || eventDateFmt}
+Date & Time:       ${dateTimeFmt}
 Venue:             ${bookingVenue || 'TBC'}
 Total:             £${totalNum.toFixed(2)}
 Deposit Paid:      £${depositNum.toFixed(2)}
@@ -9667,10 +9684,21 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
 
                   <div className="space-y-4">
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Agreed shoot date & time</label>
-                      <input type="text" value={bookingAgreedTimes} onChange={e => setBookingAgreedTimes(e.target.value)}
-                        placeholder="e.g. Saturday 14 June 2025 — 10:00am – 4:00pm"
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Shoot date</label>
+                      <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)}
                         className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Start time</label>
+                        <input type="time" value={bookingStartTime} onChange={e => setBookingStartTime(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                      <div className="flex-1">
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>End time</label>
+                        <input type="time" value={bookingEndTime} onChange={e => setBookingEndTime(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
                     </div>
                     <div>
                       <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Venue</label>
@@ -9762,11 +9790,13 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         const budgetNum = [inquiry.budget, inquiry.notes, inquiry.details].reduce((found, src) => isNaN(found) ? extractPrice(src) : found, NaN);
                         const total = isNaN(budgetNum) ? '' : String(budgetNum);
                         const deposit = isNaN(budgetNum) ? '' : String(Math.round(budgetNum * 0.5));
-                        const dateStr = inquiry.eventDate
-                          ? inquiry.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
+                        const dateISO = inquiry.eventDate
+                          ? inquiry.eventDate.toISOString().split('T')[0]
                           : '';
                         setTimeout(() => {
-                          setBookingAgreedTimes(dateStr ? dateStr + ' — ' : '');
+                          setBookingDate(dateISO);
+                          setBookingStartTime('10:00');
+                          setBookingEndTime('17:00');
                           setBookingVenue('');
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
