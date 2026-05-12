@@ -28,7 +28,7 @@ const rowToJob = (r) => ({
   videoEditHours: r.video_edit_hours || 0, photoEditHours: r.photo_edit_hours || 0,
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
-  wageEntries: r.wage_entries || []
+  wageEntries: r.wage_entries || [], clientToken: r.client_token || null
 });
 
 const rowToEmployee = (r) => ({
@@ -112,6 +112,106 @@ const Unlock = () => <span>🔓</span>;
 const Camera = () => <span>📸</span>;
 const Archive = () => <span>📦</span>;
 const Eye = () => <span>👁️</span>;
+
+function ClientPortalView({ token }) {
+  const [job, setJob] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [notFound, setNotFound] = React.useState(false);
+
+  React.useEffect(() => {
+    db.from('jobs').select('*').eq('client_token', token).single()
+      .then(({ data, error }) => {
+        if (error || !data) { setNotFound(true); }
+        else { setJob(rowToJob(data)); }
+        setLoading(false);
+      });
+  }, [token]);
+
+  const gold = '#C1A76A';
+  const navy = '#1a2535';
+
+  if (loading) return (
+    <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{color:gold,fontFamily:'system-ui',fontSize:18}}>Loading…</div>
+    </div>
+  );
+  if (notFound) return (
+    <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'system-ui',color:'#cbd5e1',padding:24,textAlign:'center'}}>
+      <div><div style={{fontSize:48,marginBottom:16}}>🔍</div><h2 style={{color:gold}}>Link not found</h2><p>This link may have expired or been changed. Please contact us directly.</p></div>
+    </div>
+  );
+
+  const photoDone = !job.hasPhotos || job.photoStatus === 'completed';
+  const photoProgress = !job.hasPhotos ? null : job.photoStatus === 'completed' ? 100 : job.photoStatus === 'in-progress' ? 50 : 0;
+  const videoStages = job.hasVideo ? job.stages : [];
+  const videoProgress = videoStages.length === 0 ? null : Math.round((videoStages.filter(s => s.status === 'completed').length / videoStages.length) * 100);
+  const videoDone = !job.hasVideo || (videoStages.length > 0 && videoStages.every(s => s.status === 'completed'));
+  const allDone = photoDone && videoDone;
+
+  const steps = [
+    { label: 'Shoot Day', icon: '📷', done: true, active: false },
+    ...(job.hasPhotos ? [{ label: 'Photo Editing', icon: '🖼️', done: photoDone, active: !photoDone, progress: photoProgress }] : []),
+    ...(job.hasVideo ? videoStages.map((s, i) => ({ label: s.name.split(',')[0], icon: '🎬', done: s.status === 'completed', active: s.status === 'in-progress', progress: s.status === 'completed' ? 100 : s.status === 'in-progress' ? 50 : 0 })) : []),
+    { label: 'Delivered', icon: '✅', done: allDone, active: false }
+  ];
+
+  const currentStep = steps.findIndex(s => !s.done);
+  const daysLeft = job.deadline ? Math.ceil((new Date(job.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+
+  return (
+    <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:480,margin:'0 auto'}}>
+      <div style={{textAlign:'center',marginBottom:32,paddingTop:16}}>
+        <img src="/logo.png" alt="Eyecon Moments" style={{height:48,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
+        <h1 style={{color:gold,fontFamily:'Cormorant Garamond,serif',fontSize:28,margin:'12px 0 4px',letterSpacing:1}}>Your Project</h1>
+        <p style={{color:'#cbd5e1',fontSize:16,margin:0}}>{job.jobName}</p>
+        {job.shootDate && <p style={{color:'rgba(193,167,106,0.6)',fontSize:13,marginTop:4}}>Shot {new Date(job.shootDate).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</p>}
+      </div>
+
+      {allDone ? (
+        <div style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.3)',borderRadius:16,padding:'20px',textAlign:'center',marginBottom:24}}>
+          <div style={{fontSize:40,marginBottom:8}}>🎉</div>
+          <p style={{color:'#4ade80',fontWeight:700,fontSize:18,margin:0}}>All done! Your files are ready.</p>
+          <p style={{color:'rgba(255,255,255,0.6)',fontSize:14,marginTop:6}}>We'll be in touch with your delivery details.</p>
+        </div>
+      ) : daysLeft !== null ? (
+        <div style={{background:'rgba(193,167,106,0.08)',border:'1px solid rgba(193,167,106,0.2)',borderRadius:12,padding:'14px 18px',textAlign:'center',marginBottom:24}}>
+          <p style={{color:gold,margin:0,fontSize:14}}>
+            {daysLeft > 0 ? `Estimated delivery in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}` : daysLeft === 0 ? 'Delivery expected today' : 'Being finalised now'}
+          </p>
+        </div>
+      ) : null}
+
+      <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'20px',marginBottom:24}}>
+        <h3 style={{color:'rgba(193,167,106,0.8)',fontSize:12,letterSpacing:2,textTransform:'uppercase',margin:'0 0 20px'}}>Progress</h3>
+        <div style={{position:'relative'}}>
+          <div style={{position:'absolute',left:20,top:24,bottom:24,width:2,background:'rgba(255,255,255,0.1)'}} />
+          {steps.map((step, i) => (
+            <div key={i} style={{display:'flex',alignItems:'flex-start',gap:16,marginBottom:i<steps.length-1?20:0,position:'relative'}}>
+              <div style={{width:40,height:40,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,background:step.done?'rgba(34,197,94,0.2)':step.active?'rgba(193,167,106,0.2)':'rgba(255,255,255,0.05)',border:`2px solid ${step.done?'#22c55e':step.active?gold:'rgba(255,255,255,0.1)'}`,zIndex:1}}>
+                {step.done ? '✓' : step.icon}
+              </div>
+              <div style={{paddingTop:8,flex:1}}>
+                <p style={{margin:'0 0 4px',color:step.done?'#4ade80':step.active?gold:'rgba(255,255,255,0.4)',fontWeight:step.active||step.done?600:400,fontSize:15}}>
+                  {step.label}
+                  {step.active && <span style={{marginLeft:8,fontSize:11,color:gold,background:'rgba(193,167,106,0.15)',padding:'2px 8px',borderRadius:20}}>In progress</span>}
+                </p>
+                {step.active && step.progress != null && (
+                  <div style={{height:4,borderRadius:2,background:'rgba(255,255,255,0.1)',width:'100%',maxWidth:200}}>
+                    <div style={{height:4,borderRadius:2,background:gold,width:step.progress+'%',transition:'width 0.5s'}} />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{textAlign:'center',paddingBottom:24}}>
+        <p style={{color:'rgba(255,255,255,0.3)',fontSize:12}}>Questions? Contact Eyecon Moments</p>
+      </div>
+    </div>
+  );
+}
 
 function EyeconMoments() {
   const [currentView, setCurrentView] = useState('login');
@@ -1933,6 +2033,20 @@ function EyeconMoments() {
     return folder.id;
   };
 
+  const sendSMS = async (to, message) => {
+    try {
+      const res = await fetch('/.netlify/functions/send-sms', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, message })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+
   const uploadToDrive = async (jobId, file) => {
     const job = editingJobs.find(j => j.id === jobId);
     if (!job) return;
@@ -2256,6 +2370,9 @@ function EyeconMoments() {
       </div>
     );
   }
+
+  const _portalToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
+  if (_portalToken) return <ClientPortalView token={_portalToken} />;
 
   if (currentView === 'login' && !showEmergencyContactModal) {
     return (
@@ -8781,6 +8898,35 @@ Capturing Your Special Day
                       <button onClick={() => toggleArchiveJob(job.id)}
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
                         <Archive /> {isArchived ? 'Unarchive' : 'Archive'}
+                      </button>
+                      <button onClick={async () => {
+                        const assigned = [];
+                        if (job.photoAssignedTo) { const e = employees.find(x => x.id === job.photoAssignedTo); if (e?.phone) assigned.push(e); }
+                        job.stages.forEach(s => { if (s.assignedTo) { const e = employees.find(x => x.id === s.assignedTo); if (e?.phone && !assigned.find(a => a.id === e.id)) assigned.push(e); } });
+                        if (!assigned.length) { alert('No assigned staff with phone numbers found.'); return; }
+                        const shootStr = job.shootDate ? new Date(job.shootDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}) : 'your upcoming shoot';
+                        let sent = 0;
+                        for (const emp of assigned) {
+                          const msg = `Hi ${emp.name.split(' ')[0]}! Reminder: you're on "${job.jobName}" — ${shootStr}. Check the app for details. – Eyecon Moments`;
+                          const r = await sendSMS(emp.phone, msg);
+                          if (r.ok) sent++;
+                        }
+                        alert(sent > 0 ? `✅ SMS sent to ${sent} staff member${sent > 1 ? 's' : ''}` : 'Failed to send SMS — check Twilio env vars.');
+                      }} className="px-3 py-2 rounded text-sm bg-purple-100 text-purple-700 hover:bg-purple-200" title="Send SMS reminder to assigned staff">
+                        📱
+                      </button>
+                      <button onClick={async () => {
+                        let token = job.clientToken;
+                        if (!token) {
+                          token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                          await db.from('jobs').update({ client_token: token }).eq('id', job.id);
+                          setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
+                        }
+                        const url = `${window.location.origin}/client/${token}`;
+                        try { await navigator.clipboard.writeText(url); alert(`✅ Client link copied!\n\n${url}`); }
+                        catch { alert(`Share this link with your client:\n\n${url}`); }
+                      }} className="px-3 py-2 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200" title="Share progress link with client">
+                        🔗
                       </button>
                       <button onClick={async () => {
                         if (!window.confirm(`Permanently delete "${job.jobName}"? This cannot be undone.`)) return;
