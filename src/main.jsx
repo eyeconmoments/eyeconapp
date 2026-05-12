@@ -4429,6 +4429,7 @@ LOGGING:
         )}
       </button>
     );
+    const navActiveEntry = getUserActiveTimeEntry(currentUser?.id);
     return (
       <>
       <div className="sticky top-0 z-10 shadow-lg" style={{background: darkMode ? '#111827' : '#1a2535'}}>
@@ -4439,6 +4440,15 @@ LOGGING:
               <p className="text-xs" style={{color:'rgba(193,167,106,0.6)', letterSpacing:'2px', fontSize:'9px'}}>BUSINESS MANAGEMENT</p>
             </div>
             <div className="flex items-center gap-2">
+              {navActiveEntry && (
+                <button onClick={() => setCurrentView('timeclock')}
+                  title={`Clocked in to ${getEntryLabel(navActiveEntry)} — tap to view`}
+                  className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold"
+                  style={{background:'rgba(34,197,94,0.15)', color:'#4ade80', border:'1px solid rgba(34,197,94,0.3)'}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:'#4ade80',display:'inline-block',animation:'pulse 1.5s ease-in-out infinite'}}/>
+                  {calculateElapsedTime(navActiveEntry.clockIn)}
+                </button>
+              )}
               <button onClick={() => { setGlobalSearchOpen(true); setGlobalSearchQuery(''); }}
                 className="w-8 h-8 flex items-center justify-center rounded-full text-sm"
                 title="Search everything"
