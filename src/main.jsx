@@ -9758,14 +9758,15 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       }
                       // If changing to booked, show booking confirmation modal
                       if (newStatus === 'booked' && inquiry.status !== 'booked') {
-                        const budgetNum = parseFloat(String(inquiry.budget || '').replace(/[^0-9.]/g, ''));
+                        const extractPrice = (str) => { const m = String(str||'').match(/£?([\d,]+(?:\.\d{1,2})?)/); return m ? parseFloat(m[1].replace(/,/g,'')) : NaN; };
+                        const budgetNum = [inquiry.budget, inquiry.notes, inquiry.details].reduce((found, src) => isNaN(found) ? extractPrice(src) : found, NaN);
                         const total = isNaN(budgetNum) ? '' : String(budgetNum);
                         const deposit = isNaN(budgetNum) ? '' : String(Math.round(budgetNum * 0.5));
                         const dateStr = inquiry.eventDate
                           ? inquiry.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
                           : '';
                         setTimeout(() => {
-                          setBookingAgreedTimes(dateStr);
+                          setBookingAgreedTimes(dateStr ? dateStr + ' — ' : '');
                           setBookingVenue('');
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
