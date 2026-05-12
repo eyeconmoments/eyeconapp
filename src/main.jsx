@@ -9934,12 +9934,29 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               {
                 const existingInq = inquiries.find(i => i.id === crmQuoteInquiry.id);
                 const prevNotes = existingInq?.notes || '';
-                const timeLines = quoteData.dates.map((d, i) =>
-                  quoteData.dates.length > 1
-                    ? `Day ${i+1}: ${d.startTime}–${d.endTime}${d.location ? ' @ ' + d.location : ''}`
-                    : `${d.startTime}–${d.endTime}${d.location ? ' @ ' + d.location : ''}`
-                ).join(', ');
-                const additions = [`[Quote sent: £${finalTotal.toFixed(2)}, ${timeLines}]`];
+                const sentAt = new Date().toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+                const dayLines = quoteData.dates.map((d, i) => {
+                  const s = new Date(`2025-01-01T${d.startTime}`), e = new Date(`2025-01-01T${d.endTime}`);
+                  const hrs = ((e - s) / 3600000).toFixed(1).replace(/\.0$/, '');
+                  const dateFmt = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric'}) : '';
+                  const cdv = d.video ?? quoteData.wantVideo ?? true;
+                  const cdp = d.photo ?? quoteData.wantPhoto ?? true;
+                  const cdvt = d.videoType ?? quoteData.videoType ?? 'dual';
+                  const cdnp = d.numPhotographers ?? quoteData.numPhotographers ?? 1;
+                  const services = [
+                    cdv ? `${cdvt === 'single' ? '1' : '2'} videographer${cdvt !== 'single' ? 's' : ''}` : null,
+                    cdp ? `${cdnp} photographer${cdnp !== 1 ? 's' : ''}` : null,
+                    d.drone ? 'drone' : null,
+                  ].filter(Boolean).join(', ');
+                  const venue = d.location ? ` @ ${d.location}${d.postcode ? ' (' + d.postcode + ')' : ''}` : '';
+                  const travel = (d.distance || 0) > 0 ? ` · ${d.distance}mi travel` : '';
+                  const prefix = quoteData.dates.length > 1 ? `  Day ${i+1}: ` : '  ';
+                  return `${prefix}${dateFmt ? dateFmt + ', ' : ''}${d.startTime}–${d.endTime} (${hrs}h)${venue}${travel}\n  Services: ${services}`;
+                }).join('\n');
+                const discount = quoteData.discount > 0 ? ` (discount -£${quoteData.discount.toFixed(2)})` : '';
+                const override = priceOverride > 0 ? ' [price override]' : '';
+                const quoteNote = `[Quote sent ${sentAt} — £${finalTotal.toFixed(2)}${discount}${override}, deposit £${(finalTotal/2).toFixed(2)}\n${dayLines}]`;
+                const additions = [quoteNote];
                 if (quoteData.teamNotes) additions.push(`[Team note: ${quoteData.teamNotes}]`);
                 const newNotes = [prevNotes, ...additions].filter(Boolean).join('\n');
                 db.from('inquiries').update({ notes: newNotes }).eq('id', crmQuoteInquiry.id).then(() => {
