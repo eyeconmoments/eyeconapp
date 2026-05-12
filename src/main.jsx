@@ -9632,56 +9632,60 @@ Eyecon Moments`);
               const subject = encodeURIComponent(`Booking Confirmed — Eyecon Moments`);
               const body = encodeURIComponent(`Hi ${firstName},
 
-Thank you so much for your deposit of £${depositNum.toFixed(2)} — your booking with Eyecon Moments is now confirmed! 🎉
+Thank you for your deposit of £${depositNum.toFixed(2)} — your booking is now confirmed.
 
-Here's a summary of your booking details:
+BOOKING CONFIRMATION
+________________________________
 
-📋 Event: ${inq.eventType}
-📅 Date & Time: ${bookingAgreedTimes || eventDateFmt}
-📍 Venue: ${bookingVenue || 'TBC'}
-💰 Total Package Price: £${totalNum.toFixed(2)}
-✅ Deposit Paid: £${depositNum.toFixed(2)}
-💳 Remaining Balance: £${remaining.toFixed(2)} (due ${dayBefore})
+Event:             ${inq.eventType}
+Date & Time:       ${bookingAgreedTimes || eventDateFmt}
+Venue:             ${bookingVenue || 'TBC'}
+Total:             £${totalNum.toFixed(2)}
+Deposit Paid:      £${depositNum.toFixed(2)}
+Remaining Balance: £${remaining.toFixed(2)} (due ${dayBefore})
+________________________________
 
-Please take a moment to review the above. If anything looks incorrect or needs to be updated, please reply to this email within 24 hours and we'll get it sorted straight away.
+Please take a moment to review the above. If anything looks incorrect or needs to be updated, please reply within 24 hours and we will get it sorted straight away.
 
-We're really looking forward to being part of your event!
+We look forward to being part of your event.
 
 Kind regards,
+
 Eyecon Moments
 eyecon.moments@gmail.com
+www.eyeconmoments.co.uk
 
----
-By proceeding with this booking you agree to our terms and conditions: https://www.eyeconmoments.co.uk/terms`);
+________________________________
+By proceeding with this booking you agree to our terms and conditions: www.eyeconmoments.co.uk/terms`);
               window.location.href = `mailto:${encodeURIComponent(inq.email)}?subject=${subject}&body=${body}`;
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl`}>
-                  <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>✅ Booking Confirmation</h2>
+                  <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Booking Confirmation</h2>
                   <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inq.customerName} · {inq.email}</p>
 
                   <div className="space-y-4">
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📅 Agreed shoot date & time</label>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Agreed shoot date & time</label>
                       <input type="text" value={bookingAgreedTimes} onChange={e => setBookingAgreedTimes(e.target.value)}
                         placeholder="e.g. Saturday 14 June 2025 — 10:00am – 4:00pm"
                         className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                     </div>
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📍 Venue</label>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Venue</label>
                       <input type="text" value={bookingVenue} onChange={e => setBookingVenue(e.target.value)}
                         placeholder="e.g. The Grand Hotel, Manchester"
                         className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-1">
-                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💷 Total price (£)</label>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Total price (£)</label>
                         <input type="number" value={bookingTotalPrice} onChange={e => { setBookingTotalPrice(e.target.value); setBookingDeposit(String(Math.round(parseFloat(e.target.value || 0) * 0.5))); }}
                           className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                       </div>
                       <div className="flex-1">
-                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>✅ Deposit taken (£)</label>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Deposit taken (£)</label>
                         <input type="number" value={bookingDeposit} onChange={e => setBookingDeposit(e.target.value)}
                           className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                       </div>
