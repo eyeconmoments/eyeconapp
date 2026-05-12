@@ -1,11 +1,5 @@
 const webPush = require('web-push');
 
-webPush.setVapidDetails(
-  'mailto:eyecon.moments@gmail.com',
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
-
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -15,6 +9,11 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: '{"error":"Method not allowed"}' };
+
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    return { statusCode: 500, headers, body: '{"error":"VAPID keys not configured"}' };
+  }
+  webPush.setVapidDetails('mailto:eyecon.moments@gmail.com', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
 
   try {
     const { subscriptions, title, body, icon } = JSON.parse(event.body || '{}');
