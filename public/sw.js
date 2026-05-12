@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eyecon-v3';
+const CACHE_NAME = 'eyecon-v4';
 
 // CDN scripts to pre-cache on first install (versioned URLs only — no JIT generators)
 const PRECACHE = [
