@@ -9776,9 +9776,16 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       if (inquiry.status === 'new' && newStatus !== 'new') {
                         inquiry.contactedDate = new Date().toISOString();
                       }
-                      // If changing to quoted, show follow-up prompt
+                      // If changing to quoted, show follow-up prompt and log who did it
                       if (newStatus === 'quoted' && inquiry.status !== 'quoted') {
                         inquiry.quotedDate = new Date().toISOString();
+                        const sentAt = new Date().toLocaleString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+                        const byName = currentUser?.name || 'Unknown';
+                        const prevNotes = inquiry.notes || '';
+                        const newNotes = [prevNotes, `[Marked as quoted by ${byName} — ${sentAt}]`].filter(Boolean).join('\n');
+                        db.from('inquiries').update({ notes: newNotes }).eq('id', inquiry.id).then(() => {
+                          setInquiries(prev => prev.map(i => i.id === inquiry.id ? { ...i, notes: newNotes } : i));
+                        });
                         setTimeout(() => {
                           setFollowUpInquiry({...inquiry, status: 'quoted'});
                           setShowFollowUpModal(true);
@@ -9955,7 +9962,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 }).join('\n');
                 const discount = quoteData.discount > 0 ? ` (discount -£${quoteData.discount.toFixed(2)})` : '';
                 const override = priceOverride > 0 ? ' [price override]' : '';
-                const quoteNote = `[Quote sent ${sentAt} — £${finalTotal.toFixed(2)}${discount}${override}, deposit £${(finalTotal/2).toFixed(2)}\n${dayLines}]`;
+                const byName = currentUser?.name || 'Unknown';
+                const quoteNote = `[Quote sent ${sentAt} by ${byName} — £${finalTotal.toFixed(2)}${discount}${override}, deposit £${(finalTotal/2).toFixed(2)}\n${dayLines}]`;
                 const additions = [quoteNote];
                 if (quoteData.teamNotes) additions.push(`[Team note: ${quoteData.teamNotes}]`);
                 const newNotes = [prevNotes, ...additions].filter(Boolean).join('\n');
