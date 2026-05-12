@@ -9656,7 +9656,7 @@ eyecon.moments@gmail.com
 www.eyeconmoments.co.uk
 
 ________________________________
-For reference, our terms and conditions can be found at www.eyeconmoments.co.uk/terms`);
+This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`);
               window.location.href = `mailto:${encodeURIComponent(inq.email)}?subject=${subject}&body=${body}`;
             };
             return (
