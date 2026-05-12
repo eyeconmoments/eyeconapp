@@ -9931,10 +9931,17 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`);
               window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${subject}&body=${body}`;
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
-              if (quoteData.teamNotes) {
+              {
                 const existingInq = inquiries.find(i => i.id === crmQuoteInquiry.id);
                 const prevNotes = existingInq?.notes || '';
-                const newNotes = prevNotes ? prevNotes + '\n[Team note: ' + quoteData.teamNotes + ']' : '[Team note: ' + quoteData.teamNotes + ']';
+                const timeLines = quoteData.dates.map((d, i) =>
+                  quoteData.dates.length > 1
+                    ? `Day ${i+1}: ${d.startTime}–${d.endTime}${d.location ? ' @ ' + d.location : ''}`
+                    : `${d.startTime}–${d.endTime}${d.location ? ' @ ' + d.location : ''}`
+                ).join(', ');
+                const additions = [`[Quote sent: £${finalTotal.toFixed(2)}, ${timeLines}]`];
+                if (quoteData.teamNotes) additions.push(`[Team note: ${quoteData.teamNotes}]`);
+                const newNotes = [prevNotes, ...additions].filter(Boolean).join('\n');
                 db.from('inquiries').update({ notes: newNotes }).eq('id', crmQuoteInquiry.id).then(() => {
                   setInquiries(prev => prev.map(i => i.id === crmQuoteInquiry.id ? { ...i, notes: newNotes } : i));
                 });
