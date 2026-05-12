@@ -2374,9 +2374,6 @@ function EyeconMoments() {
     );
   }
 
-  const _portalToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
-  if (_portalToken) return <ClientPortalView token={_portalToken} />;
-
   if (currentView === 'login' && !showEmergencyContactModal) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{background:'linear-gradient(160deg,#0f1923 0%,#1a2535 60%,#0f1923 100%)'}}>
