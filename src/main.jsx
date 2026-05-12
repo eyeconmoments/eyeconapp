@@ -2353,6 +2353,9 @@ function EyeconMoments() {
     return cleanup;
   }, [currentView, currentUser]);
 
+  const _portalToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
+  if (_portalToken) return <ClientPortalView token={_portalToken} />;
+
   // LOGIN VIEW
   if (dbLoading) {
     return (
@@ -2370,9 +2373,6 @@ function EyeconMoments() {
       </div>
     );
   }
-
-  const _portalToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
-  if (_portalToken) return <ClientPortalView token={_portalToken} />;
 
   if (currentView === 'login' && !showEmergencyContactModal) {
     return (
