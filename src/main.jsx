@@ -9645,14 +9645,14 @@ Here's a summary of your booking details:
 
 Please take a moment to review the above. If anything looks incorrect or needs to be updated, please reply to this email within 24 hours and we'll get it sorted straight away.
 
-📄 Terms & Conditions
-As a reminder, your booking is subject to our standard terms and conditions, which you can view at any time here: https://www.eyeconmoments.co.uk/terms
-
 We're really looking forward to being part of your event!
 
 Kind regards,
 Eyecon Moments
-eyecon.moments@gmail.com`);
+eyecon.moments@gmail.com
+
+---
+By proceeding with this booking you agree to our terms and conditions: https://www.eyeconmoments.co.uk/terms`);
               window.location.href = `mailto:${encodeURIComponent(inq.email)}?subject=${subject}&body=${body}`;
             };
             return (
