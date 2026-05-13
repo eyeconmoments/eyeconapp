@@ -840,10 +840,7 @@ function EyeconMoments() {
       const jobLabel = entry.jobId ? (editingJobs.find(j => j.id === entry.jobId)?.jobName || 'a job') : (entry.description || 'general work');
       const emp = employees.find(e => e.id === entry.employeeId);
       sendActivityPush('🔴 Clocked Out', `${emp?.name || 'Staff'} clocked out — ${jobLabel} (${hoursWorked}h)`);
-      if (progressPercent === 100 && entry.jobId) {
-        const job = editingJobs.find(j => j.id === entry.jobId);
-        if (job) setProjectFileModal({ jobId: job.id, jobName: job.jobName });
-      }
+      // project file upload removed
     }
   };
 
@@ -927,7 +924,7 @@ function EyeconMoments() {
     if (newStatus === 'completed') {
       const photoDoneNow = !job.hasPhotos || job.photoStatus === 'completed';
       const videoDoneNow = !job.hasVideo || newStages.every(s => s.status === 'completed');
-      if (photoDoneNow && videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+      // project file upload removed
     }
   };
 
@@ -964,7 +961,7 @@ function EyeconMoments() {
     await db.from('jobs').update({ photo_status: newStatus, ...extraUpdate }).eq('id', jobId);
     if (newStatus === 'completed' && job) {
       const videoDoneNow = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
-      if (videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+      // project file upload removed
     }
   };
 
@@ -8127,61 +8124,9 @@ Capturing Your Special Day
               </div>
             </div>
           )}
-          {/* ── Project Files — completed video jobs ready for Drive upload ── */}
-          {(() => {
-            const completedVideoJobs = editingJobs.filter(job =>
-              !archivedJobIds.includes(job.id) &&
-              job.hasVideo &&
-              (job.stages || []).length > 0 &&
-              (job.stages || []).every(s => s.status === 'completed') &&
-              (currentUser.isAdmin || (job.stages || []).some(s => String(s.assignedTo) === String(currentUser.id)))
-            );
-            if (completedVideoJobs.length === 0) return null;
-            return (
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
-                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''} flex items-center justify-between`}>
-                  <div>
-                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>☁️ Project Files</h3>
-                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload completed project files to Google Drive</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold text-white bg-green-500`}>{completedVideoJobs.length}</span>
-                </div>
-                <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {completedVideoJobs.map(job => {
-                    const driveFiles = (job.fileLocations || []).filter(f => f.type === 'drive_project_file');
-                    return (
-                      <div key={job.id} className={`p-4 ${darkMode ? '' : ''}`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
-                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>🎥 All stages complete · {(job.stages || []).length} stages</p>
-                            {driveFiles.length > 0 && (
-                              <div className="mt-1.5 space-y-0.5">
-                                {driveFiles.map((f, i) => (
-                                  <a key={i} href={f.driveLink} target="_blank" rel="noopener noreferrer"
-                                    className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 hover:underline">
-                                    <span>☁️</span><span className="truncate">{f.fileName}</span>
-                                    <span className={`shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>↗</span>
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <button onClick={() => setDriveUploadModal({ jobId: job.id })}
-                            className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-semibold text-white ${driveFiles.length > 0 ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-500 hover:bg-blue-600'}`}>
-                            {driveFiles.length > 0 ? '+ Add File' : '☁️ Upload'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
 
-          {/* TODAY'S SHIFTS / THIS WEEK / THIS MONTH */}
-          {(() => {
+          {/* TODAY'S SHIFTS / THIS WEEK / THIS MONTH — admin only */}
+          {currentUser?.isAdmin && (() => {
             const now = new Date();
             const todayStr = now.toDateString();
             const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7)); startOfWeek.setHours(0,0,0,0);
