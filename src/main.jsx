@@ -442,6 +442,11 @@ function EyeconMoments() {
   const [showManualJobModal, setShowManualJobModal] = useState(false);
   const [showProfitAnalysis, setShowProfitAnalysis] = useState(false);
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
+  const [quranOpen, setQuranOpen] = useState(false);
+  const [quranTimerSecs, setQuranTimerSecs] = useState(120);
+  const [quranTimerDone, setQuranTimerDone] = useState(false);
+  const [quranData, setQuranData] = useState(null); // { page, arabic: [], english: [] }
+  const [quranLoading, setQuranLoading] = useState(false);
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
   const [extractedJobData, setExtractedJobData] = useState(null);
@@ -2361,6 +2366,34 @@ function EyeconMoments() {
     const cleanup = attach();
     return cleanup;
   }, [currentView, currentUser]);
+
+  // Quran: fetch page data when modal opens
+  useEffect(() => {
+    if (!quranOpen) return;
+    const weekNum = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 1)) / (7*24*60*60*1000));
+    const pageNum = (weekNum % 604) + 1;
+    if (quranData && quranData.page === pageNum) return; // already loaded this week's page
+    setQuranLoading(true);
+    Promise.all([
+      fetch(`https://api.alquran.cloud/v1/page/${pageNum}/quran-uthmani`).then(r => r.json()),
+      fetch(`https://api.alquran.cloud/v1/page/${pageNum}/en.asad`).then(r => r.json()),
+    ]).then(([ar, en]) => {
+      setQuranData({ page: pageNum, arabic: ar.data?.ayahs || [], english: en.data?.ayahs || [] });
+    }).catch(() => {}).finally(() => setQuranLoading(false));
+  }, [quranOpen]);
+
+  // Quran: 2-minute reading timer
+  useEffect(() => {
+    if (!quranOpen) { setQuranTimerSecs(120); setQuranTimerDone(false); return; }
+    if (quranTimerDone) return;
+    const id = setInterval(() => {
+      setQuranTimerSecs(s => {
+        if (s <= 1) { clearInterval(id); setQuranTimerDone(true); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [quranOpen, quranTimerDone]);
 
   const _portalToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
   if (_portalToken) return <ClientPortalView token={_portalToken} />;
@@ -4440,6 +4473,12 @@ LOGGING:
                 title="Search everything"
                 style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
                 🔍
+              </button>
+              <button onClick={() => setQuranOpen(true)}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-sm"
+                title="Read Qur'an"
+                style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
+                ☪
               </button>
               <button onClick={() => setHelpOpen(true)}
                 className="w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold"
@@ -7640,6 +7679,90 @@ Capturing Your Special Day
                   )}
                 </div>
               </div>
+            </div>
+          );
+        })()}
+
+        {/* Qur'an Reading Modal */}
+        {quranOpen && (() => {
+          const mmSecs = `${Math.floor(quranTimerSecs/60)}:${String(quranTimerSecs%60).padStart(2,'0')}`;
+          // Group arabic ayahs by surah for display headers
+          const surahsSeen = [];
+          const arabicBySurah = [];
+          (quranData?.arabic || []).forEach(a => {
+            if (!surahsSeen.includes(a.surah.number)) {
+              surahsSeen.push(a.surah.number);
+              arabicBySurah.push({ surah: a.surah, ayahs: [] });
+            }
+            arabicBySurah[arabicBySurah.length-1].ayahs.push(a);
+          });
+          const enMap = {};
+          (quranData?.english || []).forEach(a => { enMap[a.number] = a.text; });
+          return (
+            <div className="fixed inset-0 z-[99999] flex flex-col" style={{background:'linear-gradient(160deg,#0a1118 0%,#1a2535 100%)'}}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor:'rgba(193,167,106,0.25)'}}>
+                <div>
+                  <h2 className="font-bold text-lg" style={{color:'var(--gold)', fontFamily:'Cormorant Garamond, serif', letterSpacing:'1px'}}>
+                    ☪ Weekly Qur'an
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{color:'rgba(193,167,106,0.6)'}}>
+                    Page {quranData?.page || '…'} · {surahsSeen.length > 0 ? arabicBySurah.map(s => s.surah.englishName).join(', ') : 'Loading…'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {!quranTimerDone ? (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-full" style={{background:'rgba(193,167,106,0.12)', border:'1px solid rgba(193,167,106,0.3)'}}>
+                      <span className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Reading</span>
+                      <span className="font-bold tabular-nums text-base" style={{color:'var(--gold)'}}>{mmSecs}</span>
+                    </div>
+                  ) : (
+                    <button onClick={() => setQuranOpen(false)}
+                      className="px-5 py-2 rounded-full font-bold text-sm"
+                      style={{background:'var(--gold)', color:'#1a2535'}}>
+                      ✓ Close
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-5 py-6 space-y-8">
+                {quranLoading && (
+                  <p className="text-center text-sm py-16" style={{color:'rgba(193,167,106,0.6)'}}>Loading page…</p>
+                )}
+                {!quranLoading && arabicBySurah.map(({ surah, ayahs }) => (
+                  <div key={surah.number}>
+                    {/* Surah title */}
+                    <div className="text-center mb-5">
+                      <p className="text-2xl font-bold" style={{color:'var(--gold)', fontFamily:'Cormorant Garamond, serif'}}>{surah.name}</p>
+                      <p className="text-sm mt-0.5" style={{color:'rgba(193,167,106,0.7)'}}>{surah.englishName} — {surah.englishNameTranslation}</p>
+                    </div>
+                    <div className="space-y-5">
+                      {ayahs.map(a => (
+                        <div key={a.number} className="rounded-xl p-4" style={{background:'rgba(193,167,106,0.06)', border:'1px solid rgba(193,167,106,0.14)'}}>
+                          {/* Arabic */}
+                          <p className="text-right text-xl leading-loose mb-3" style={{color:'#e8d5a3', fontFamily:'Scheherazade New, Amiri, serif', direction:'rtl'}}>
+                            {a.text}
+                            <span className="text-xs ml-2 opacity-50" style={{direction:'ltr', fontFamily:'sans-serif'}}>({a.numberInSurah})</span>
+                          </p>
+                          {/* English */}
+                          {enMap[a.number] && (
+                            <p className="text-sm leading-relaxed" style={{color:'rgba(193,167,106,0.75)'}}>
+                              <span className="opacity-50 mr-1">{a.numberInSurah}.</span>{enMap[a.number]}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Footer reminder */}
+              {!quranTimerDone && (
+                <div className="px-5 py-3 text-center border-t" style={{borderColor:'rgba(193,167,106,0.15)', color:'rgba(193,167,106,0.5)', fontSize:'12px'}}>
+                  Please spend {mmSecs} reading before closing
+                </div>
+              )}
             </div>
           );
         })()}
