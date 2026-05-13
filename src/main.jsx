@@ -1939,7 +1939,7 @@ function EyeconMoments() {
         if (response.error) { console.error(response); return; }
         window.gapi.client.setToken(response);
         setIsGoogleSignedIn(true);
-        syncFromGoogleCalendar();
+        // useEffect on isGoogleSignedIn handles calendar population
       },
     });
     client.requestAccessToken();
@@ -2324,6 +2324,7 @@ function EyeconMoments() {
   useEffect(() => {
     if (isGoogleSignedIn) {
       getUpcomingJobsFromCalendar();
+      syncGCalForMonth(upcomingCalMonth, upcomingCalYear);
     }
   }, [isGoogleSignedIn]);
 
