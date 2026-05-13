@@ -8038,17 +8038,27 @@ Capturing Your Special Day
           {!currentUser.isAdmin && (() => {
             const _pad2 = n => String(n).padStart(2,'0');
             const _fmtDT = d => `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}T${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+            const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); yesterday.setMinutes(0,0,0);
             const myEntries = timeEntries
               .filter(e => e.employeeId === currentUser.id)
               .sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn))
               .slice(0, 15);
-            if (myEntries.length === 0) return null;
             return (
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
-                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
-                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🕐 My Time Log</h3>
-                  <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tap ✏️ to correct a missed clock-out or wrong time</p>
+                <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-700' : ''}`}>
+                  <div>
+                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🕐 My Time Log</h3>
+                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tap ✏️ to correct a time, or + to add a missed shift</p>
+                  </div>
+                  <button
+                    onClick={() => setManualTimeModal({ employeeId: currentUser.id, jobId: '', clockIn: _fmtDT(yesterday), clockOut: '', editEntryId: null })}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-orange-400 hover:bg-gray-600' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>
+                    + Add missed shift
+                  </button>
                 </div>
+                {myEntries.length === 0 && (
+                  <p className={`text-sm text-center py-6 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No entries yet</p>
+                )}
                 <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
                   {myEntries.map(entry => {
                     const isActive = !entry.clockOut;
