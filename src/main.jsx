@@ -349,6 +349,7 @@ function EyeconMoments() {
   const [isDriveSignedIn, setIsDriveSignedIn] = useState(false);
   const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
   const [projectFileModal, setProjectFileModal] = useState(null); // { jobId, jobName } — upload project file after video complete
+  const [projectFileSelected, setProjectFileSelected] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [gearChecklists, setGearChecklists] = useState([]);
   const [activeGearCheck, setActiveGearCheck] = useState(null); // { jobName, items: [{name,checked}], notes }
@@ -7674,52 +7675,45 @@ Capturing Your Special Day
                     </div>
                   )}
                   <div
-                    id="pf-dropzone"
-                    onDragOver={e => { e.preventDefault(); document.getElementById('pf-dropzone').style.borderColor = '#C1A76A'; }}
-                    onDragLeave={() => { document.getElementById('pf-dropzone').style.borderColor = ''; }}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#C1A76A'; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
                     onDrop={e => {
                       e.preventDefault();
-                      document.getElementById('pf-dropzone').style.borderColor = '';
+                      e.currentTarget.style.borderColor = '';
                       const f = e.dataTransfer.files[0];
-                      if (f) {
-                        const inp = document.getElementById('pf-file-input');
-                        const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files;
-                        document.getElementById('pf-filename').textContent = `${f.name}  (${(f.size / 1024).toFixed(0)} KB)`;
-                        document.getElementById('pf-filename').style.display = 'block';
-                      }
+                      if (f) setProjectFileSelected(f);
                     }}
                     onClick={() => document.getElementById('pf-file-input').click()}
-                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${darkMode ? 'border-gray-600 hover:border-gold' : 'border-gray-300 hover:border-yellow-500'}`}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${darkMode ? 'border-gray-600 hover:border-yellow-400' : 'border-gray-300 hover:border-yellow-500'}`}
                     style={{transition:'border-color 0.2s'}}>
                     <div className="text-3xl mb-2">📂</div>
-                    <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drag & drop project file here</p>
-                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>or click to browse</p>
-                    <p className={`text-xs mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>.prproj · .drp · .aep · .fcpbundle · .ppro</p>
+                    {projectFileSelected ? (
+                      <p className="text-sm font-semibold text-green-500">{projectFileSelected.name}<br/><span className="font-normal text-xs">({(projectFileSelected.size / 1024).toFixed(0)} KB)</span></p>
+                    ) : (
+                      <>
+                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drag & drop project file here</p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>or tap to browse</p>
+                        <p className={`text-xs mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>.prproj · .drp · .aep · .fcpbundle · .ppro</p>
+                      </>
+                    )}
                     <input type="file" id="pf-file-input" className="hidden"
                       accept=".prproj,.drp,.aep,.fcpbundle,.ppro,.xml"
-                      onChange={e => {
-                        const f = e.target.files[0];
-                        if (f) {
-                          document.getElementById('pf-filename').textContent = `${f.name}  (${(f.size / 1024).toFixed(0)} KB)`;
-                          document.getElementById('pf-filename').style.display = 'block';
-                        }
-                      }} />
+                      onChange={e => { const f = e.target.files[0]; if (f) setProjectFileSelected(f); }} />
                   </div>
-                  <p id="pf-filename" className="text-xs text-center text-green-600 font-medium hidden"></p>
                   <div className="flex gap-3">
-                    <button onClick={() => setProjectFileModal(null)}
+                    <button onClick={() => { setProjectFileModal(null); setProjectFileSelected(null); }}
                       className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                       Skip for now
                     </button>
                     <button
-                      disabled={driveUploading}
+                      disabled={driveUploading || !projectFileSelected}
                       onClick={async () => {
-                        const file = document.getElementById('pf-file-input')?.files[0];
-                        if (!file) { alert('Please choose or drag a file first.'); return; }
-                        await uploadToDrive(projectFileModal.jobId, file);
+                        if (!projectFileSelected) { alert('Please choose or drag a file first.'); return; }
+                        await uploadToDrive(projectFileModal.jobId, projectFileSelected);
+                        setProjectFileSelected(null);
                         setProjectFileModal(null);
                       }}
-                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${driveUploading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${(driveUploading || !projectFileSelected) ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
                       {driveUploading ? '⏳ Uploading…' : '☁️ Upload to Drive'}
                     </button>
                   </div>
