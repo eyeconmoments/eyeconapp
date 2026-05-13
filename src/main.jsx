@@ -840,7 +840,10 @@ function EyeconMoments() {
       const jobLabel = entry.jobId ? (editingJobs.find(j => j.id === entry.jobId)?.jobName || 'a job') : (entry.description || 'general work');
       const emp = employees.find(e => e.id === entry.employeeId);
       sendActivityPush('🔴 Clocked Out', `${emp?.name || 'Staff'} clocked out — ${jobLabel} (${hoursWorked}h)`);
-      // project file upload removed
+      if (progressPercent === 100 && entry.jobId) {
+        const job = editingJobs.find(j => j.id === entry.jobId);
+        if (job) setProjectFileModal({ jobId: job.id, jobName: job.jobName });
+      }
     }
   };
 
@@ -924,7 +927,7 @@ function EyeconMoments() {
     if (newStatus === 'completed') {
       const photoDoneNow = !job.hasPhotos || job.photoStatus === 'completed';
       const videoDoneNow = !job.hasVideo || newStages.every(s => s.status === 'completed');
-      // project file upload removed
+      if (photoDoneNow && videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
     }
   };
 
@@ -961,7 +964,7 @@ function EyeconMoments() {
     await db.from('jobs').update({ photo_status: newStatus, ...extraUpdate }).eq('id', jobId);
     if (newStatus === 'completed' && job) {
       const videoDoneNow = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
-      // project file upload removed
+      if (videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
     }
   };
 
