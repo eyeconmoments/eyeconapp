@@ -7674,6 +7674,13 @@ Capturing Your Special Day
                       ))}
                     </div>
                   )}
+                  {/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? (
+                    <div className={`rounded-xl p-6 text-center border-2 border-dashed ${darkMode ? 'border-gray-600 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                      <div className="text-3xl mb-2">💻</div>
+                      <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Open on your computer to upload the project file</p>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Project files (.prproj, .drp, .aep etc.) are too large to upload from a phone</p>
+                    </div>
+                  ) : (
                   <div
                     onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#C1A76A'; }}
                     onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
@@ -7700,6 +7707,7 @@ Capturing Your Special Day
                       accept=".prproj,.drp,.aep,.fcpbundle,.ppro,.xml"
                       onChange={e => { const f = e.target.files[0]; if (f) setProjectFileSelected(f); }} />
                   </div>
+                  )}
                   <div className="flex gap-3">
                     <button onClick={() => { setProjectFileModal(null); setProjectFileSelected(null); }}
                       className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
