@@ -1919,20 +1919,20 @@ function EyeconMoments() {
   const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
   const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
 
-  const initGoogleCalendar = async () => {
-    await window._loadGoogleAPIs();
-    window.gapi.load('client', () => {
-      window.gapi.client.init({
-        apiKey: GOOGLE_API_KEY,
-        discoveryDocs: DISCOVERY_DOCS,
-      }).then(() => {
-        console.log('GAPI client ready');
-      }).catch(e => console.error('GAPI init error:', e));
-    });
-  };
+  const initGoogleCalendar = () => new Promise(async (resolve, reject) => {
+    try {
+      await window._loadGoogleAPIs();
+      window.gapi.load('client', async () => {
+        try {
+          await window.gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS });
+          resolve();
+        } catch(e) { reject(e); }
+      });
+    } catch(e) { reject(e); }
+  });
 
   const handleGoogleSignIn = async () => {
-    await window._loadGoogleAPIs();
+    await initGoogleCalendar();
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
@@ -2321,6 +2321,9 @@ function EyeconMoments() {
     setGCalSyncing(false);
   };
 
+
+  // Initialise gapi.client on mount so Calendar API is ready before sign-in
+  useEffect(() => { initGoogleCalendar().catch(() => {}); }, []);
 
   useEffect(() => {
     if (isGoogleSignedIn) {
