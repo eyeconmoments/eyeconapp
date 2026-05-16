@@ -8419,11 +8419,6 @@ Capturing Your Special Day
     const _todayForJobsFilter = new Date(); _todayForJobsFilter.setHours(0, 0, 0, 0);
     const filteredJobs = editingJobs.filter(job => {
       if (!showArchived && archivedJobIds.includes(job.id)) return false;
-      // Exclude jobs whose shoot date is today or in the future (still in "upcoming")
-      if (job.shootDate) {
-        const shootDate = new Date(job.shootDate); shootDate.setHours(0, 0, 0, 0);
-        if (shootDate >= _todayForJobsFilter) return false;
-      }
       if (jobSearchQuery) {
         const query = jobSearchQuery.toLowerCase();
         return job.jobName.toLowerCase().includes(query) || job.customerName.toLowerCase().includes(query);
