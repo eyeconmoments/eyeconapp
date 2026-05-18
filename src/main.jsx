@@ -1233,6 +1233,7 @@ function EyeconMoments() {
     const existing = job.fileLocations[locationIndex];
     // Push the current location into history before overwriting
     const historyEntry = existing ? {
+      hardware: existing.hardware || '',
       drive: existing.drive || '', path: existing.path || '', notes: existing.notes || '',
       setBy: existing.setBy || 'Unknown', setAt: existing.setAt || new Date().toISOString(),
       changedBy: currentUser.name, changedAt: new Date().toISOString()
@@ -4330,12 +4331,18 @@ LOGGING:
                               <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                 <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📋 Change History</p>
                                 <div className="space-y-2">
-                                  {loc.history.map((h, hi) => (
+                                  {loc.history.map((h, hi) => {
+                                    const hHwName = h.hardware ? (hardwareLocations.find(hw => hw.id === h.hardware)?.name || h.hardware) : null;
+                                    return (
                                     <div key={hi} className={`text-xs pl-2 border-l-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                                       {(h.stage || h.notes || h.path) && (
                                         <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.stage || h.notes || h.path}</p>
                                       )}
-                                      {h.drive && <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📁 {h.drive}</p>}
+                                      <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {hHwName && <span className="font-semibold text-blue-400">{hHwName}</span>}
+                                        {hHwName && h.drive && ' · '}
+                                        {h.drive && <span>📁 {h.drive}</span>}
+                                      </p>
                                       <p className={`mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                         {(h.changedBy || h.setBy) && (h.changedBy || h.setBy) !== 'Unknown'
                                           ? `👤 ${h.changedBy || h.setBy}`
@@ -4343,7 +4350,8 @@ LOGGING:
                                         {(h.changedAt || h.setAt) ? ` · ${new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit', hour:'2-digit', minute:'2-digit'})}` : ''}
                                       </p>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
@@ -10396,12 +10404,18 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                           <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                             <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📋 Change History</p>
                             <div className="space-y-2">
-                              {loc.history.map((h, hi) => (
+                              {loc.history.map((h, hi) => {
+                                const hHwName = h.hardware ? (hardwareLocations.find(hw => hw.id === h.hardware)?.name || h.hardware) : null;
+                                return (
                                 <div key={hi} className={`text-xs pl-2 border-l-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                                   {(h.stage || h.notes || h.path) && (
                                     <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.stage || h.notes || h.path}</p>
                                   )}
-                                  {h.drive && <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>📁 {h.drive}</p>}
+                                  <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    {hHwName && <span className="font-semibold text-blue-400">{hHwName}</span>}
+                                    {hHwName && h.drive && ' · '}
+                                    {h.drive && <span>📁 {h.drive}</span>}
+                                  </p>
                                   <p className={`mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                     {(h.changedBy || h.setBy) && (h.changedBy || h.setBy) !== 'Unknown'
                                       ? `👤 ${h.changedBy || h.setBy}`
@@ -10409,7 +10423,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                                     {(h.changedAt || h.setAt) ? ` · ${new Date(h.changedAt || h.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit', hour:'2-digit', minute:'2-digit'})}` : ''}
                                   </p>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
