@@ -304,6 +304,8 @@ function EyeconMoments() {
   const [showBookingConfirmModal, setShowBookingConfirmModal] = useState(false);
   const [bookingConfirmInquiry, setBookingConfirmInquiry] = useState(null);
   const [bookingDate, setBookingDate] = useState('');
+  const [bookingNumDays, setBookingNumDays] = useState(1);
+  const [bookingDate2, setBookingDate2] = useState('');
   const [bookingStartTime, setBookingStartTime] = useState('10:00');
   const [bookingEndTime, setBookingEndTime] = useState('17:00');
   const [bookingVenue, setBookingVenue] = useState('');
@@ -733,15 +735,15 @@ function EyeconMoments() {
         setTimeout(() => subscribeToPush(resolvedUser.id), 1000);
       }
 
-      // Auto clock-out: close any open entry left past 7pm
+      // Auto clock-out: close any open entry left past 5pm
       const openEntry = timeEntries.find(e => e.employeeId === resolvedUser.id && !e.clockOut);
       if (openEntry) {
         const now = new Date();
         const clockInDate = new Date(openEntry.clockIn);
-        const sevenPm = new Date(clockInDate); sevenPm.setHours(19, 0, 0, 0);
+        const sevenPm = new Date(clockInDate); sevenPm.setHours(17, 0, 0, 0);
         const isToday = clockInDate.toDateString() === now.toDateString();
         if (!isToday || now >= sevenPm) {
-          const autoOut = new Date(clockInDate); autoOut.setHours(19, 0, 0, 0);
+          const autoOut = new Date(clockInDate); autoOut.setHours(17, 0, 0, 0);
           const hours = Math.round(((autoOut - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
           await db.from('time_entries').update({ clock_out: autoOut.toISOString(), hours_worked: hours }).eq('id', openEntry.id);
           setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: autoOut, hoursWorked: hours } : e));
@@ -1111,25 +1113,25 @@ function EyeconMoments() {
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [currentUser, checkClockReminder]);
 
-  // Admin-side background sweep: clock out any staff still active past 7 PM
+  // Admin-side background sweep: clock out any staff still active past 5 PM
   React.useEffect(() => {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
     const sweep = async () => {
       const now = new Date();
-      if (now.getHours() < 19) return; // before 7 PM — nothing to do
+      if (now.getHours() < 17) return; // before 5 PM — nothing to do
       const openEntries = timeEntries.filter(e => !e.clockOut);
       if (!openEntries.length) return;
       await Promise.allSettled(openEntries.map(async entry => {
         const clockInDate = new Date(entry.clockIn);
-        const sevenPm = new Date(clockInDate); sevenPm.setHours(19, 0, 0, 0);
-        if (now < sevenPm) return; // clocked in after 7 PM today — leave open
-        const hours = Math.round(((sevenPm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
-        await db.from('time_entries').update({ clock_out: sevenPm.toISOString(), hours_worked: hours }).eq('id', entry.id);
-        setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: sevenPm, hoursWorked: hours } : e));
+        const fivePm = new Date(clockInDate); fivePm.setHours(17, 0, 0, 0);
+        if (now < fivePm) return; // clocked in after 5 PM today — leave open
+        const hours = Math.round(((fivePm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
+        await db.from('time_entries').update({ clock_out: fivePm.toISOString(), hours_worked: hours }).eq('id', entry.id);
+        setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: fivePm, hoursWorked: hours } : e));
         const emp = employees.find(e => e.id === entry.employeeId);
         if (emp) {
-          sendActivityPush('🔴 Auto Clocked Out', `${emp.name} was automatically clocked out at 7:00 PM (${hours}h logged)`);
-          sendPushToEmployee(entry.employeeId, '🔴 Clocked Out', `You've been automatically clocked out at 7:00 PM — ${hours}h logged today.`);
+          sendActivityPush('🔴 Auto Clocked Out', `${emp.name} was automatically clocked out at 5:00 PM (${hours}h logged)`);
+          sendPushToEmployee(entry.employeeId, '🔴 Clocked Out', `You've been automatically clocked out at 5:00 PM — ${hours}h logged today.`);
         }
       }));
     };
@@ -1409,8 +1411,13 @@ function EyeconMoments() {
         const notesText = data.notes || '';
         const phoneMatch = notesText.match(/(\+?[\d][\d\s\-().]{8,})/);
         const emailMatch = notesText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+        const igMatch = notesText.match(/@([\w.]+)/);
+        const igHandle = igMatch ? igMatch[1] : '';
+        const nameFromIg = igHandle
+          ? igHandle.replace(/[_. ]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim()
+          : '';
         const parsed = {
-          name: data.customerName || data.name || '',
+          name: data.customerName || data.name || nameFromIg,
           phone: data.phone || (phoneMatch ? phoneMatch[1].trim() : ''),
           email: data.email || (emailMatch ? emailMatch[0] : ''),
         };
@@ -3063,13 +3070,13 @@ LOGGING:
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
         {/* Feedback Popup */}
-        {/* 6:30pm clock-out reminder banner */}
+        {/* 4:30pm clock-out reminder banner */}
         {(() => {
           if (!currentUser || clockOutBannerDismissed) return null;
           const active = getUserActiveTimeEntry(currentUser.id);
           if (!active) return null;
           const h = currentTime.getHours(), m = currentTime.getMinutes();
-          if (h < 18 || (h === 18 && m < 30)) return null;
+          if (h < 16 || (h === 16 && m < 30)) return null;
           return (
             <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 gap-3" style={{background:'linear-gradient(135deg,#7c2d12,#dc2626)'}}>
               <div className="flex items-center gap-2 min-w-0">
@@ -9576,22 +9583,19 @@ Eyecon Moments`);
               const h12 = h % 12 || 12;
               return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
             };
+            const fmtDate = (iso) => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) : '';
             const dateTimeFmt = (() => {
-              if (bookingDate) {
-                const d = new Date(bookingDate + 'T12:00:00');
-                const datePart = d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-                return `${datePart}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              if (bookingNumDays === 2 && bookingDate && bookingDate2) {
+                return `Day 1: ${fmtDate(bookingDate)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}\nDay 2: ${fmtDate(bookingDate2)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
               }
-              return inq.eventDate
-                ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
-                : '';
+              if (bookingDate) return `${fmtDate(bookingDate)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              return inq.eventDate ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) : '';
             })();
             const sendEmail = () => {
-              const dayBefore = bookingDate
-                ? new Date(bookingDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
-                : inq.eventDate
-                  ? new Date(inq.eventDate.getTime() - 86400000).toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
-                  : 'the day before the event';
+              const baseDate = bookingDate || (inq.eventDate ? inq.eventDate.toISOString().split('T')[0] : '');
+              const dayBefore = baseDate
+                ? new Date(baseDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
+                : 'the day before the event';
               const subject = encodeURIComponent(`Booking Confirmed — Eyecon Moments`);
               const body = encodeURIComponent(`Hi ${firstName},
 
@@ -9624,16 +9628,35 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl`}>
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto`}>
                   <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Booking Confirmation</h2>
                   <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inq.customerName} · {inq.email}</p>
 
                   <div className="space-y-4">
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Shoot date</label>
+                      <label className={`block text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Number of days</label>
+                      <div className="flex rounded-lg overflow-hidden border" style={{borderColor: darkMode ? '#4b5563' : '#d1d5db'}}>
+                        {[1, 2].map(n => (
+                          <button key={n} onClick={() => setBookingNumDays(n)}
+                            className={`flex-1 py-2 text-sm font-semibold transition-colors ${bookingNumDays === n ? 'text-white' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600'}`}
+                            style={bookingNumDays === n ? {background:'var(--gold)'} : {}}>
+                            {n} {n === 1 ? 'Day' : 'Days'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{bookingNumDays === 2 ? 'Day 1 date' : 'Shoot date'}</label>
                       <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)}
                         className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                     </div>
+                    {bookingNumDays === 2 && (
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Day 2 date</label>
+                        <input type="date" value={bookingDate2} onChange={e => setBookingDate2(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                    )}
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Start time</label>
@@ -9762,6 +9785,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         const extractedTimes = extractTimesFromText([inquiry.notes, inquiry.details].join(' '));
                         setTimeout(() => {
                           setBookingDate(dateISO);
+                          setBookingNumDays(1);
+                          setBookingDate2('');
                           setBookingStartTime(extractedTimes[0] || '10:00');
                           setBookingEndTime(extractedTimes[1] || '17:00');
                           setBookingVenue('');
