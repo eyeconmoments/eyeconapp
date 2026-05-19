@@ -415,6 +415,7 @@ function EyeconMoments() {
       travelFee: 0,
       notes: '',
       discount: 0,
+      showDiscount: false,
       adminPriceAdjustment: 0,
       priceOverride: 0,
       teamNotes: ''
@@ -13178,7 +13179,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
 
       // Only show per-day itemised prices when no override is active —
       // otherwise the calculated line items would contradict the adjusted total
-      const hasPriceOverride = (quoteData.priceOverride || 0) > 0 || (quoteData.adminPriceAdjustment || 0) !== 0 || (quoteData.discount || 0) > 0;
+      const hasPriceOverride = (quoteData.priceOverride || 0) > 0 || (quoteData.adminPriceAdjustment || 0) !== 0 || ((quoteData.discount || 0) > 0 && !quoteData.showDiscount);
       if (!hasPriceOverride) {
         if (numDays <= 2) {
           quoteData.dates.forEach((day, i) => { y = renderDayPriceCentred(day, i, y); });
@@ -13199,7 +13200,26 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       ct('YOUR PACKAGE FROM ONLY:', y, {size:13, style:'bold', color:BLUE}); y += 13;
       const svcBase = (quoteData.priceOverride||0) > 0 ? (quoteData.priceOverride||0) : (quote.serviceTotal - (quoteData.discount||0) + (quoteData.adminPriceAdjustment||0));
       const finalAmt = svcBase + quote.travelTotal;
-      ct('£'+finalAmt.toFixed(2), y, {size:22, style:'bold', color:BLUE}); y += 20;
+      const showDiscountOnPDF = quoteData.showDiscount && (quoteData.discount||0) > 0 && !((quoteData.priceOverride||0) > 0);
+      if (showDiscountOnPDF) {
+        // Original price struck through in grey
+        const origAmt = quote.serviceTotal + quote.travelTotal + (quoteData.adminPriceAdjustment||0);
+        doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...GRAY);
+        const origStr = '£'+origAmt.toFixed(2);
+        const origW = doc.getTextWidth(origStr);
+        const origX = cx - origW/2;
+        doc.text(origStr, origX, y);
+        // Strikethrough line through vertical centre of text (cap height ~0.7 × fontSize in mm at 72dpi; jsPDF uses pt internally, 1pt≈0.353mm)
+        doc.setDrawColor(...GRAY); doc.setLineWidth(0.6);
+        doc.line(origX, y - 4, origX + origW, y - 4);
+        y += 10;
+        // Discounted price in blue
+        ct('£'+finalAmt.toFixed(2), y, {size:22, style:'bold', color:BLUE}); y += 6;
+        // "Save £X" tag
+        ct('SAVE £'+(quoteData.discount).toFixed(2), y, {size:9, style:'bold', color:[76,153,76]}); y += 14;
+      } else {
+        ct('£'+finalAmt.toFixed(2), y, {size:22, style:'bold', color:BLUE}); y += 20;
+      }
 
       doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(...GRAY);
       const noteLines = doc.splitTextToSize(
@@ -13576,9 +13596,17 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               <input type="number" value={quoteData.discount || ''} onChange={(e) => setQuoteData({...quoteData, discount: parseFloat(e.target.value) || 0})}
                 className="w-full px-3 py-2 border rounded-lg" placeholder="Enter discount amount" />
               {discountAmount > 0 && (
-                <p className={`text-sm mt-2 ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
-                  Discount: £{discountAmount.toFixed(2)} ({discountPercent}% off services)
-                </p>
+                <>
+                  <p className={`text-sm mt-2 ${darkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>
+                    Discount: £{discountAmount.toFixed(2)} ({discountPercent}% off services)
+                  </p>
+                  <label className={`flex items-center gap-2 mt-2 cursor-pointer text-sm ${darkMode ? 'text-yellow-200' : 'text-yellow-800'}`}>
+                    <input type="checkbox" checked={!!quoteData.showDiscount}
+                      onChange={e => setQuoteData({...quoteData, showDiscount: e.target.checked})}
+                      className="w-4 h-4 rounded" />
+                    Show original price (struck through) on PDF
+                  </label>
+                </>
               )}
             </div>
 
