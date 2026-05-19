@@ -5,7 +5,8 @@ on:
     branches: [ "claude/deploy-web-app-cclTz", "main" ]
     paths:
       - "android-widget/**"
-  workflow_dispatch:   # also allow manual trigger from GitHub UI
+      - ".github/workflows/build-android-apk.yml"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,17 +21,23 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.7"
+      - name: Download Gradle 8.7
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.7/bin" >> $GITHUB_PATH
 
       - name: Accept Android SDK licences
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+
+      - name: Point AGP at the SDK
+        run: echo "sdk.dir=$ANDROID_HOME" > android-widget/local.properties
 
       - name: Build debug APK
         working-directory: android-widget
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
