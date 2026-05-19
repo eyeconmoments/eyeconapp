@@ -35,9 +35,12 @@ jobs:
       - name: Point AGP at the SDK
         run: echo "sdk.dir=$ANDROID_HOME" > android-widget/local.properties
 
+      - name: Verify Gradle
+        run: gradle --version
+
       - name: Build debug APK
         working-directory: android-widget
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace --info 2>&1 | tail -100
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

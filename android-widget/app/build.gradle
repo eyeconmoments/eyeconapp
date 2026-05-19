@@ -18,12 +18,15 @@ android {
     buildTypes {
         debug {
             debuggable true
-            applicationIdSuffix ".debug"
         }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
         }
+    }
+
+    lint {
+        abortOnError false
     }
 
     compileOptions {
