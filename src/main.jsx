@@ -28,7 +28,10 @@ const rowToJob = (r) => ({
   videoEditHours: r.video_edit_hours || 0, photoEditHours: r.photo_edit_hours || 0,
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
-  wageEntries: r.wage_entries || [], clientToken: r.client_token || null
+  wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
+  finalPaymentReceived: r.final_payment_received || false,
+  finalPaymentDate: r.final_payment_date || null,
+  finalPaymentBy: r.final_payment_by || null,
 });
 
 const rowToEmployee = (r) => ({
@@ -47,6 +50,14 @@ const rowToEntry = (r) => ({
   hoursWorked: r.hours_worked, description: r.description || null,
   progressPercent: r.progress_percent ?? null, progressNote: r.progress_note || null
 });
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS final_payment_received boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS final_payment_date timestamptz,
+  ADD COLUMN IF NOT EXISTS final_payment_by text;
+*/
 
 /*
 -- Run in Supabase SQL editor:
@@ -378,6 +389,7 @@ function EyeconMoments() {
   const [wageFilter, setWageFilter] = useState({ employee: 'all', status: 'all', type: 'all' });
   const [payScaleOpen, setPayScaleOpen] = useState({}); // { [employeeId]: bool }
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
+  const [finalPaymentModal, setFinalPaymentModal] = useState(null); // { jobId, amount, email }
   const [paymentRequests, setPaymentRequests] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_payment_requests') || '[]'); } catch { return []; } });
   const [wagesCollapsed, setWagesCollapsed] = useState({}); // { [empId]: bool } — true = collapsed
   const [quoteData, setQuoteData] = useState(() => {
@@ -1161,6 +1173,30 @@ function EyeconMoments() {
     }).length;
     
     return { total: assignedJobs.length, dueThisWeek, jobs: assignedJobs };
+  };
+
+  const markFinalPayment = async () => {
+    if (!finalPaymentModal) return;
+    const { jobId, amount, email } = finalPaymentModal;
+    const now = new Date().toISOString();
+    const markedBy = currentUser.name;
+    await db.from('jobs').update({
+      final_payment_received: true,
+      final_payment_date: now,
+      final_payment_by: markedBy,
+    }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId
+      ? { ...j, finalPaymentReceived: true, finalPaymentDate: now, finalPaymentBy: markedBy }
+      : j
+    ));
+    setFinalPaymentModal(null);
+    if (email && amount) {
+      const job = editingJobs.find(j => j.id === jobId);
+      const firstName = (job?.customerName || '').split(' ')[0] || 'there';
+      const subject = encodeURIComponent('Payment Received — Eyecon Moments');
+      const body = encodeURIComponent(`Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
+      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+    }
   };
 
   const toggleArchiveJob = async (jobId) => {
@@ -8865,6 +8901,26 @@ Capturing Your Special Day
                       );
                     })()}
 
+                    {/* Final Payment */}
+                    <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💷 Final Payment</p>
+                      {job.finalPaymentReceived ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-500 text-sm font-semibold">✅ Balance received</span>
+                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {job.finalPaymentDate ? new Date(job.finalPaymentDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'}) : ''}
+                            {job.finalPaymentBy ? ` · ${job.finalPaymentBy}` : ''}
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setFinalPaymentModal({ jobId: job.id, amount: String(calculateJobRevenue(job) || ''), email: '' })}
+                          className="w-full py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">
+                          Mark Balance Paid
+                        </button>
+                      )}
+                    </div>
+
                     <div className="flex gap-2">
                       <button onClick={() => toggleArchiveJob(job.id)}
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
@@ -9050,6 +9106,42 @@ Capturing Your Special Day
                 </button>
                 <button onClick={() => setShowManualJobModal(false)} className={`flex-1 py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {finalPaymentModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>💷 Mark Balance Paid</h2>
+              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {editingJobs.find(j => j.id === finalPaymentModal.jobId)?.customerName} · {editingJobs.find(j => j.id === finalPaymentModal.jobId)?.jobName}
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
+                  <input type="number" value={finalPaymentModal.amount}
+                    onChange={e => setFinalPaymentModal(p => ({ ...p, amount: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                </div>
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for confirmation)</label>
+                  <input type="email" value={finalPaymentModal.email} placeholder="client@example.com"
+                    onChange={e => setFinalPaymentModal(p => ({ ...p, email: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Leave blank to skip email</p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setFinalPaymentModal(null)}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  Cancel
+                </button>
+                <button onClick={markFinalPayment}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
+                  ✅ {finalPaymentModal.email ? 'Mark & Email' : 'Mark Paid'}
                 </button>
               </div>
             </div>
