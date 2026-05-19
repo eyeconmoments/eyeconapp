@@ -40,11 +40,15 @@ jobs:
 
       - name: Build debug APK
         working-directory: android-widget
-        run: gradle assembleDebug --no-daemon --stacktrace --info 2>&1 | tail -100
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: List APK output
+        if: always()
+        run: find android-widget/app/build/outputs -name "*.apk" 2>/dev/null || echo "No APKs found"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: eyecon-widget-debug
-          path: android-widget/app/build/outputs/apk/debug/app-debug.apk
+          path: android-widget/app/build/outputs/apk/**/*.apk
           retention-days: 30
