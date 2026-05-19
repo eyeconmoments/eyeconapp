@@ -71,8 +71,12 @@ class ClockWidget : AppWidgetProvider() {
                     "Nobody clocked in"
                 } else {
                     entries.joinToString("\n") { e ->
-                        if (e.jobName != null) "• ${e.employeeName}  —  ${e.jobName}"
-                        else "• ${e.employeeName}"
+                        val bar = e.progressPercent?.let { pct ->
+                            val filled = (pct / 10).coerceIn(0, 10)
+                            " [" + "▓".repeat(filled) + "░".repeat(10 - filled) + "] $pct%"
+                        } ?: ""
+                        if (e.jobName != null) "• ${e.employeeName}  —  ${e.jobName}$bar"
+                        else "• ${e.employeeName}$bar"
                     }
                 }
                 val time = SimpleDateFormat("HH:mm", Locale.UK).format(Date())

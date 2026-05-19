@@ -23,7 +23,8 @@ object SupabaseApi {
         val entryId: Long,
         val employeeId: Int,
         val employeeName: String,
-        val jobName: String?
+        val jobName: String?,
+        val progressPercent: Int?
     )
 
     data class Job(val id: Int, val name: String)
@@ -40,7 +41,7 @@ object SupabaseApi {
     fun getOpenEntries(): List<ClockedInEntry> {
         return try {
             val entryRes = http.newCall(
-                req("$BASE/time_entries?clock_out=is.null&select=id,employee_id,job_id").get().build()
+                req("$BASE/time_entries?clock_out=is.null&select=id,employee_id,job_id,progress_percent").get().build()
             ).execute()
             if (!entryRes.isSuccessful) return emptyList()
             val entries = JSONArray(entryRes.body!!.string())
@@ -56,7 +57,7 @@ object SupabaseApi {
             }
 
             val jobMap = mutableMapOf<Int, String>()
-            val jobRes = http.newCall(req("$BASE/jobs?archived=is.false&select=id,job_name").get().build()).execute()
+            val jobRes = http.newCall(req("$BASE/jobs?archived=not.is.true&select=id,job_name").get().build()).execute()
             if (jobRes.isSuccessful) {
                 val arr = JSONArray(jobRes.body!!.string())
                 for (i in 0 until arr.length()) {
@@ -70,7 +71,8 @@ object SupabaseApi {
                 val e = entries.getJSONObject(i)
                 val empId = e.getInt("employee_id")
                 val jobId = if (e.isNull("job_id")) null else e.getInt("job_id")
-                result.add(ClockedInEntry(e.getLong("id"), empId, empMap[empId] ?: "Unknown", jobId?.let { jobMap[it] }))
+                val pct = if (e.isNull("progress_percent")) null else e.getInt("progress_percent")
+                result.add(ClockedInEntry(e.getLong("id"), empId, empMap[empId] ?: "Unknown", jobId?.let { jobMap[it] }, pct))
             }
             result
         } catch (e: Exception) {
@@ -125,7 +127,7 @@ object SupabaseApi {
     fun getJobs(): List<Job> {
         return try {
             val res = http.newCall(
-                req("$BASE/jobs?archived=is.false&select=id,job_name&order=job_name.asc").get().build()
+                req("$BASE/jobs?archived=not.is.true&select=id,job_name&order=job_name.asc").get().build()
             ).execute()
             if (!res.isSuccessful) return emptyList()
             val arr = JSONArray(res.body!!.string())
