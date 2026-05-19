@@ -28,7 +28,10 @@ const rowToJob = (r) => ({
   videoEditHours: r.video_edit_hours || 0, photoEditHours: r.photo_edit_hours || 0,
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
-  wageEntries: r.wage_entries || [], clientToken: r.client_token || null
+  wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
+  finalPaymentReceived: r.final_payment_received || false,
+  finalPaymentDate: r.final_payment_date || null,
+  finalPaymentBy: r.final_payment_by || null,
 });
 
 const rowToEmployee = (r) => ({
@@ -47,6 +50,14 @@ const rowToEntry = (r) => ({
   hoursWorked: r.hours_worked, description: r.description || null,
   progressPercent: r.progress_percent ?? null, progressNote: r.progress_note || null
 });
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS final_payment_received boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS final_payment_date timestamptz,
+  ADD COLUMN IF NOT EXISTS final_payment_by text;
+*/
 
 /*
 -- Run in Supabase SQL editor:
@@ -304,6 +315,8 @@ function EyeconMoments() {
   const [showBookingConfirmModal, setShowBookingConfirmModal] = useState(false);
   const [bookingConfirmInquiry, setBookingConfirmInquiry] = useState(null);
   const [bookingDate, setBookingDate] = useState('');
+  const [bookingNumDays, setBookingNumDays] = useState(1);
+  const [bookingDate2, setBookingDate2] = useState('');
   const [bookingStartTime, setBookingStartTime] = useState('10:00');
   const [bookingEndTime, setBookingEndTime] = useState('17:00');
   const [bookingVenue, setBookingVenue] = useState('');
@@ -376,6 +389,7 @@ function EyeconMoments() {
   const [wageFilter, setWageFilter] = useState({ employee: 'all', status: 'all', type: 'all' });
   const [payScaleOpen, setPayScaleOpen] = useState({}); // { [employeeId]: bool }
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
+  const [finalPaymentModal, setFinalPaymentModal] = useState(null); // { jobId, amount, email }
   const [paymentRequests, setPaymentRequests] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_payment_requests') || '[]'); } catch { return []; } });
   const [wagesCollapsed, setWagesCollapsed] = useState({}); // { [empId]: bool } — true = collapsed
   const [quoteData, setQuoteData] = useState(() => {
@@ -733,15 +747,15 @@ function EyeconMoments() {
         setTimeout(() => subscribeToPush(resolvedUser.id), 1000);
       }
 
-      // Auto clock-out: close any open entry left past 7pm
+      // Auto clock-out: close any open entry left past 5pm
       const openEntry = timeEntries.find(e => e.employeeId === resolvedUser.id && !e.clockOut);
       if (openEntry) {
         const now = new Date();
         const clockInDate = new Date(openEntry.clockIn);
-        const sevenPm = new Date(clockInDate); sevenPm.setHours(19, 0, 0, 0);
+        const sevenPm = new Date(clockInDate); sevenPm.setHours(17, 0, 0, 0);
         const isToday = clockInDate.toDateString() === now.toDateString();
         if (!isToday || now >= sevenPm) {
-          const autoOut = new Date(clockInDate); autoOut.setHours(19, 0, 0, 0);
+          const autoOut = new Date(clockInDate); autoOut.setHours(17, 0, 0, 0);
           const hours = Math.round(((autoOut - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
           await db.from('time_entries').update({ clock_out: autoOut.toISOString(), hours_worked: hours }).eq('id', openEntry.id);
           setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: autoOut, hoursWorked: hours } : e));
@@ -1111,25 +1125,25 @@ function EyeconMoments() {
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [currentUser, checkClockReminder]);
 
-  // Admin-side background sweep: clock out any staff still active past 7 PM
+  // Admin-side background sweep: clock out any staff still active past 5 PM
   React.useEffect(() => {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
     const sweep = async () => {
       const now = new Date();
-      if (now.getHours() < 19) return; // before 7 PM — nothing to do
+      if (now.getHours() < 17) return; // before 5 PM — nothing to do
       const openEntries = timeEntries.filter(e => !e.clockOut);
       if (!openEntries.length) return;
       await Promise.allSettled(openEntries.map(async entry => {
         const clockInDate = new Date(entry.clockIn);
-        const sevenPm = new Date(clockInDate); sevenPm.setHours(19, 0, 0, 0);
-        if (now < sevenPm) return; // clocked in after 7 PM today — leave open
-        const hours = Math.round(((sevenPm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
-        await db.from('time_entries').update({ clock_out: sevenPm.toISOString(), hours_worked: hours }).eq('id', entry.id);
-        setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: sevenPm, hoursWorked: hours } : e));
+        const fivePm = new Date(clockInDate); fivePm.setHours(17, 0, 0, 0);
+        if (now < fivePm) return; // clocked in after 5 PM today — leave open
+        const hours = Math.round(((fivePm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
+        await db.from('time_entries').update({ clock_out: fivePm.toISOString(), hours_worked: hours }).eq('id', entry.id);
+        setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: fivePm, hoursWorked: hours } : e));
         const emp = employees.find(e => e.id === entry.employeeId);
         if (emp) {
-          sendActivityPush('🔴 Auto Clocked Out', `${emp.name} was automatically clocked out at 7:00 PM (${hours}h logged)`);
-          sendPushToEmployee(entry.employeeId, '🔴 Clocked Out', `You've been automatically clocked out at 7:00 PM — ${hours}h logged today.`);
+          sendActivityPush('🔴 Auto Clocked Out', `${emp.name} was automatically clocked out at 5:00 PM (${hours}h logged)`);
+          sendPushToEmployee(entry.employeeId, '🔴 Clocked Out', `You've been automatically clocked out at 5:00 PM — ${hours}h logged today.`);
         }
       }));
     };
@@ -1159,6 +1173,30 @@ function EyeconMoments() {
     }).length;
     
     return { total: assignedJobs.length, dueThisWeek, jobs: assignedJobs };
+  };
+
+  const markFinalPayment = async () => {
+    if (!finalPaymentModal) return;
+    const { jobId, amount, email } = finalPaymentModal;
+    const now = new Date().toISOString();
+    const markedBy = currentUser.name;
+    await db.from('jobs').update({
+      final_payment_received: true,
+      final_payment_date: now,
+      final_payment_by: markedBy,
+    }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId
+      ? { ...j, finalPaymentReceived: true, finalPaymentDate: now, finalPaymentBy: markedBy }
+      : j
+    ));
+    setFinalPaymentModal(null);
+    if (email && amount) {
+      const job = editingJobs.find(j => j.id === jobId);
+      const firstName = (job?.customerName || '').split(' ')[0] || 'there';
+      const subject = encodeURIComponent('Payment Received — Eyecon Moments');
+      const body = encodeURIComponent(`Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
+      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+    }
   };
 
   const toggleArchiveJob = async (jobId) => {
@@ -1409,8 +1447,13 @@ function EyeconMoments() {
         const notesText = data.notes || '';
         const phoneMatch = notesText.match(/(\+?[\d][\d\s\-().]{8,})/);
         const emailMatch = notesText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+        const igMatch = notesText.match(/@([\w.]+)/);
+        const igHandle = igMatch ? igMatch[1] : '';
+        const nameFromIg = igHandle
+          ? igHandle.replace(/[_. ]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim()
+          : '';
         const parsed = {
-          name: data.customerName || data.name || '',
+          name: data.customerName || data.name || nameFromIg,
           phone: data.phone || (phoneMatch ? phoneMatch[1].trim() : ''),
           email: data.email || (emailMatch ? emailMatch[0] : ''),
         };
@@ -3063,13 +3106,13 @@ LOGGING:
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
         {/* Feedback Popup */}
-        {/* 6:30pm clock-out reminder banner */}
+        {/* 4:30pm clock-out reminder banner */}
         {(() => {
           if (!currentUser || clockOutBannerDismissed) return null;
           const active = getUserActiveTimeEntry(currentUser.id);
           if (!active) return null;
           const h = currentTime.getHours(), m = currentTime.getMinutes();
-          if (h < 18 || (h === 18 && m < 30)) return null;
+          if (h < 16 || (h === 16 && m < 30)) return null;
           return (
             <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 gap-3" style={{background:'linear-gradient(135deg,#7c2d12,#dc2626)'}}>
               <div className="flex items-center gap-2 min-w-0">
@@ -8858,6 +8901,26 @@ Capturing Your Special Day
                       );
                     })()}
 
+                    {/* Final Payment */}
+                    <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💷 Final Payment</p>
+                      {job.finalPaymentReceived ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-500 text-sm font-semibold">✅ Balance received</span>
+                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {job.finalPaymentDate ? new Date(job.finalPaymentDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'}) : ''}
+                            {job.finalPaymentBy ? ` · ${job.finalPaymentBy}` : ''}
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setFinalPaymentModal({ jobId: job.id, amount: String(calculateJobRevenue(job) || ''), email: '' })}
+                          className="w-full py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">
+                          Mark Balance Paid
+                        </button>
+                      )}
+                    </div>
+
                     <div className="flex gap-2">
                       <button onClick={() => toggleArchiveJob(job.id)}
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
@@ -9043,6 +9106,42 @@ Capturing Your Special Day
                 </button>
                 <button onClick={() => setShowManualJobModal(false)} className={`flex-1 py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {finalPaymentModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>💷 Mark Balance Paid</h2>
+              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {editingJobs.find(j => j.id === finalPaymentModal.jobId)?.customerName} · {editingJobs.find(j => j.id === finalPaymentModal.jobId)?.jobName}
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
+                  <input type="number" value={finalPaymentModal.amount}
+                    onChange={e => setFinalPaymentModal(p => ({ ...p, amount: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                </div>
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for confirmation)</label>
+                  <input type="email" value={finalPaymentModal.email} placeholder="client@example.com"
+                    onChange={e => setFinalPaymentModal(p => ({ ...p, email: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Leave blank to skip email</p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setFinalPaymentModal(null)}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  Cancel
+                </button>
+                <button onClick={markFinalPayment}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
+                  ✅ {finalPaymentModal.email ? 'Mark & Email' : 'Mark Paid'}
                 </button>
               </div>
             </div>
@@ -9576,22 +9675,19 @@ Eyecon Moments`);
               const h12 = h % 12 || 12;
               return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
             };
+            const fmtDate = (iso) => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) : '';
             const dateTimeFmt = (() => {
-              if (bookingDate) {
-                const d = new Date(bookingDate + 'T12:00:00');
-                const datePart = d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-                return `${datePart}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              if (bookingNumDays === 2 && bookingDate && bookingDate2) {
+                return `Day 1: ${fmtDate(bookingDate)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}\nDay 2: ${fmtDate(bookingDate2)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
               }
-              return inq.eventDate
-                ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
-                : '';
+              if (bookingDate) return `${fmtDate(bookingDate)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              return inq.eventDate ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) : '';
             })();
             const sendEmail = () => {
-              const dayBefore = bookingDate
-                ? new Date(bookingDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
-                : inq.eventDate
-                  ? new Date(inq.eventDate.getTime() - 86400000).toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
-                  : 'the day before the event';
+              const baseDate = bookingDate || (inq.eventDate ? inq.eventDate.toISOString().split('T')[0] : '');
+              const dayBefore = baseDate
+                ? new Date(baseDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
+                : 'the day before the event';
               const subject = encodeURIComponent(`Booking Confirmed — Eyecon Moments`);
               const body = encodeURIComponent(`Hi ${firstName},
 
@@ -9624,16 +9720,35 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl`}>
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto`}>
                   <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Booking Confirmation</h2>
                   <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inq.customerName} · {inq.email}</p>
 
                   <div className="space-y-4">
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Shoot date</label>
+                      <label className={`block text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Number of days</label>
+                      <div className="flex rounded-lg overflow-hidden border" style={{borderColor: darkMode ? '#4b5563' : '#d1d5db'}}>
+                        {[1, 2].map(n => (
+                          <button key={n} onClick={() => setBookingNumDays(n)}
+                            className={`flex-1 py-2 text-sm font-semibold transition-colors ${bookingNumDays === n ? 'text-white' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600'}`}
+                            style={bookingNumDays === n ? {background:'var(--gold)'} : {}}>
+                            {n} {n === 1 ? 'Day' : 'Days'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{bookingNumDays === 2 ? 'Day 1 date' : 'Shoot date'}</label>
                       <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)}
                         className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                     </div>
+                    {bookingNumDays === 2 && (
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Day 2 date</label>
+                        <input type="date" value={bookingDate2} onChange={e => setBookingDate2(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                    )}
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Start time</label>
@@ -9762,6 +9877,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         const extractedTimes = extractTimesFromText([inquiry.notes, inquiry.details].join(' '));
                         setTimeout(() => {
                           setBookingDate(dateISO);
+                          setBookingNumDays(1);
+                          setBookingDate2('');
                           setBookingStartTime(extractedTimes[0] || '10:00');
                           setBookingEndTime(extractedTimes[1] || '17:00');
                           setBookingVenue('');
@@ -9861,8 +9978,10 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 const cdp = day.photo ?? quoteData.wantPhoto ?? true;
                 const cdvt = day.videoType ?? quoteData.videoType ?? 'dual';
                 const cdnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
-                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr)`, cost: c }); }
-                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''})`, cost: c }); }
+                const shortBkg = h > 0 && h < 4;
+                const pm = shortBkg ? 1.2 : 1;
+                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr${shortBkg ? ' +20% short booking' : ''})`, cost: c }); }
+                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''}${shortBkg ? ' +20% short booking' : ''})`, cost: c }); }
                 if (day.drone) { total += 100; breakdown.push({ item: `Day ${idx+1} - Drone Coverage`, cost: 100 }); }
                 const dist = day.distance || 0;
                 if (dist > 0) { const c = calcMileage(dist); total += c; breakdown.push({ item: `Day ${idx+1} - Travel (${dist}mi × £0.45 × 2)`, cost: c }); }
@@ -9919,7 +10038,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               }
               setShowCRMQuoteModal(false);
               setCrmQuoteInquiry(null);
-              alert('Gmail opened! Status updated to Quoted. Remember to attach the PDF.');
+              alert('✅ CRM updated to Quoted.\n\nYour mail app will open — remember to attach the PDF!');
             };
             const dm = darkMode;
             const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
@@ -12740,19 +12859,22 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
         const dayVType = day.videoType ?? quoteData.videoType ?? 'dual';
         const dayNPhot = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
 
+        const shortBooking = hours > 0 && hours < 4;
+        const premiumMultiplier = shortBooking ? 1.2 : 1;
+
         if (dayHasV) {
           const videoRate = dayVType === 'single' ? 125 : 150;
           const videoLabel = dayVType === 'single' ? 'Single Videographer' : 'Dual Videographer';
-          const videoCost = hours * videoRate;
+          const videoCost = hours * videoRate * premiumMultiplier;
           serviceTotal += videoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr)`, cost: videoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr${shortBooking ? ' +20% short booking' : ''})`, cost: videoCost });
         }
 
         if (dayHasP) {
           const photoRate = dayNPhot >= 2 ? 150 : 125;
-          const photoCost = hours * photoRate;
+          const photoCost = hours * photoRate * premiumMultiplier;
           serviceTotal += photoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''})`, cost: photoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''}${shortBooking ? ' +20% short booking' : ''})`, cost: photoCost });
         }
         if (day.drone) {
           serviceTotal += 100;
@@ -13153,16 +13275,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const eventDateRaw = quoteData.dates[0]?.date;
       const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
       const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        // On mobile, mailto: triggers the native mail app
-        const gmailUrl = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
-        window.location.href = gmailUrl;
-      } else {
-        // On desktop, open Gmail web compose in a new tab
-        const gmailWebUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(quoteData.clientEmail)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
-        window.open(gmailWebUrl, '_blank');
-      }
+      window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
 
       // Save to CRM
       try {
@@ -13183,7 +13296,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           setInquiries(prev => prev.map(i => i.id === existing.id ? {
             ...i, status: 'quoted', followUpDate, notes: updatedNotes
           } : i));
-          alert('Gmail opened — remember to attach the PDF!\n\nExisting CRM record updated to "Quoted" with a 7-day follow-up reminder.');
+          alert('✅ Existing CRM record updated to "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
         } else {
           const { data, error } = await db.from('inquiries').insert([{
             id: Date.now(),
@@ -13200,13 +13313,13 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           }]).select().single();
           if (!error && data) {
             setInquiries(prev => [rowToInquiry(data), ...prev]);
-            alert('Gmail opened — remember to attach the PDF!\n\nNew CRM lead created as "Quoted" with a 7-day follow-up reminder.');
+            alert('✅ New CRM lead created as "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
           } else {
-            alert('Gmail opened — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');
+            alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');
           }
         }
       } catch(e) {
-        alert('Gmail opened — remember to attach the PDF!\n\n(CRM save error: ' + e.message + ')');
+        alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save error: ' + e.message + ')');
       }
     };
 
