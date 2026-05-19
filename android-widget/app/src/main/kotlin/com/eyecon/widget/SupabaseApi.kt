@@ -125,11 +125,13 @@ object SupabaseApi {
     }
 
     fun getJobs(): List<Job> {
+    /** Returns null on network/auth error, empty list if there are genuinely no jobs. */
+    fun getJobs(): List<Job>? {
         return try {
             val res = http.newCall(
-                req("$BASE/jobs?archived=not.is.true&select=id,job_name&order=job_name.asc").get().build()
+                req("$BASE/jobs?select=id,job_name&order=job_name.asc").get().build()
             ).execute()
-            if (!res.isSuccessful) return emptyList()
+            if (!res.isSuccessful) return null   // surface API errors to the caller
             val arr = JSONArray(res.body!!.string())
             val result = mutableListOf<Job>()
             for (i in 0 until arr.length()) {
@@ -138,7 +140,7 @@ object SupabaseApi {
             }
             result
         } catch (e: Exception) {
-            emptyList()
+            null
         }
     }
 
