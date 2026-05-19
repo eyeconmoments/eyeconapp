@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1a2535"
+    android:padding="28dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="👁 Eyecon Moments"
+        android:textColor="#C1A76A"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:paddingBottom="4dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Widget Setup"
+        android:textColor="#9DAAB8"
+        android:textSize="15sp"
+        android:paddingBottom="32dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Enter your PIN:"
+        android:textColor="#E0E8F0"
+        android:textSize="16sp"
+        android:paddingBottom="8dp" />
+
+    <EditText
+        android:id="@+id/et_pin"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:hint="Your PIN"
+        android:textColor="#E0E8F0"
+        android:textColorHint="#607080"
+        android:inputType="numberPassword"
+        android:background="#263447"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:textSize="18sp" />
+
+    <Button
+        android:id="@+id/btn_save_pin"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="20dp"
+        android:text="Confirm"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:backgroundTint="#C1A76A" />
+
+    <TextView
+        android:id="@+id/tv_setup_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text=""
+        android:textColor="#9DAAB8"
+        android:textSize="14sp"
+        android:gravity="center" />
+
+</LinearLayout>

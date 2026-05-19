@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1a2535"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:id="@+id/tv_ci_greeting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clock in"
+        android:textColor="#C1A76A"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:paddingBottom="8dp" />
+
+    <TextView
+        android:id="@+id/tv_ci_alert"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#FF6B6B"
+        android:textSize="14sp"
+        android:paddingBottom="12dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Select job (optional):"
+        android:textColor="#9DAAB8"
+        android:textSize="13sp"
+        android:paddingBottom="4dp" />
+
+    <Spinner
+        android:id="@+id/spinner_job"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="#263447"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="24dp">
+
+        <Button
+            android:id="@+id/btn_confirm_in"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="Clock In"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:backgroundTint="#2E7D32" />
+
+        <Button
+            android:id="@+id/btn_no_job"
+            android:layout_width="0dp"
+            android:layout_height="52dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="No Job"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#37474F" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_ci_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text=""
+        android:textColor="#E0E8F0"
+        android:textSize="14sp"
+        android:gravity="center" />
+
+</LinearLayout>
