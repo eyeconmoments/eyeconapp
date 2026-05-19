@@ -9978,8 +9978,10 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 const cdp = day.photo ?? quoteData.wantPhoto ?? true;
                 const cdvt = day.videoType ?? quoteData.videoType ?? 'dual';
                 const cdnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
-                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr)`, cost: c }); }
-                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''})`, cost: c }); }
+                const shortBkg = h > 0 && h < 4;
+                const pm = shortBkg ? 1.2 : 1;
+                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr${shortBkg ? ' +20% short booking' : ''})`, cost: c }); }
+                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''}${shortBkg ? ' +20% short booking' : ''})`, cost: c }); }
                 if (day.drone) { total += 100; breakdown.push({ item: `Day ${idx+1} - Drone Coverage`, cost: 100 }); }
                 const dist = day.distance || 0;
                 if (dist > 0) { const c = calcMileage(dist); total += c; breakdown.push({ item: `Day ${idx+1} - Travel (${dist}mi × £0.45 × 2)`, cost: c }); }
@@ -10036,7 +10038,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               }
               setShowCRMQuoteModal(false);
               setCrmQuoteInquiry(null);
-              alert('Gmail opened! Status updated to Quoted. Remember to attach the PDF.');
+              alert('✅ CRM updated to Quoted.\n\nYour mail app will open — remember to attach the PDF!');
             };
             const dm = darkMode;
             const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
@@ -12857,19 +12859,22 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
         const dayVType = day.videoType ?? quoteData.videoType ?? 'dual';
         const dayNPhot = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
 
+        const shortBooking = hours > 0 && hours < 4;
+        const premiumMultiplier = shortBooking ? 1.2 : 1;
+
         if (dayHasV) {
           const videoRate = dayVType === 'single' ? 125 : 150;
           const videoLabel = dayVType === 'single' ? 'Single Videographer' : 'Dual Videographer';
-          const videoCost = hours * videoRate;
+          const videoCost = hours * videoRate * premiumMultiplier;
           serviceTotal += videoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr)`, cost: videoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr${shortBooking ? ' +20% short booking' : ''})`, cost: videoCost });
         }
 
         if (dayHasP) {
           const photoRate = dayNPhot >= 2 ? 150 : 125;
-          const photoCost = hours * photoRate;
+          const photoCost = hours * photoRate * premiumMultiplier;
           serviceTotal += photoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''})`, cost: photoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''}${shortBooking ? ' +20% short booking' : ''})`, cost: photoCost });
         }
         if (day.drone) {
           serviceTotal += 100;
@@ -13270,16 +13275,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const eventDateRaw = quoteData.dates[0]?.date;
       const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
       const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        // On mobile, mailto: triggers the native mail app
-        const gmailUrl = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
-        window.location.href = gmailUrl;
-      } else {
-        // On desktop, open Gmail web compose in a new tab
-        const gmailWebUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(quoteData.clientEmail)}&su=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
-        window.open(gmailWebUrl, '_blank');
-      }
+      window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
 
       // Save to CRM
       try {
@@ -13300,7 +13296,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           setInquiries(prev => prev.map(i => i.id === existing.id ? {
             ...i, status: 'quoted', followUpDate, notes: updatedNotes
           } : i));
-          alert('Gmail opened — remember to attach the PDF!\n\nExisting CRM record updated to "Quoted" with a 7-day follow-up reminder.');
+          alert('✅ Existing CRM record updated to "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
         } else {
           const { data, error } = await db.from('inquiries').insert([{
             id: Date.now(),
@@ -13317,13 +13313,13 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           }]).select().single();
           if (!error && data) {
             setInquiries(prev => [rowToInquiry(data), ...prev]);
-            alert('Gmail opened — remember to attach the PDF!\n\nNew CRM lead created as "Quoted" with a 7-day follow-up reminder.');
+            alert('✅ New CRM lead created as "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
           } else {
-            alert('Gmail opened — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');
+            alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');
           }
         }
       } catch(e) {
-        alert('Gmail opened — remember to attach the PDF!\n\n(CRM save error: ' + e.message + ')');
+        alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save error: ' + e.message + ')');
       }
     };
 
