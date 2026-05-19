@@ -11,8 +11,8 @@ android {
         applicationId "com.eyecon.widget"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode (System.getenv("GITHUB_RUN_NUMBER")?.toInteger() ?: 1)
+        versionName "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "local"}"
     }
 
     buildTypes {
