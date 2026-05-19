@@ -61,27 +61,46 @@ class ClockInOutActivity : Activity() {
         val btnSkip  = findViewById<Button>(R.id.btn_no_job)
         val tvStatus = findViewById<TextView>(R.id.tv_ci_status)
 
-        tvGreet.text = "Clock in, ${prefs.employeeName}"
+        tvGreet.text  = "Clock in, ${prefs.employeeName}"
         tvAlert.visibility = View.GONE
+        tvStatus.text = "Loading jobs…"
 
-        // Check for existing open entry
         Thread {
             val existing = SupabaseApi.getMyOpenEntry(prefs.employeeId)
             if (existing != null) {
                 runOnUiThread {
                     tvAlert.text = "⚠ You're already clocked in. Clock out first."
                     tvAlert.visibility = View.VISIBLE
-                    btnIn.isEnabled  = false
+                    btnIn.isEnabled   = false
                     btnSkip.isEnabled = false
                 }
             }
 
-            // Load jobs in parallel
+            // null = network/API error, empty list = genuinely no jobs
             val loaded = SupabaseApi.getJobs()
             runOnUiThread {
-                jobs = loaded
-                val names = listOf("No specific job") + jobs.map { it.name }
-                spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
+                tvStatus.text = ""
+                when {
+                    loaded == null -> {
+                        tvAlert.text = "⚠ Could not load jobs — check internet."
+                        tvAlert.visibility = View.VISIBLE
+                        spinner.adapter = ArrayAdapter(this,
+                            android.R.layout.simple_spinner_dropdown_item,
+                            listOf("No specific job"))
+                    }
+                    loaded.isEmpty() -> {
+                        tvStatus.text = "No jobs found."
+                        spinner.adapter = ArrayAdapter(this,
+                            android.R.layout.simple_spinner_dropdown_item,
+                            listOf("No specific job"))
+                    }
+                    else -> {
+                        jobs = loaded
+                        val names = listOf("No specific job") + jobs.map { it.name }
+                        spinner.adapter = ArrayAdapter(this,
+                            android.R.layout.simple_spinner_dropdown_item, names)
+                    }
+                }
             }
         }.start()
 
