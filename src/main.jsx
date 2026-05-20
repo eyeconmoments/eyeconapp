@@ -784,6 +784,14 @@ function EyeconMoments() {
     }
   };
 
+  // Always open email from the business account, never the personal one
+  const openGmail = (to, subject, body) => {
+    window.open(
+      `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      '_blank'
+    );
+  };
+
   const getDaysUntilDeadline = (deadline) => {
     const diffTime = new Date(deadline) - new Date();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -1194,9 +1202,7 @@ function EyeconMoments() {
     if (email && amount) {
       const job = editingJobs.find(j => j.id === jobId);
       const firstName = (job?.customerName || '').split(' ')[0] || 'there';
-      const subject = encodeURIComponent('Payment Received — Eyecon Moments');
-      const body = encodeURIComponent(`Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
-      window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+      openGmail(email, 'Payment Received — Eyecon Moments', `Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
     }
   };
 
@@ -6762,9 +6768,9 @@ LOGGING:
       const inquiry = inquiries.find(i => i.name === job.customerName || job.jobName.includes(i.name));
       const clientEmail = inquiry?.email || '';
       
-      const subject = encodeURIComponent(`Your Event Itinerary - ${job.jobName} | Eyecon Moments`);
-      
-      const body = encodeURIComponent(
+      const subject = `Your Event Itinerary - ${job.jobName} | Eyecon Moments`;
+
+      const body =
 `Dear ${job.customerName},
 
 Thank you for taking the time to work on this itinerary with us. Please find attached the detailed itinerary for your upcoming event on ${formattedDate}.
@@ -6791,11 +6797,10 @@ The Eyecon Moments Team
 📸 ${COMPANY.instagram}
 ━━━━━━━━━━━━━━━━━━━━━━
 Capturing Your Special Day
-`);
-      
+`;
+
       // Open Gmail compose with pre-filled content
-      const gmailUrl = `mailto:${clientEmail}?subject=${subject}&body=${body}`;
-      window.location.href = gmailUrl;
+      openGmail(clientEmail, subject, body);
       
       // Also generate the PDF so user can attach it
       generateItineraryPDF(job);
@@ -9611,18 +9616,18 @@ Capturing Your Special Day
                 <div className="space-y-3">
                   <button 
                     onClick={() => {
-                      const subject = encodeURIComponent(`Following up on your ${followUpInquiry.eventType} quote - Eyecon Moments`);
-                      const body = encodeURIComponent(`Hello ${followUpInquiry.customerName.split(' ')[0]},
+                      const subject = `Following up on your ${followUpInquiry.eventType} quote - Eyecon Moments`;
+                      const body = `Hello ${followUpInquiry.customerName.split(' ')[0]},
 
 Hope you are well.
 
-I just wanted to follow up on the quote I sent over for your ${followUpInquiry.eventType.toLowerCase()}. Have you had a chance to review it?
+I just wanted to follow up on the quote I sent over for your ${followUpInquiry.eventType}. Have you had a chance to review it?
 
 If you have any questions or would like to discuss anything further, please don't hesitate to get in touch.
 
 Kind Regards,
-Eyecon Moments`);
-                      window.location.href = `mailto:${encodeURIComponent(followUpInquiry.email)}?subject=${subject}&body=${body}`;
+Eyecon Moments`;
+                      openGmail(followUpInquiry.email, subject, body);
                     }}
                     className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600"
                   >
@@ -9689,15 +9694,16 @@ Eyecon Moments`);
               const dayBefore = baseDate
                 ? new Date(baseDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'})
                 : 'the day before the event';
-              const subject = encodeURIComponent(`Booking Confirmed — Eyecon Moments`);
-              const body = encodeURIComponent(`Hi ${firstName},
+              const eventTypeCapital = inq.eventType ? inq.eventType.charAt(0).toUpperCase() + inq.eventType.slice(1) : '';
+              const subject = `Booking Confirmed — Eyecon Moments`;
+              const body = `Hi ${firstName},
 
 Thank you for your deposit of £${depositNum.toFixed(2)} — your booking is now confirmed.
 
 BOOKING CONFIRMATION
 ________________________________
 
-Event:             ${inq.eventType}
+Event:             ${eventTypeCapital}
 Date & Time:       ${dateTimeFmt}
 Venue:             ${bookingVenue || 'TBC'}
 Total:             £${totalNum.toFixed(2)}
@@ -9716,8 +9722,8 @@ eyecon.moments@gmail.com
 www.eyeconmoments.co.uk
 
 ________________________________
-This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`);
-              window.location.href = `mailto:${inq.email}?subject=${subject}&body=${body}`;
+This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`;
+              openGmail(inq.email, subject, body);
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
@@ -10001,9 +10007,9 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               const qType = crmAnyPhoto && crmAnyVideo ? 'Photography & Cinematography' : crmAnyPhoto ? 'Photography' : 'Cinematography';
               const crmEventDateRaw = quoteData.dates[0]?.date;
               const crmPayRef = crmEventDateRaw ? new Date(crmEventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
-              const subject = encodeURIComponent(`${qType} Quote - Eyecon Moments`);
-              const body = encodeURIComponent(`Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`);
-              window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${subject}&body=${body}`;
+              const subject = `${qType} Quote - Eyecon Moments`;
+              const body = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
+              openGmail(quoteData.clientEmail, subject, body);
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
               {
                 const existingInq = inquiries.find(i => i.id === crmQuoteInquiry.id);
@@ -13296,7 +13302,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const eventDateRaw = quoteData.dates[0]?.date;
       const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
       const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
-      window.location.href = `mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`;
+      openGmail(quoteData.clientEmail, subjectText, bodyText);
 
       // Save to CRM
       try {
