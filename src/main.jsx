@@ -9717,7 +9717,7 @@ www.eyeconmoments.co.uk
 
 ________________________________
 This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`);
-              window.location.href = `mailto:${encodeURIComponent(inq.email)}?subject=${subject}&body=${body}`;
+              window.location.href = `mailto:${inq.email}?subject=${subject}&body=${body}`;
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
@@ -9877,12 +9877,13 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         };
                         const extractedTimes = extractTimesFromText([inquiry.notes, inquiry.details].join(' '));
                         setTimeout(() => {
-                          setBookingDate(dateISO);
-                          setBookingNumDays(1);
-                          setBookingDate2('');
-                          setBookingStartTime(extractedTimes[0] || '10:00');
-                          setBookingEndTime(extractedTimes[1] || '17:00');
-                          setBookingVenue('');
+                          const qd0 = quoteData.dates[0] || {};
+                          setBookingDate(dateISO || qd0.date || '');
+                          setBookingNumDays(quoteData.dates.length >= 2 ? 2 : 1);
+                          setBookingDate2(quoteData.dates[1]?.date || '');
+                          setBookingStartTime(qd0.startTime && qd0.startTime !== '10:00' ? qd0.startTime : (extractedTimes[0] || '10:00'));
+                          setBookingEndTime(qd0.endTime && qd0.endTime !== '22:00' ? qd0.endTime : (extractedTimes[1] || '17:00'));
+                          setBookingVenue(qd0.location || '');
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
                           setBookingConfirmInquiry({...inquiry, status: 'booked'});
