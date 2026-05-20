@@ -124,7 +124,6 @@ object SupabaseApi {
         }
     }
 
-    fun getJobs(): List<Job> {
     /** Returns null on network/auth error, empty list if there are genuinely no jobs. */
     fun getJobs(): List<Job>? {
         return try {
