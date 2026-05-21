@@ -1079,6 +1079,38 @@ function EyeconMoments() {
     checkDeadlineNotifications();
   }, [currentUser, checkDeadlineNotifications]);
 
+  // ── Remaining balance reminders ───────────────────────────────────────────
+  const checkBalanceReminders = React.useCallback(() => {
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const due = editingJobs.filter(job => {
+      if (archivedJobIds.includes(job.id) || job.finalPaymentReceived || !job.shootDate) return false;
+      const shoot = new Date(job.shootDate); shoot.setHours(0, 0, 0, 0);
+      if (shoot >= today) return false;
+      const deferUntil = localStorage.getItem('eyecon_balance_defer_' + job.id);
+      if (deferUntil && today < new Date(deferUntil)) return false;
+      return true;
+    });
+    if (due.length === 0) return;
+    due.sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
+    const job = due[0];
+    const total = calculateJobRevenue(job);
+    const remaining = total > 0 ? (total / 2).toFixed(2) : '';
+    const inquiry = inquiries.find(i =>
+      (i.name || '').toLowerCase() === (job.customerName || '').toLowerCase() ||
+      (job.jobName || '').toLowerCase().includes((i.name || '').toLowerCase())
+    );
+    setFinalPaymentModal({ jobId: job.id, amount: remaining, email: inquiry?.email || '', fromReminder: true });
+  }, [editingJobs, archivedJobIds, currentUser, inquiries]);
+
+  React.useEffect(() => {
+    if (!currentUser || editingJobs.length === 0) return;
+    const key = 'eyecon_bal_checked';
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+    checkBalanceReminders();
+  }, [currentUser, editingJobs, checkBalanceReminders]);
+
   // ── Smart clock reminder ──────────────────────────────────────────────────
   const fmtMins = (mins) => {
     const h = Math.floor(mins / 60) % 24, m = mins % 60;
@@ -6773,7 +6805,7 @@ LOGGING:
       const body =
 `Dear ${job.customerName},
 
-Thank you for taking the time to work on this itinerary with us. Please find attached the detailed itinerary for your upcoming event on ${formattedDate}.
+Thank you for choosing Eyecon Moments to cover your upcoming event. Please find attached the detailed itinerary for your upcoming event on ${formattedDate}.
 
 We have carefully planned each moment to ensure we capture all the special parts of your day. Please review the schedule and let us know if there are any changes or additions you would like to make.
 
@@ -9118,41 +9150,66 @@ Capturing Your Special Day
           </div>
         )}
 
-        {finalPaymentModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
-              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>💷 Mark Balance Paid</h2>
-              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {editingJobs.find(j => j.id === finalPaymentModal.jobId)?.customerName} · {editingJobs.find(j => j.id === finalPaymentModal.jobId)?.jobName}
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
-                  <input type="number" value={finalPaymentModal.amount}
-                    onChange={e => setFinalPaymentModal(p => ({ ...p, amount: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+        {finalPaymentModal && (() => {
+          const fpmJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
+          const isReminder = finalPaymentModal.fromReminder;
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
+                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {isReminder ? '💷 Remaining Balance Due' : '💷 Mark Balance Paid'}
+                </h2>
+                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {fpmJob?.customerName} · {fpmJob?.jobName}
+                  {isReminder && fpmJob?.shootDate ? ` · Shot ${new Date(fpmJob.shootDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : ''}
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
+                    <input type="number" value={finalPaymentModal.amount}
+                      onChange={e => setFinalPaymentModal(p => ({ ...p, amount: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                    {isReminder && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Pre-filled with the remaining 50% — adjust if different</p>}
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for confirmation)</label>
+                    <input type="email" value={finalPaymentModal.email} placeholder="client@example.com"
+                      onChange={e => setFinalPaymentModal(p => ({ ...p, email: e.target.value }))}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Leave blank to skip email</p>
+                  </div>
                 </div>
-                <div>
-                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for confirmation)</label>
-                  <input type="email" value={finalPaymentModal.email} placeholder="client@example.com"
-                    onChange={e => setFinalPaymentModal(p => ({ ...p, email: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Leave blank to skip email</p>
+                <div className="flex gap-3 mt-5">
+                  {isReminder ? (
+                    <button onClick={() => {
+                      const d = new Date(); d.setDate(d.getDate() + 10);
+                      localStorage.setItem('eyecon_balance_defer_' + finalPaymentModal.jobId, d.toISOString().slice(0, 10));
+                      setFinalPaymentModal(null);
+                    }}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}>
+                      ⏰ Defer 10 Days
+                    </button>
+                  ) : (
+                    <button onClick={() => setFinalPaymentModal(null)}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                      Cancel
+                    </button>
+                  )}
+                  <button onClick={markFinalPayment}
+                    className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
+                    ✅ {finalPaymentModal.email ? 'Mark & Email' : 'Mark Paid'}
+                  </button>
                 </div>
-              </div>
-              <div className="flex gap-3 mt-5">
-                <button onClick={() => setFinalPaymentModal(null)}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                  Cancel
-                </button>
-                <button onClick={markFinalPayment}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
-                  ✅ {finalPaymentModal.email ? 'Mark & Email' : 'Mark Paid'}
-                </button>
+                {isReminder && (
+                  <button onClick={() => setFinalPaymentModal(null)}
+                    className={`w-full mt-2 py-1.5 text-xs rounded ${darkMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>
+                    Dismiss for now
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {showAIJobModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -9576,7 +9633,7 @@ Capturing Your Special Day
                   🚨 {needsFollowUp.length} Quote{needsFollowUp.length > 1 ? 's' : ''} Overdue Follow-Up
                 </h3>
                 <p className={`text-sm mb-3 ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
-                  These clients were quoted 7+ days ago and haven't been followed up
+                  These clients were quoted 7+ days ago and haven't been followed up.
                 </p>
                 <div className="space-y-2">
                   {needsFollowUp.map(inq => (
@@ -9625,7 +9682,7 @@ I just wanted to follow up on the quote I sent over for your ${followUpInquiry.e
 
 If you have any questions or would like to discuss anything further, please don't hesitate to get in touch.
 
-Kind Regards,
+Kind regards,
 Eyecon Moments`;
                       openGmail(followUpInquiry.email, subject, body);
                     }}
@@ -10008,7 +10065,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               const crmEventDateRaw = quoteData.dates[0]?.date;
               const crmPayRef = crmEventDateRaw ? new Date(crmEventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
               const subject = `${qType} Quote - Eyecon Moments`;
-              const body = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
+              const body = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind regards,\nEyecon Moments`;
               openGmail(quoteData.clientEmail, subject, body);
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
               {
@@ -13301,7 +13358,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const subjectText = `${quoteType} Quote - Eyecon Moments`;
       const eventDateRaw = quoteData.dates[0]?.date;
       const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
-      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind Regards,\nEyecon Moments`;
+      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind regards,\nEyecon Moments`;
       openGmail(quoteData.clientEmail, subjectText, bodyText);
 
       // Save to CRM
