@@ -244,7 +244,9 @@ function EyeconMoments() {
   const [voiceResponse, setVoiceResponse] = useState('');
   const [voiceSubtitle, setVoiceSubtitle] = useState('');
   const [voicePendingTool, setVoicePendingTool] = useState(null);
-  // voicePendingTool: { toolUseId, toolName, messages, assistantContent, systemPrompt }
+  // voicePendingTool: { toolUseId, toolName, toolInput, messages, assistantContent, systemPrompt }
+  const [voiceHistory, setVoiceHistory] = useState([]);
+  // voiceHistory: persists multi-turn context (e.g. "which job?" → "Khan wedding")
   const voiceRecognitionRef = React.useRef(null);
   const voiceTranscriptRef = React.useRef('');
   const voiceIsListeningRef = React.useRef(false);
@@ -2789,9 +2791,12 @@ LOGGING:
 
 ---
 
-TOOLS YOU CAN CALL:
-You have access to the following tool. Call it — do not explain how to do it manually.
-• clock_in_current_user — call this when the user says "clock me in", "I'm starting work", "start my shift", "clock in", or anything equivalent. No input required.`;
+TOOLS YOU CAN CALL — always use these instead of explaining how to navigate the app manually:
+• get_my_active_jobs — call this first when the user wants to clock in and hasn't named a job. Returns assigned jobs + a "general" option.
+• clock_in_current_user(job_id) — clocks the user in. Requires job_id (numeric string or "general").
+  Flow A — user didn't name a job: call get_my_active_jobs → speak the list → wait for their choice → call clock_in_current_user with the matching id.
+  Flow B — user named a job (e.g. "clock me into the Khan wedding"): call get_my_active_jobs, match the name, call clock_in_current_user immediately.
+  job_id "general" = no specific job. Do not guess a job_id — always retrieve the list first.`;
 
 
   const startVoiceInput = () => {
@@ -2854,9 +2859,23 @@ You have access to the following tool. Call it — do not explain how to do it m
 
   const VOICE_TOOLS = [
     {
-      name: 'clock_in_current_user',
-      description: 'Clocks the currently logged-in staff member into work right now. Use this when the user says things like "clock me in", "I\'m starting work", "clock in", "start my shift".',
+      name: 'get_my_active_jobs',
+      description: 'Returns the list of jobs the current user is assigned to and could clock into right now, plus a general option. Call this before clock_in_current_user when the user hasn\'t specified a job.',
       input_schema: { type: 'object', properties: {}, required: [] }
+    },
+    {
+      name: 'clock_in_current_user',
+      description: 'Clocks the currently logged-in staff member into a specific job. Always requires job_id — call get_my_active_jobs first if you don\'t have it.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          job_id: {
+            type: 'string',
+            description: 'Numeric job id (e.g. "12345") or "general" for non-job work. Get this from get_my_active_jobs.'
+          }
+        },
+        required: ['job_id']
+      }
     }
   ];
 
@@ -2883,41 +2902,105 @@ You have access to the following tool. Call it — do not explain how to do it m
     return `\n\nLIVE DATA SNAPSHOT:\nActive jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in now: ${clockedIn}, total wages owed: £${wagesOwed.toFixed(2)}\n\nSTAFF (${employees.length} total):\n  ${staffSummary}\n\nJOB LIST (active):\n  ${jobDetails}`;
   };
 
+  // ── Voice tool helpers ────────────────────────────────────────────────────
+
+  const callVoiceClaude = async (messages, systemPrompt, { maxTokens = 8000, thinkingBudget = 5000, timeout = 20000 } = {}) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const res = await fetch('/.netlify/functions/claude-chat', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        thinking: { type: 'enabled', budget_tokens: thinkingBudget },
+        tools: VOICE_TOOLS,
+        system: systemPrompt,
+        messages,
+      })
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
+    return res.json();
+  };
+
+  // Read-only tool dispatcher — returns a string result, no confirmation needed
+  const executeReadOnlyTool = (toolName, _toolInput) => {
+    if (toolName === 'get_my_active_jobs') {
+      if (!currentUser) return 'No user logged in.';
+      const assigned = getUserAssignedJobs(currentUser.id);
+      if (assigned.length === 0) return 'No specific job assignments found. You can clock in as general for general work.';
+      const lines = assigned.map(j => {
+        const date = j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'no date';
+        return `id:${j.id} | ${j.jobName} | ${j.customerName} | ${date}`;
+      });
+      lines.push('id:general | General / non-job work');
+      return 'Jobs available:\n' + lines.join('\n');
+    }
+    return null; // not a read-only tool
+  };
+
+  // Process Claude's response: auto-run read-only tools, pause on action tools, speak text
+  const processVoiceResponse = async (data, messages, systemPrompt) => {
+    const toolUseBlock = (data.content || []).find(b => b.type === 'tool_use');
+    if (toolUseBlock) {
+      const readOnlyResult = executeReadOnlyTool(toolUseBlock.name, toolUseBlock.input);
+      if (readOnlyResult !== null) {
+        // Execute immediately, send result back, continue the loop
+        const next = [
+          ...messages,
+          { role: 'assistant', content: data.content },
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: readOnlyResult }] }
+        ];
+        const nextData = await callVoiceClaude(next, systemPrompt, { maxTokens: 6000, thinkingBudget: 4000 });
+        // Check for another tool call (e.g. Claude immediately calls clock_in after getting jobs)
+        const nextTool = (nextData.content || []).find(b => b.type === 'tool_use');
+        if (nextTool && executeReadOnlyTool(nextTool.name, nextTool.input) === null) {
+          // Action tool — show confirmation, preserve full history
+          setVoicePendingTool({ toolUseId: nextTool.id, toolName: nextTool.name, toolInput: nextTool.input, messages: next, assistantContent: nextData.content, systemPrompt });
+          setVoiceState('confirming');
+          return;
+        }
+        if (nextTool) {
+          // Another read-only tool — recurse (depth stays shallow in practice)
+          await processVoiceResponse(nextData, next, systemPrompt);
+          return;
+        }
+        // Text response after tool: Claude is asking a question (e.g. "which job?")
+        // Save history so the user's next voice turn has context
+        const history = [...next, { role: 'assistant', content: nextData.content }];
+        setVoiceHistory(history);
+        const text = (nextData.content || []).find(b => b.type === 'text')?.text || '';
+        setVoiceResponse(text);
+        speakText(text);
+        return;
+      }
+      // Action tool — show confirmation
+      setVoicePendingTool({ toolUseId: toolUseBlock.id, toolName: toolUseBlock.name, toolInput: toolUseBlock.input, messages, assistantContent: data.content, systemPrompt });
+      setVoiceState('confirming');
+      return;
+    }
+    // Plain text — clear history, speak
+    setVoiceHistory([]);
+    const text = (data.content || []).find(b => b.type === 'text')?.text || "Sorry, I couldn't get a response.";
+    setVoiceResponse(text);
+    speakText(text);
+  };
+
   const sendVoiceQuery = async (transcript) => {
     if (!transcript.trim()) { setVoiceState('idle'); return; }
     setVoiceResponse('');
     setVoiceState('thinking');
     const systemPrompt = HELP_SYSTEM + buildVoiceLiveData() + '\n\nVOICE MODE: You are speaking your answer aloud. Use natural spoken English — no bullet points, no markdown, no asterisks, no headers. Answer fully and confidently using the live data and your knowledge of the app. Never say you lack access — you have all the data above. Be conversational but thorough.';
-    const messages = [{ role: 'user', content: transcript }];
+    // Continue existing conversation if we're mid-flow (e.g. Claude asked "which job?")
+    const userMsg = { role: 'user', content: transcript };
+    const messages = voiceHistory.length > 0 ? [...voiceHistory, userMsg] : [userMsg];
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      const res = await fetch('/.netlify/functions/claude-chat', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 8000,
-          thinking: { type: 'enabled', budget_tokens: 5000 },
-          tools: VOICE_TOOLS,
-          system: systemPrompt,
-          messages,
-        })
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
-      const data = await res.json();
-      const toolUseBlock = (data.content || []).find(b => b.type === 'tool_use');
-      if (toolUseBlock) {
-        setVoicePendingTool({ toolUseId: toolUseBlock.id, toolName: toolUseBlock.name, messages, assistantContent: data.content, systemPrompt });
-        setVoiceState('confirming');
-        return;
-      }
-      const text = (data.content || []).find(b => b.type === 'text')?.text || "Sorry, I couldn't get a response.";
-      setVoiceResponse(text);
-      speakText(text);
+      const data = await callVoiceClaude(messages, systemPrompt);
+      await processVoiceResponse(data, messages, systemPrompt);
     } catch(e) {
+      setVoiceHistory([]);
       const errMsg = e.name === 'AbortError' ? 'Timed out — check API key & connection.' : `Error: ${e.message}`;
       setVoiceResponse(errMsg);
       setVoiceState('idle');
@@ -2926,15 +3009,18 @@ You have access to the following tool. Call it — do not explain how to do it m
 
   const handleVoiceToolConfirm = async (confirmed) => {
     if (!voicePendingTool) return;
-    const { toolUseId, toolName, messages, assistantContent, systemPrompt } = voicePendingTool;
+    const { toolUseId, toolName, toolInput, messages, assistantContent, systemPrompt } = voicePendingTool;
     setVoicePendingTool(null);
     setVoiceState('thinking');
     let toolResultContent;
     if (confirmed) {
       if (toolName === 'clock_in_current_user') {
+        const rawId = toolInput?.job_id;
+        const jobId = (!rawId || rawId === 'general') ? null : parseInt(rawId, 10);
+        const jobLabel = jobId ? (editingJobs.find(j => j.id === jobId)?.jobName || 'the job') : 'general work';
         try {
-          await handleClockIn(null);
-          toolResultContent = 'Success. The user has been clocked in.';
+          await handleClockIn(jobId);
+          toolResultContent = `Success. User clocked in${jobId ? ` to ${jobLabel}` : ' for general work'} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`;
         } catch(err) {
           toolResultContent = `Failed to clock in: ${err.message}`;
         }
@@ -2950,29 +3036,14 @@ You have access to the following tool. Call it — do not explain how to do it m
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: toolResultContent }] }
     ];
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch('/.netlify/functions/claude-chat', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4000,
-          thinking: { type: 'enabled', budget_tokens: 3000 },
-          tools: VOICE_TOOLS,
-          system: systemPrompt,
-          messages: continueMessages,
-        })
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
-      const data = await res.json();
+      const data = await callVoiceClaude(continueMessages, systemPrompt, { maxTokens: 4000, thinkingBudget: 3000, timeout: 15000 });
+      setVoiceHistory([]); // action completed — clear history
       const text = (data.content || []).find(b => b.type === 'text')?.text
-        || (confirmed ? "Done, you're clocked in." : "No problem, you're not clocked in.");
+        || (confirmed ? "Done, you're clocked in." : "No problem, not clocked in.");
       setVoiceResponse(text);
       speakText(text);
     } catch(e) {
+      setVoiceHistory([]);
       const fallback = confirmed ? "Done, you're clocked in." : "No problem, cancelled.";
       setVoiceResponse(fallback);
       speakText(fallback);
@@ -3085,11 +3156,16 @@ You have access to the following tool. Call it — do not explain how to do it m
           </div>
         )}
         {/* Tool confirmation card */}
-        {voiceState === 'confirming' && voicePendingTool && (
+        {voiceState === 'confirming' && voicePendingTool && (() => {
+          const rawId = voicePendingTool.toolInput?.job_id;
+          const jobId = rawId && rawId !== 'general' ? parseInt(rawId, 10) : null;
+          const jobLabel = jobId ? (editingJobs.find(j => j.id === jobId)?.jobName || rawId) : 'general work';
+          const confirmLabel = voicePendingTool.toolName === 'clock_in_current_user'
+            ? `🕐 Clock you into ${jobLabel}?`
+            : 'Confirm action?';
+          return (
           <div className="w-full rounded-xl px-3 py-3 text-sm" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.5)'}}>
-            <p className="text-white font-semibold mb-2.5">
-              {voicePendingTool.toolName === 'clock_in_current_user' ? '🕐 Clock you in now?' : 'Confirm action?'}
-            </p>
+            <p className="text-white font-semibold mb-2.5">{confirmLabel}</p>
             <div className="flex gap-2">
               <button onClick={() => handleVoiceToolConfirm(true)}
                 className="flex-1 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-500">
@@ -3103,7 +3179,8 @@ You have access to the following tool. Call it — do not explain how to do it m
             </div>
             <p className="text-xs mt-2" style={{color:'rgba(193,167,106,0.6)'}}>or hold mic and say yes / no</p>
           </div>
-        )}
+          );
+        })()}
         {/* Error display only */}
         {voiceState === 'idle' && voiceResponse && voiceResponse.startsWith('Error') && (
           <div className="px-3 py-1.5 rounded-xl text-xs text-red-300 bg-gray-900 w-full">{voiceResponse}</div>
