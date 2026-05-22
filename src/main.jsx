@@ -438,6 +438,7 @@ function EyeconMoments() {
   const [jobSearchQuery, setJobSearchQuery] = useState('');
   const [archivedJobIds, setArchivedJobIds] = useState([]);
   const [inquiryFilter, setInquiryFilter] = useState('all');
+  const [showBookedSection, setShowBookedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
@@ -9444,7 +9445,9 @@ Capturing Your Special Day
   // CRM
   if (currentView === 'crm') {
     const filteredInquiries = getFilteredInquiries();
-    
+    const bookedInquiries = inquiries.filter(i => i.status === 'booked');
+    const pipelineInquiries = filteredInquiries.filter(i => i.status !== 'booked');
+
     // Calculate CRM response stats
     const crmStats = {
       total: inquiries.length,
@@ -9541,11 +9544,11 @@ Capturing Your Special Day
               📸 Add from Screenshot
             </button>
             <div className="flex gap-2 overflow-x-auto">
-              {['all', 'new', 'contacted', 'quoted', 'booked', 'declined'].map(status => (
+              {['all', 'new', 'contacted', 'quoted', 'declined'].map(status => (
                 <button key={status} onClick={() => setInquiryFilter(status)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
-                    inquiryFilter === status 
-                      ? 'bg-blue-500 text-white' 
+                    inquiryFilter === status
+                      ? 'bg-blue-500 text-white'
                       : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                   }`}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -9803,8 +9806,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
             );
           })()}
 
-          {/* Inquiry cards */}
-          {filteredInquiries.map(inquiry => {
+          {/* Inquiry cards — pipeline (non-booked) */}
+          {pipelineInquiries.map(inquiry => {
             const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
             const needsResponse = inquiry.status === 'new' && daysSince > 1;
             const daysSinceQuoted = inquiry.status === 'quoted' && inquiry.quotedDate 
@@ -9959,6 +9962,69 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               </div>
             );
           })}
+
+          {/* Booked — collapsible fold */}
+          {bookedInquiries.length > 0 && (
+            <div className={`rounded-lg shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <button
+                onClick={() => setShowBookedSection(v => !v)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} transition-colors`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-green-500 text-lg">✓</span>
+                  <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    Booked
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>
+                    {bookedInquiries.length}
+                  </span>
+                </span>
+                <span className={`text-lg transition-transform duration-200 ${showBookedSection ? 'rotate-180' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>▾</span>
+              </button>
+              {showBookedSection && (
+                <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                  {bookedInquiries.map(inquiry => {
+                    const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
+                    return (
+                      <div key={inquiry.id} className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-start gap-3">
+                            <label className="cursor-pointer shrink-0" title="Tap to upload screenshot">
+                              <input type="file" accept="image/*" className="hidden" onChange={e => { if (e.target.files[0]) uploadInquiryPhoto(inquiry.id, e.target.files[0]); }} />
+                              {inquiry.contactPhoto
+                                ? <img src={inquiry.contactPhoto} alt="contact" className="w-12 h-12 rounded-lg object-cover border-2 border-green-200" />
+                                : <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-xl ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>✓</div>
+                              }
+                            </label>
+                            <div>
+                              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inquiry.customerName}</h3>
+                              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{inquiry.eventType} — {formatDate(inquiry.eventDate)}</p>
+                              <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Submitted {daysSince} days ago</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <button onClick={() => deleteInquiry(inquiry.id)} className="text-red-400 hover:text-red-600 text-xs" title="Delete">🗑️</button>
+                            <select
+                              value={inquiry.status}
+                              onChange={e => updateInquiryStatus(inquiry.id, e.target.value)}
+                              className={`text-xs rounded px-2 py-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                              {['new','contacted','quoted','booked','declined'].map(s => (
+                                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {inquiry.notes && (
+                          <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inquiry.notes}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
           {/* CRM Screenshot AI Modal */}
