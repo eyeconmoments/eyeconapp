@@ -2791,12 +2791,21 @@ LOGGING:
 
 ---
 
-TOOLS YOU CAN CALL — always use these instead of explaining how to navigate the app manually:
-• get_my_active_jobs — call this first when the user wants to clock in and hasn't named a job. Returns assigned jobs + a "general" option.
-• clock_in_current_user(job_id) — clocks the user in. Requires job_id (numeric string or "general").
-  Flow A — user didn't name a job: call get_my_active_jobs → speak the list → wait for their choice → call clock_in_current_user with the matching id.
-  Flow B — user named a job (e.g. "clock me into the Khan wedding"): call get_my_active_jobs, match the name, call clock_in_current_user immediately.
-  job_id "general" = no specific job. Do not guess a job_id — always retrieve the list first.`;
+TOOLS YOU CAN CALL — prefer tools over the snapshot for specific questions. You can call multiple tools in sequence naturally.
+
+READ-ONLY (run immediately, no confirmation):
+• get_my_active_jobs — jobs the current user can clock into. Call before clock_in_current_user when no job specified.
+• get_jobs_for_staff(staff_name) — jobs assigned to a named staff member, with stage/status.
+• get_job_details(job_id|client_name) — full details for one job. Match by id or client name.
+• get_overdue_jobs — all jobs past their deadline, with days overdue.
+• get_team_status — who's clocked in right now, what job, how long.
+
+ACTION (requires user confirmation):
+• clock_in_current_user(job_id) — clocks the user in. Always needs job_id; use get_my_active_jobs first if not known. "general" for non-job work.
+
+CHAINING: chain tools naturally. "What's Sam doing and is he clocked in?" → call get_jobs_for_staff("Sam") and get_team_status together, then give a combined spoken answer.
+CLOCK-IN FLOW A (no job named): call get_my_active_jobs → speak list → wait for choice → call clock_in_current_user.
+CLOCK-IN FLOW B (job named): call get_my_active_jobs, match name, call clock_in_current_user directly.`;
 
 
   const startVoiceInput = () => {
@@ -2860,7 +2869,38 @@ TOOLS YOU CAN CALL — always use these instead of explaining how to navigate th
   const VOICE_TOOLS = [
     {
       name: 'get_my_active_jobs',
-      description: 'Returns the list of jobs the current user is assigned to and could clock into right now, plus a general option. Call this before clock_in_current_user when the user hasn\'t specified a job.',
+      description: 'Returns the jobs the current user is assigned to and could clock into, plus a general option.',
+      input_schema: { type: 'object', properties: {}, required: [] }
+    },
+    {
+      name: 'get_jobs_for_staff',
+      description: 'Returns active jobs assigned to a named staff member, with stage and status. Use when the user asks what someone is working on.',
+      input_schema: {
+        type: 'object',
+        properties: { staff_name: { type: 'string', description: 'Full or partial name of the staff member, case-insensitive.' } },
+        required: ['staff_name']
+      }
+    },
+    {
+      name: 'get_job_details',
+      description: 'Returns full details for a job: client, date, location, stage, assigned staff, notes, payment status. Match by job_id or client_name.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Numeric job id.' },
+          client_name: { type: 'string', description: 'Client name to search for (partial, case-insensitive).' }
+        },
+        required: []
+      }
+    },
+    {
+      name: 'get_overdue_jobs',
+      description: 'Returns all jobs past their deadline that are not fully complete, with how many days overdue.',
+      input_schema: { type: 'object', properties: {}, required: [] }
+    },
+    {
+      name: 'get_team_status',
+      description: 'Returns who is currently clocked in, which job they\'re on, and how long they\'ve been clocked in.',
       input_schema: { type: 'object', properties: {}, required: [] }
     },
     {
@@ -2869,10 +2909,7 @@ TOOLS YOU CAN CALL — always use these instead of explaining how to navigate th
       input_schema: {
         type: 'object',
         properties: {
-          job_id: {
-            type: 'string',
-            description: 'Numeric job id (e.g. "12345") or "general" for non-job work. Get this from get_my_active_jobs.'
-          }
+          job_id: { type: 'string', description: 'Numeric job id or "general" for non-job work.' }
         },
         required: ['job_id']
       }
@@ -2881,25 +2918,11 @@ TOOLS YOU CAN CALL — always use these instead of explaining how to navigate th
 
   const buildVoiceLiveData = () => {
     const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
-    const allJobs = editingJobs;
     const pendingCount = activeJobs.filter(j => { try { return !isJobFullyComplete(j); } catch(_) { return true; } }).length;
     const overdueCount = activeJobs.filter(j => { try { return getDaysUntilDeadline(j.deadline) < 0 && !isJobFullyComplete(j); } catch(_) { return false; } }).length;
     const wagesOwed = editingJobs.reduce((s, j) => s + (j.wageEntries || []).filter(w => !w.paid && w.status !== 'paid').reduce((a, w) => a + (w.amount || 0), 0), 0);
     const clockedIn = timeEntries.filter(e => !e.clockOut).length;
-    const staffSummary = employees.map(emp => {
-      const empJobs = allJobs.filter(j => j.photoAssignedTo === emp.id || (j.stages || []).some(s => s.assignedTo === emp.id));
-      const recentEntries = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked).sort((a,b) => new Date(b.clockIn||b.date||0) - new Date(a.clockIn||a.date||0)).slice(0,3);
-      const empWageOwed = allJobs.reduce((s,j) => s + (j.wageEntries||[]).filter(w => w.employeeId===emp.id && !w.paid && w.status!=='paid').reduce((a,w)=>a+(w.amount||0),0), 0);
-      const assignedJobNames = empJobs.map(j=>j.jobName).join(', ') || 'none';
-      const recentStr = recentEntries.map(e=>`${e.hoursWorked?.toFixed(1)}h on ${e.jobId ? (allJobs.find(j=>j.id===e.jobId)?.jobName||e.jobId) : 'unknown'}`).join('; ') || 'no recent entries';
-      return `${emp.name} (${emp.role||'staff'}): assigned jobs: ${assignedJobNames}; recent time: ${recentStr}; wages owed: £${empWageOwed.toFixed(2)}`;
-    }).join('\n  ');
-    const jobDetails = activeJobs.slice(0,20).map(j => {
-      const photoEmp = j.photoAssignedTo ? (employees.find(e=>e.id===j.photoAssignedTo)?.name||j.photoAssignedTo) : null;
-      const videoStaff = (j.stages||[]).map(s=>s.assignedTo ? (employees.find(e=>e.id===s.assignedTo)?.name||s.assignedTo) : null).filter(Boolean);
-      return `"${j.jobName}" [${j.jobType||'photo-video'}] date:${j.jobDate||'?'} status:${j.photoStatus||'?'}${photoEmp ? ` photo:${photoEmp}` : ''}${videoStaff.length ? ` video:${videoStaff.join(',')}` : ''}`;
-    }).join('\n  ');
-    return `\n\nLIVE DATA SNAPSHOT:\nActive jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in now: ${clockedIn}, total wages owed: £${wagesOwed.toFixed(2)}\n\nSTAFF (${employees.length} total):\n  ${staffSummary}\n\nJOB LIST (active):\n  ${jobDetails}`;
+    return `\n\nLIVE SNAPSHOT (headline counts — use tools for details):\nActive jobs: ${activeJobs.length} | Pending: ${pendingCount} | Overdue: ${overdueCount} | Clocked in now: ${clockedIn} | Unpaid wages: £${wagesOwed.toFixed(2)} | Staff: ${employees.length}`;
   };
 
   // ── Voice tool helpers ────────────────────────────────────────────────────
@@ -2926,64 +2949,139 @@ TOOLS YOU CAN CALL — always use these instead of explaining how to navigate th
   };
 
   // Read-only tool dispatcher — returns a string result, no confirmation needed
-  const executeReadOnlyTool = (toolName, _toolInput) => {
+  // Returns null if toolName is an action tool (caller must show confirmation UI)
+  const executeReadOnlyTool = (toolName, toolInput) => {
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'no date';
+    const fmtElapsed = (clockInTime) => {
+      const ms = Date.now() - new Date(clockInTime);
+      const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+
     if (toolName === 'get_my_active_jobs') {
       if (!currentUser) return 'No user logged in.';
       const assigned = getUserAssignedJobs(currentUser.id);
-      if (assigned.length === 0) return 'No specific job assignments found. You can clock in as general for general work.';
-      const lines = assigned.map(j => {
-        const date = j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'no date';
-        return `id:${j.id} | ${j.jobName} | ${j.customerName} | ${date}`;
-      });
+      if (assigned.length === 0) return 'No job assignments found. You can clock in as general for general work.';
+      const lines = assigned.map(j => `id:${j.id} | ${j.jobName} | ${j.customerName} | ${fmtDate(j.shootDate)}`);
       lines.push('id:general | General / non-job work');
       return 'Jobs available:\n' + lines.join('\n');
     }
-    return null; // not a read-only tool
+
+    if (toolName === 'get_jobs_for_staff') {
+      const name = (toolInput?.staff_name || '').toLowerCase().trim();
+      if (!name) return 'Please provide a staff name.';
+      const matches = employees.filter(e => e.name.toLowerCase().includes(name));
+      if (matches.length === 0) return `No staff member found matching "${toolInput.staff_name}".`;
+      return matches.map(emp => {
+        const jobs = editingJobs.filter(j =>
+          !archivedJobIds.includes(j.id) &&
+          (j.photoAssignedTo === emp.id || (j.stages || []).some(s => s.assignedTo === emp.id))
+        );
+        if (jobs.length === 0) return `${emp.name}: no active job assignments.`;
+        const jobLines = jobs.map(j => {
+          const myStages = (j.stages || []).filter(s => s.assignedTo === emp.id).map(s => `${s.name}:${s.status}`).join(', ');
+          const photoStatus = j.photoAssignedTo === emp.id ? `photos:${j.photoStatus || 'pending'}` : '';
+          const status = [photoStatus, myStages].filter(Boolean).join(' | ') || 'assigned';
+          return `  • ${j.jobName} (id:${j.id}) | ${fmtDate(j.shootDate)} | ${status}`;
+        }).join('\n');
+        return `${emp.name}:\n${jobLines}`;
+      }).join('\n\n');
+    }
+
+    if (toolName === 'get_job_details') {
+      const { job_id, client_name } = toolInput || {};
+      let matches = [];
+      if (job_id) {
+        const j = editingJobs.find(j => String(j.id) === String(job_id));
+        if (j) matches = [j];
+      } else if (client_name) {
+        const q = client_name.toLowerCase();
+        matches = editingJobs.filter(j =>
+          !archivedJobIds.includes(j.id) &&
+          (j.customerName?.toLowerCase().includes(q) || j.jobName?.toLowerCase().includes(q))
+        );
+      }
+      if (matches.length === 0) return 'No matching job found.';
+      if (matches.length > 3) return `${matches.length} jobs match "${client_name}" — please be more specific: ${matches.slice(0,5).map(j => j.jobName).join(', ')}.`;
+      return matches.map(j => {
+        const photoEmp = j.photoAssignedTo ? (employees.find(e => e.id === j.photoAssignedTo)?.name || j.photoAssignedTo) : 'unassigned';
+        const videoStaff = (j.stages || []).map(s => s.assignedTo ? `${s.name}:${employees.find(e=>e.id===s.assignedTo)?.name||s.assignedTo}(${s.status})` : null).filter(Boolean).join(', ') || 'none';
+        const revenue = calculateJobRevenue(j);
+        const finalPaid = j.finalPaymentReceived ? `final paid ${j.finalPaymentDate ? new Date(j.finalPaymentDate).toLocaleDateString('en-GB') : ''}` : 'final payment outstanding';
+        return `Job: ${j.jobName} (id:${j.id})
+Client: ${j.customerName}
+Date: ${fmtDate(j.shootDate)}
+Deadline: ${fmtDate(j.deadline)}
+Type: ${j.jobType || 'photo-video'}
+Photos: ${j.photoStatus || 'pending'} | assigned to: ${photoEmp}
+Video stages: ${videoStaff}
+Revenue: £${revenue.toFixed(2)} | ${finalPaid}
+Notes: ${j.notes || 'none'}`;
+      }).join('\n\n---\n\n');
+    }
+
+    if (toolName === 'get_overdue_jobs') {
+      const overdue = editingJobs.filter(j => {
+        if (archivedJobIds.includes(j.id) || isJobFullyComplete(j) || !j.deadline) return false;
+        return getDaysUntilDeadline(j.deadline) < 0;
+      }).sort((a, b) => getDaysUntilDeadline(a.deadline) - getDaysUntilDeadline(b.deadline));
+      if (overdue.length === 0) return 'No overdue jobs.';
+      return `${overdue.length} overdue job${overdue.length > 1 ? 's' : ''}:\n` +
+        overdue.map(j => {
+          const daysOver = Math.abs(getDaysUntilDeadline(j.deadline));
+          return `  • ${j.jobName} | ${j.customerName} | ${daysOver} day${daysOver > 1 ? 's' : ''} overdue | deadline: ${fmtDate(j.deadline)}`;
+        }).join('\n');
+    }
+
+    if (toolName === 'get_team_status') {
+      const active = timeEntries.filter(e => !e.clockOut);
+      if (active.length === 0) return 'Nobody is currently clocked in.';
+      const lines = active.map(e => {
+        const emp = employees.find(x => x.id === e.employeeId);
+        const job = e.jobId ? editingJobs.find(j => j.id === e.jobId) : null;
+        const jobLabel = job ? job.jobName : (e.description || 'general work');
+        return `  • ${emp?.name || 'Unknown'} — ${jobLabel} (clocked in ${fmtElapsed(e.clockIn)} ago)`;
+      });
+      return `${active.length} staff clocked in:\n` + lines.join('\n');
+    }
+
+    return null; // not a read-only tool — caller handles confirmation
   };
 
-  // Process Claude's response: auto-run read-only tools, pause on action tools, speak text
+  // Process Claude's response: auto-run all read-only tools, pause on action tools, speak text
   const processVoiceResponse = async (data, messages, systemPrompt) => {
-    const toolUseBlock = (data.content || []).find(b => b.type === 'tool_use');
-    if (toolUseBlock) {
-      const readOnlyResult = executeReadOnlyTool(toolUseBlock.name, toolUseBlock.input);
-      if (readOnlyResult !== null) {
-        // Execute immediately, send result back, continue the loop
-        const next = [
-          ...messages,
-          { role: 'assistant', content: data.content },
-          { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: readOnlyResult }] }
-        ];
-        const nextData = await callVoiceClaude(next, systemPrompt, { maxTokens: 6000, thinkingBudget: 4000 });
-        // Check for another tool call (e.g. Claude immediately calls clock_in after getting jobs)
-        const nextTool = (nextData.content || []).find(b => b.type === 'tool_use');
-        if (nextTool && executeReadOnlyTool(nextTool.name, nextTool.input) === null) {
-          // Action tool — show confirmation, preserve full history
-          setVoicePendingTool({ toolUseId: nextTool.id, toolName: nextTool.name, toolInput: nextTool.input, messages: next, assistantContent: nextData.content, systemPrompt });
-          setVoiceState('confirming');
-          return;
-        }
-        if (nextTool) {
-          // Another read-only tool — recurse (depth stays shallow in practice)
-          await processVoiceResponse(nextData, next, systemPrompt);
-          return;
-        }
-        // Text response after tool: Claude is asking a question (e.g. "which job?")
-        // Save history so the user's next voice turn has context
-        const history = [...next, { role: 'assistant', content: nextData.content }];
-        setVoiceHistory(history);
-        const text = (nextData.content || []).find(b => b.type === 'text')?.text || '';
-        setVoiceResponse(text);
-        speakText(text);
+    const toolBlocks = (data.content || []).filter(b => b.type === 'tool_use');
+    if (toolBlocks.length > 0) {
+      // Split into read-only vs action tools
+      const actionTool = toolBlocks.find(b => executeReadOnlyTool(b.name, b.input) === null);
+      if (actionTool) {
+        setVoicePendingTool({ toolUseId: actionTool.id, toolName: actionTool.name, toolInput: actionTool.input, messages, assistantContent: data.content, systemPrompt });
+        setVoiceState('confirming');
         return;
       }
-      // Action tool — show confirmation
-      setVoicePendingTool({ toolUseId: toolUseBlock.id, toolName: toolUseBlock.name, toolInput: toolUseBlock.input, messages, assistantContent: data.content, systemPrompt });
-      setVoiceState('confirming');
+      // All read-only — execute all, bundle results, continue loop
+      const toolResults = toolBlocks.map(b => ({
+        type: 'tool_result',
+        tool_use_id: b.id,
+        content: executeReadOnlyTool(b.name, b.input)
+      }));
+      const next = [
+        ...messages,
+        { role: 'assistant', content: data.content },
+        { role: 'user', content: toolResults }
+      ];
+      const nextData = await callVoiceClaude(next, systemPrompt, { maxTokens: 6000, thinkingBudget: 4000 });
+      await processVoiceResponse(nextData, next, systemPrompt);
       return;
     }
-    // Plain text — clear history, speak
-    setVoiceHistory([]);
+    // Plain text — if it's a question (Claude waiting for user input), save history; otherwise clear it
     const text = (data.content || []).find(b => b.type === 'text')?.text || "Sorry, I couldn't get a response.";
+    const looksLikeQuestion = text.trim().endsWith('?') || /which|what job|which one|can you confirm/i.test(text);
+    if (looksLikeQuestion) {
+      setVoiceHistory([...messages, { role: 'assistant', content: data.content }]);
+    } else {
+      setVoiceHistory([]);
+    }
     setVoiceResponse(text);
     speakText(text);
   };
