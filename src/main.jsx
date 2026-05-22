@@ -239,10 +239,12 @@ function EyeconMoments() {
   const [helpMessages, setHelpMessages] = useState([{ role:'assistant', content:'👋 Hi! I\'m your Eyecon Moments assistant. Ask me anything about using the app — clocking in, sharing itineraries, creating quotes, managing jobs, or anything else!' }]);
   const [helpLoading, setHelpLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [voiceState, setVoiceState] = useState('idle'); // idle | listening | thinking | speaking
+  const [voiceState, setVoiceState] = useState('idle'); // idle | listening | thinking | speaking | confirming
   const [voiceInput, setVoiceInput] = useState('');
   const [voiceResponse, setVoiceResponse] = useState('');
   const [voiceSubtitle, setVoiceSubtitle] = useState('');
+  const [voicePendingTool, setVoicePendingTool] = useState(null);
+  // voicePendingTool: { toolUseId, toolName, messages, assistantContent, systemPrompt }
   const voiceRecognitionRef = React.useRef(null);
   const voiceTranscriptRef = React.useRef('');
   const voiceIsListeningRef = React.useRef(false);
@@ -2783,7 +2785,13 @@ SAVING:
 - Email the file to the Eyecon Moments email with a one-liner for the Stage 2 editor
 
 LOGGING:
-- Use the logging doc to record when work was completed and where the file can be found.`;
+- Use the logging doc to record when work was completed and where the file can be found.
+
+---
+
+TOOLS YOU CAN CALL:
+You have access to the following tool. Call it — do not explain how to do it manually.
+• clock_in_current_user — call this when the user says "clock me in", "I'm starting work", "start my shift", "clock in", or anything equivalent. No input required.`;
 
 
   const startVoiceInput = () => {
@@ -2844,40 +2852,44 @@ LOGGING:
     else { window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; doSpeak(); }; setTimeout(doSpeak, 150); }
   };
 
+  const VOICE_TOOLS = [
+    {
+      name: 'clock_in_current_user',
+      description: 'Clocks the currently logged-in staff member into work right now. Use this when the user says things like "clock me in", "I\'m starting work", "clock in", "start my shift".',
+      input_schema: { type: 'object', properties: {}, required: [] }
+    }
+  ];
+
+  const buildVoiceLiveData = () => {
+    const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+    const allJobs = editingJobs;
+    const pendingCount = activeJobs.filter(j => { try { return !isJobFullyComplete(j); } catch(_) { return true; } }).length;
+    const overdueCount = activeJobs.filter(j => { try { return getDaysUntilDeadline(j.deadline) < 0 && !isJobFullyComplete(j); } catch(_) { return false; } }).length;
+    const wagesOwed = editingJobs.reduce((s, j) => s + (j.wageEntries || []).filter(w => !w.paid && w.status !== 'paid').reduce((a, w) => a + (w.amount || 0), 0), 0);
+    const clockedIn = timeEntries.filter(e => !e.clockOut).length;
+    const staffSummary = employees.map(emp => {
+      const empJobs = allJobs.filter(j => j.photoAssignedTo === emp.id || (j.stages || []).some(s => s.assignedTo === emp.id));
+      const recentEntries = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked).sort((a,b) => new Date(b.clockIn||b.date||0) - new Date(a.clockIn||a.date||0)).slice(0,3);
+      const empWageOwed = allJobs.reduce((s,j) => s + (j.wageEntries||[]).filter(w => w.employeeId===emp.id && !w.paid && w.status!=='paid').reduce((a,w)=>a+(w.amount||0),0), 0);
+      const assignedJobNames = empJobs.map(j=>j.jobName).join(', ') || 'none';
+      const recentStr = recentEntries.map(e=>`${e.hoursWorked?.toFixed(1)}h on ${e.jobId ? (allJobs.find(j=>j.id===e.jobId)?.jobName||e.jobId) : 'unknown'}`).join('; ') || 'no recent entries';
+      return `${emp.name} (${emp.role||'staff'}): assigned jobs: ${assignedJobNames}; recent time: ${recentStr}; wages owed: £${empWageOwed.toFixed(2)}`;
+    }).join('\n  ');
+    const jobDetails = activeJobs.slice(0,20).map(j => {
+      const photoEmp = j.photoAssignedTo ? (employees.find(e=>e.id===j.photoAssignedTo)?.name||j.photoAssignedTo) : null;
+      const videoStaff = (j.stages||[]).map(s=>s.assignedTo ? (employees.find(e=>e.id===s.assignedTo)?.name||s.assignedTo) : null).filter(Boolean);
+      return `"${j.jobName}" [${j.jobType||'photo-video'}] date:${j.jobDate||'?'} status:${j.photoStatus||'?'}${photoEmp ? ` photo:${photoEmp}` : ''}${videoStaff.length ? ` video:${videoStaff.join(',')}` : ''}`;
+    }).join('\n  ');
+    return `\n\nLIVE DATA SNAPSHOT:\nActive jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in now: ${clockedIn}, total wages owed: £${wagesOwed.toFixed(2)}\n\nSTAFF (${employees.length} total):\n  ${staffSummary}\n\nJOB LIST (active):\n  ${jobDetails}`;
+  };
+
   const sendVoiceQuery = async (transcript) => {
     if (!transcript.trim()) { setVoiceState('idle'); return; }
     setVoiceResponse('');
     setVoiceState('thinking');
+    const systemPrompt = HELP_SYSTEM + buildVoiceLiveData() + '\n\nVOICE MODE: You are speaking your answer aloud. Use natural spoken English — no bullet points, no markdown, no asterisks, no headers. Answer fully and confidently using the live data and your knowledge of the app. Never say you lack access — you have all the data above. Be conversational but thorough.';
+    const messages = [{ role: 'user', content: transcript }];
     try {
-      const activeJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id));
-      const allJobs = editingJobs;
-      const pendingCount = activeJobs.filter(j => {
-        try { return !isJobFullyComplete(j); } catch(_) { return true; }
-      }).length;
-      const overdueCount = activeJobs.filter(j => {
-        try { return getDaysUntilDeadline(j.deadline) < 0 && !isJobFullyComplete(j); } catch(_) { return false; }
-      }).length;
-      const wagesOwed = editingJobs.reduce((s, j) => s + (j.wageEntries || []).filter(w => !w.paid && w.status !== 'paid').reduce((a, w) => a + (w.amount || 0), 0), 0);
-      const clockedIn = timeEntries.filter(e => !e.clockOut).length;
-      // Build per-staff summary
-      const staffSummary = employees.map(emp => {
-        const empJobs = allJobs.filter(j =>
-          j.photoAssignedTo === emp.id ||
-          (j.stages || []).some(s => s.assignedTo === emp.id)
-        );
-        const recentEntries = timeEntries.filter(e => e.employeeId === emp.id && e.hoursWorked).sort((a,b) => new Date(b.clockIn||b.date||0) - new Date(a.clockIn||a.date||0)).slice(0,3);
-        const empWageOwed = allJobs.reduce((s,j) => s + (j.wageEntries||[]).filter(w => w.employeeId===emp.id && !w.paid && w.status!=='paid').reduce((a,w)=>a+(w.amount||0),0), 0);
-        const lastJob = empJobs.length ? empJobs[empJobs.length-1].jobName : 'none';
-        const assignedJobNames = empJobs.map(j=>j.jobName).join(', ') || 'none';
-        const recentStr = recentEntries.map(e=>`${e.hoursWorked?.toFixed(1)}h on ${e.jobId ? (allJobs.find(j=>j.id===e.jobId)?.jobName||e.jobId) : 'unknown'}`).join('; ') || 'no recent entries';
-        return `${emp.name} (${emp.role||'staff'}): assigned jobs: ${assignedJobNames}; last job: ${lastJob}; recent time: ${recentStr}; wages owed: £${empWageOwed.toFixed(2)}`;
-      }).join('\n  ');
-      const jobDetails = activeJobs.slice(0,20).map(j => {
-        const photoEmp = j.photoAssignedTo ? (employees.find(e=>e.id===j.photoAssignedTo)?.name||j.photoAssignedTo) : null;
-        const videoStaff = (j.stages||[]).map(s=>s.assignedTo ? (employees.find(e=>e.id===s.assignedTo)?.name||s.assignedTo) : null).filter(Boolean);
-        return `"${j.jobName}" [${j.jobType||'photo-video'}] date:${j.jobDate||'?'} status:${j.photoStatus||'?'}${photoEmp ? ` photo:${photoEmp}` : ''}${videoStaff.length ? ` video:${videoStaff.join(',')}` : ''}`;
-      }).join('\n  ');
-      const liveData = `\n\nLIVE DATA SNAPSHOT:\nActive jobs: ${activeJobs.length}, pending: ${pendingCount}, overdue: ${overdueCount}, clocked in now: ${clockedIn}, total wages owed: £${wagesOwed.toFixed(2)}\n\nSTAFF (${employees.length} total):\n  ${staffSummary}\n\nJOB LIST (active):\n  ${jobDetails}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000);
       const res = await fetch('/.netlify/functions/claude-chat', {
@@ -2888,13 +2900,20 @@ LOGGING:
           model: 'claude-sonnet-4-6',
           max_tokens: 8000,
           thinking: { type: 'enabled', budget_tokens: 5000 },
-          system: HELP_SYSTEM + liveData + '\n\nVOICE MODE: You are speaking your answer aloud. Use natural spoken English — no bullet points, no markdown, no asterisks, no headers. Answer fully and confidently using the live data and your knowledge of the app. Never say you lack access — you have all the data above. Be conversational but thorough.',
-          messages: [{ role:'user', content: transcript }]
+          tools: VOICE_TOOLS,
+          system: systemPrompt,
+          messages,
         })
       });
       clearTimeout(timeoutId);
       if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
       const data = await res.json();
+      const toolUseBlock = (data.content || []).find(b => b.type === 'tool_use');
+      if (toolUseBlock) {
+        setVoicePendingTool({ toolUseId: toolUseBlock.id, toolName: toolUseBlock.name, messages, assistantContent: data.content, systemPrompt });
+        setVoiceState('confirming');
+        return;
+      }
       const text = (data.content || []).find(b => b.type === 'text')?.text || "Sorry, I couldn't get a response.";
       setVoiceResponse(text);
       speakText(text);
@@ -2902,6 +2921,61 @@ LOGGING:
       const errMsg = e.name === 'AbortError' ? 'Timed out — check API key & connection.' : `Error: ${e.message}`;
       setVoiceResponse(errMsg);
       setVoiceState('idle');
+    }
+  };
+
+  const handleVoiceToolConfirm = async (confirmed) => {
+    if (!voicePendingTool) return;
+    const { toolUseId, toolName, messages, assistantContent, systemPrompt } = voicePendingTool;
+    setVoicePendingTool(null);
+    setVoiceState('thinking');
+    let toolResultContent;
+    if (confirmed) {
+      if (toolName === 'clock_in_current_user') {
+        try {
+          await handleClockIn(null);
+          toolResultContent = 'Success. The user has been clocked in.';
+        } catch(err) {
+          toolResultContent = `Failed to clock in: ${err.message}`;
+        }
+      } else {
+        toolResultContent = `Tool "${toolName}" is not implemented.`;
+      }
+    } else {
+      toolResultContent = 'User declined this action.';
+    }
+    const continueMessages = [
+      ...messages,
+      { role: 'assistant', content: assistantContent },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseId, content: toolResultContent }] }
+    ];
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch('/.netlify/functions/claude-chat', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4000,
+          thinking: { type: 'enabled', budget_tokens: 3000 },
+          tools: VOICE_TOOLS,
+          system: systemPrompt,
+          messages: continueMessages,
+        })
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
+      const data = await res.json();
+      const text = (data.content || []).find(b => b.type === 'text')?.text
+        || (confirmed ? "Done, you're clocked in." : "No problem, you're not clocked in.");
+      setVoiceResponse(text);
+      speakText(text);
+    } catch(e) {
+      const fallback = confirmed ? "Done, you're clocked in." : "No problem, cancelled.";
+      setVoiceResponse(fallback);
+      speakText(fallback);
     }
   };
 
@@ -2934,7 +3008,18 @@ LOGGING:
     voiceIsListeningRef.current = false;
     const recognition = voiceRecognitionRef.current;
     if (recognition) { try { recognition.stop(); } catch(_) {} }
-    setTimeout(() => sendVoiceQuery(voiceTranscriptRef.current.trim()), 350);
+    setTimeout(() => {
+      const transcript = voiceTranscriptRef.current.trim();
+      if (voiceState === 'confirming' && voicePendingTool) {
+        if (/^(yes|yeah|yep|ok|okay|do it|confirm|sure|go ahead|clock me in)$/i.test(transcript)) {
+          handleVoiceToolConfirm(true); return;
+        }
+        if (/^(no|nope|cancel|don't|stop|abort|not now|no thanks)$/i.test(transcript)) {
+          handleVoiceToolConfirm(false); return;
+        }
+      }
+      sendVoiceQuery(transcript);
+    }, 350);
   };
 
   const sendHelp = async (overrideText) => {
@@ -2997,6 +3082,26 @@ LOGGING:
           <div className="px-3 py-1 rounded-full text-xs font-semibold text-white animate-pulse"
             style={{background: voiceState === 'listening' ? '#dc2626' : '#1d4ed8'}}>
             {voiceState === 'listening' ? '● Listening…' : '◌ Thinking…'}
+          </div>
+        )}
+        {/* Tool confirmation card */}
+        {voiceState === 'confirming' && voicePendingTool && (
+          <div className="w-full rounded-xl px-3 py-3 text-sm" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.5)'}}>
+            <p className="text-white font-semibold mb-2.5">
+              {voicePendingTool.toolName === 'clock_in_current_user' ? '🕐 Clock you in now?' : 'Confirm action?'}
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => handleVoiceToolConfirm(true)}
+                className="flex-1 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-500">
+                ✅ Yes
+              </button>
+              <button onClick={() => handleVoiceToolConfirm(false)}
+                className="flex-1 py-2 rounded-lg text-sm font-medium text-gray-200 hover:bg-gray-600"
+                style={{background:'#2d3748'}}>
+                ✗ No
+              </button>
+            </div>
+            <p className="text-xs mt-2" style={{color:'rgba(193,167,106,0.6)'}}>or hold mic and say yes / no</p>
           </div>
         )}
         {/* Error display only */}
