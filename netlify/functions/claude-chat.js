@@ -14,13 +14,18 @@ exports.handler = async (event) => {
 
   try {
     const payload = JSON.parse(event.body || '{}');
+    const apiHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    };
+    // Interleaved thinking is required when combining extended thinking with tool use
+    if (payload.thinking && payload.tools) {
+      apiHeaders['anthropic-beta'] = 'interleaved-thinking-2025-05-14';
+    }
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: apiHeaders,
       body: JSON.stringify(payload),
     });
     const data = await res.json();
