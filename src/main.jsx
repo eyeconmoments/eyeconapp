@@ -802,26 +802,20 @@ function EyeconMoments() {
   const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // Desktop: Gmail web compose with the business account pre-selected.
-  // Android: Chrome Intent URL with scheme=googlegmail so Chrome passes control
-  //   directly to the Gmail app package (com.google.android.gm) instead of
-  //   intercepting the link and opening Gmail web. scheme=mailto never works here
-  //   because Chrome owns mailto: handling on Android.
-  // iOS: googlegmail:// URI scheme opens the Gmail app compose screen directly.
+  // Mobile: original mailto: behaviour — opens the Gmail app directly.
+  // Desktop: opens Gmail web compose with the business account pre-selected.
   const openMail = (mailtoHref) => {
-    const withoutScheme = mailtoHref.slice('mailto:'.length);
-    const qIdx = withoutScheme.indexOf('?');
-    const rawTo = qIdx === -1 ? withoutScheme : withoutScheme.slice(0, qIdx);
-    const qs = qIdx === -1 ? '' : withoutScheme.slice(qIdx + 1);
-    const params = new URLSearchParams(qs);
-    const to = decodeURIComponent(rawTo);
-    const su = params.get('subject') || '';
-    const body = params.get('body') || '';
-    if (/Android/i.test(navigator.userAgent)) {
-      window.location.href = `intent://co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}#Intent;scheme=googlegmail;package=com.google.android.gm;end`;
-    } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = mailtoHref;
     } else {
+      const withoutScheme = mailtoHref.slice('mailto:'.length);
+      const qIdx = withoutScheme.indexOf('?');
+      const rawTo = qIdx === -1 ? withoutScheme : withoutScheme.slice(0, qIdx);
+      const qs = qIdx === -1 ? '' : withoutScheme.slice(qIdx + 1);
+      const params = new URLSearchParams(qs);
+      const to = decodeURIComponent(rawTo);
+      const su = params.get('subject') || '';
+      const body = params.get('body') || '';
       window.open(
         `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
         '_blank'
