@@ -11175,39 +11175,42 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           )}
 
           {/* Push Notification Test */}
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
-            <h3 className={`font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>🔔 Push Notifications</h3>
-            <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {Notification.permission === 'granted' ? '✅ Permission granted on this device' : Notification.permission === 'denied' ? '❌ Permission denied — enable in phone settings' : '⚠️ Permission not yet granted'}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={async () => {
-                  if (Notification.permission !== 'granted') {
-                    const perm = await Notification.requestPermission();
-                    if (perm === 'granted') await subscribeToPush(currentUser?.id);
-                    else { alert('Notifications blocked. Enable them in your phone settings for this site.'); return; }
-                  } else {
-                    await subscribeToPush(currentUser?.id);
-                  }
-                  await sendPushToEmployee(currentUser?.id, '🔔 Eyecon Moments', 'Push notifications are working!');
-                  alert('Test notification sent — you should receive it in a few seconds.');
-                }}
-                className="flex-1 py-2.5 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 text-sm"
-              >
-                📲 Send Test Notification
-              </button>
-              <button
-                onClick={async () => {
-                  await subscribeToPush(currentUser?.id);
-                  alert('✅ This device is now subscribed to push notifications.');
-                }}
-                className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                🔄 Re-subscribe
-              </button>
-            </div>
-          </div>
+          {(() => {
+            const notifSupported = typeof window !== 'undefined' && 'Notification' in window;
+            const notifPerm = notifSupported ? window.Notification.permission : 'unsupported';
+            const permLabel = notifPerm === 'granted' ? '✅ Permission granted on this device'
+              : notifPerm === 'denied' ? '❌ Permission denied — enable in phone settings'
+              : notifPerm === 'unsupported' ? '⚠️ Notifications not supported on this browser'
+              : '⚠️ Permission not yet granted';
+            const handleTest = async () => {
+              if (!notifSupported) { alert('Push notifications are not supported on this browser.'); return; }
+              if (window.Notification.permission !== 'granted') {
+                const perm = await window.Notification.requestPermission();
+                if (perm !== 'granted') { alert('Notifications blocked. Enable them in your phone settings for this site.'); return; }
+              }
+              await subscribeToPush(currentUser?.id);
+              await sendPushToEmployee(currentUser?.id, '🔔 Eyecon Moments', 'Push notifications are working!');
+              alert('Test notification sent — you should receive it in a few seconds.');
+            };
+            const handleResubscribe = async () => {
+              await subscribeToPush(currentUser?.id);
+              alert('✅ This device is now subscribed to push notifications.');
+            };
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                <h3 className={`font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>🔔 Push Notifications</h3>
+                <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{permLabel}</p>
+                <div className="flex gap-2">
+                  <button onClick={handleTest} className="flex-1 py-2.5 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 text-sm">
+                    📲 Send Test Notification
+                  </button>
+                  <button onClick={handleResubscribe} className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                    🔄 Re-subscribe
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Backup Section */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
