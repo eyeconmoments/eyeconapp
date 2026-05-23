@@ -442,6 +442,7 @@ function EyeconMoments() {
   const [jobSearchQuery, setJobSearchQuery] = useState('');
   const [archivedJobIds, setArchivedJobIds] = useState([]);
   const [inquiryFilter, setInquiryFilter] = useState('all');
+  const [showBookedSection, setShowBookedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
@@ -812,6 +813,28 @@ function EyeconMoments() {
 
   const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  // Mobile: original mailto: behaviour — opens the Gmail app directly.
+  // Desktop: opens Gmail web compose with the business account pre-selected.
+  const openMail = (mailtoHref) => {
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = mailtoHref;
+    } else {
+      const withoutScheme = mailtoHref.slice('mailto:'.length);
+      const qIdx = withoutScheme.indexOf('?');
+      const rawTo = qIdx === -1 ? withoutScheme : withoutScheme.slice(0, qIdx);
+      const qs = qIdx === -1 ? '' : withoutScheme.slice(qIdx + 1);
+      const params = new URLSearchParams(qs);
+      const to = decodeURIComponent(rawTo);
+      const su = params.get('subject') || '';
+      const body = params.get('body') || '';
+      window.open(
+        `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
+        '_blank'
+      );
+    }
+  };
+
   const getEmployeeName = (employeeId) => employees.find(e => e.id === employeeId)?.name || 'Unassigned';
   const getJobName = (jobId) => editingJobs.find(j => j.id === jobId)?.jobName || 'Unknown Job';
   const getEntryLabel = (entry) => entry.jobId ? getJobName(entry.jobId) : (entry.description || 'General Work');
@@ -1238,7 +1261,9 @@ function EyeconMoments() {
     if (email && amount) {
       const job = editingJobs.find(j => j.id === jobId);
       const firstName = (job?.customerName || '').split(' ')[0] || 'there';
-      openGmail(email, 'Payment Received — Eyecon Moments', `Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
+      const subject = encodeURIComponent('Payment Received — Eyecon Moments');
+      const body = encodeURIComponent(`Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
+      openMail(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
     }
   };
 
@@ -7085,7 +7110,7 @@ Notes: ${j.notes || 'none'}`;
       const body =
 `Dear ${job.customerName},
 
-Thank you for choosing Eyecon Moments to cover your upcoming event. Please find attached the detailed itinerary for your upcoming event on ${formattedDate}.
+Thank you for choosing Eyecon Moments to cover your upcoming event. Please find attached the detailed itinerary for ${formattedDate}.
 
 We have carefully planned each moment to ensure we capture all the special parts of your day. Please review the schedule and let us know if there are any changes or additions you would like to make.
 
@@ -7112,7 +7137,8 @@ Capturing Your Special Day
 `;
 
       // Open Gmail compose with pre-filled content
-      openGmail(clientEmail, subject, body);
+      const gmailUrl = `mailto:${clientEmail}?subject=${subject}&body=${body}`;
+      openMail(gmailUrl);
       
       // Also generate the PDF so user can attach it
       generateItineraryPDF(job);
@@ -9786,7 +9812,9 @@ Capturing Your Special Day
   // CRM
   if (currentView === 'crm') {
     const filteredInquiries = getFilteredInquiries();
-    
+    const bookedInquiries = inquiries.filter(i => i.status === 'booked');
+    const pipelineInquiries = filteredInquiries.filter(i => i.status !== 'booked');
+
     // Calculate CRM response stats
     const crmStats = {
       total: inquiries.length,
@@ -9883,11 +9911,11 @@ Capturing Your Special Day
               📸 Add from Screenshot
             </button>
             <div className="flex gap-2 overflow-x-auto">
-              {['all', 'new', 'contacted', 'quoted', 'booked', 'declined'].map(status => (
+              {['all', 'new', 'contacted', 'quoted', 'declined'].map(status => (
                 <button key={status} onClick={() => setInquiryFilter(status)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
-                    inquiryFilter === status 
-                      ? 'bg-blue-500 text-white' 
+                    inquiryFilter === status
+                      ? 'bg-blue-500 text-white'
                       : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                   }`}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -9964,7 +9992,7 @@ If you have any questions or would like to discuss anything further, please don'
 
 Kind regards,
 Eyecon Moments`;
-                      openGmail(followUpInquiry.email, subject, body);
+                      openMail(`mailto:${encodeURIComponent(followUpInquiry.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
                     }}
                     className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600"
                   >
@@ -10060,7 +10088,7 @@ www.eyeconmoments.co.uk
 
 ________________________________
 This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`;
-              openGmail(inq.email, subject, body);
+              openMail(`mailto:${inq.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
@@ -10146,8 +10174,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
             );
           })()}
 
-          {/* Inquiry cards */}
-          {filteredInquiries.map(inquiry => {
+          {/* Inquiry cards — pipeline (non-booked) */}
+          {pipelineInquiries.map(inquiry => {
             const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
             const needsResponse = inquiry.status === 'new' && daysSince > 1;
             const daysSinceQuoted = inquiry.status === 'quoted' && inquiry.quotedDate 
@@ -10302,6 +10330,69 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               </div>
             );
           })}
+
+          {/* Booked — collapsible fold */}
+          {bookedInquiries.length > 0 && (
+            <div className={`rounded-lg shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <button
+                onClick={() => setShowBookedSection(v => !v)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} transition-colors`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-green-500 text-lg">✓</span>
+                  <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    Booked
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'}`}>
+                    {bookedInquiries.length}
+                  </span>
+                </span>
+                <span className={`text-lg transition-transform duration-200 ${showBookedSection ? 'rotate-180' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>▾</span>
+              </button>
+              {showBookedSection && (
+                <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                  {bookedInquiries.map(inquiry => {
+                    const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
+                    return (
+                      <div key={inquiry.id} className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-start gap-3">
+                            <label className="cursor-pointer shrink-0" title="Tap to upload screenshot">
+                              <input type="file" accept="image/*" className="hidden" onChange={e => { if (e.target.files[0]) uploadInquiryPhoto(inquiry.id, e.target.files[0]); }} />
+                              {inquiry.contactPhoto
+                                ? <img src={inquiry.contactPhoto} alt="contact" className="w-12 h-12 rounded-lg object-cover border-2 border-green-200" />
+                                : <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-xl ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>✓</div>
+                              }
+                            </label>
+                            <div>
+                              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inquiry.customerName}</h3>
+                              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{inquiry.eventType} — {formatDate(inquiry.eventDate)}</p>
+                              <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Submitted {daysSince} days ago</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <button onClick={() => deleteInquiry(inquiry.id)} className="text-red-400 hover:text-red-600 text-xs" title="Delete">🗑️</button>
+                            <select
+                              value={inquiry.status}
+                              onChange={e => updateInquiryStatus(inquiry.id, e.target.value)}
+                              className={`text-xs rounded px-2 py-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                              {['new','contacted','quoted','booked','declined'].map(s => (
+                                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {inquiry.notes && (
+                          <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inquiry.notes}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
           {/* CRM Screenshot AI Modal */}
@@ -10346,7 +10437,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               const crmPayRef = crmEventDateRaw ? new Date(crmEventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
               const subject = `${qType} Quote - Eyecon Moments`;
               const body = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind regards,\nEyecon Moments`;
-              openGmail(quoteData.clientEmail, subject, body);
+              openMail(`mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
               {
                 const existingInq = inquiries.find(i => i.id === crmQuoteInquiry.id);
@@ -13639,7 +13730,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const eventDateRaw = quoteData.dates[0]?.date;
       const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
       const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind regards,\nEyecon Moments`;
-      openGmail(quoteData.clientEmail, subjectText, bodyText);
+      openMail(`mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`);
 
       // Save to CRM
       try {
