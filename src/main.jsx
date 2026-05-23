@@ -816,7 +816,8 @@ function EyeconMoments() {
     const su = params.get('subject') || '';
     const body = params.get('body') || '';
     if (/Android/i.test(navigator.userAgent)) {
-      window.location.href = `intent://send?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}#Intent;scheme=mailto;package=com.google.android.gm;end`;
+      // intent:EMAIL?subject=...&body=... → Android resolves to mailto:EMAIL?subject=...&body=...
+      window.location.href = `intent:${encodeURIComponent(to)}?subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}#Intent;scheme=mailto;package=com.google.android.gm;end`;
     } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
       window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
     } else {
