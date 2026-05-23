@@ -802,13 +802,10 @@ function EyeconMoments() {
   const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // On mobile: use mailto: so the Gmail app opens directly.
-  // On desktop: open Gmail web compose so the business account is used.
+  // On mobile: use the Gmail app's deep-link scheme (googlegmail://) so it opens
+  // the Gmail app directly, not Gmail in the browser. Desktop: Gmail web compose
+  // with the business account pre-selected.
   const openMail = (mailtoHref) => {
-    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      window.location.href = mailtoHref;
-      return;
-    }
     const withoutScheme = mailtoHref.slice('mailto:'.length);
     const qIdx = withoutScheme.indexOf('?');
     const rawTo = qIdx === -1 ? withoutScheme : withoutScheme.slice(0, qIdx);
@@ -817,10 +814,14 @@ function EyeconMoments() {
     const to = decodeURIComponent(rawTo);
     const su = params.get('subject') || '';
     const body = params.get('body') || '';
-    window.open(
-      `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
-      '_blank'
-    );
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
+    } else {
+      window.open(
+        `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
+        '_blank'
+      );
+    }
   };
 
   const getEmployeeName = (employeeId) => employees.find(e => e.id === employeeId)?.name || 'Unassigned';
