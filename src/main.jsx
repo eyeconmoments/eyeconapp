@@ -11015,6 +11015,31 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     );
   }
 
+  // Force unsubscribe any old subscription then resubscribe with current VAPID key
+  const forceResubscribe = async (userId) => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) await existing.unsubscribe();
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY,
+      });
+      setPushSubscription(sub);
+      const uid = userId ?? currentUser?.id;
+      if (uid) {
+        await db.from('push_subscriptions').upsert(
+          [{ employee_id: uid, subscription: sub.toJSON() }],
+          { onConflict: 'employee_id' }
+        );
+      }
+      return sub;
+    } catch (err) {
+      return null;
+    }
+  };
+
   // Backup helpers — defined here so they're available inside the employees early-return block
   const generateBackup = () => {
     const backup = {
@@ -11235,13 +11260,24 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 const perm = await window.Notification.requestPermission();
                 if (perm !== 'granted') { alert('Notifications blocked. Enable them in your phone settings for this site.'); return; }
               }
-              await subscribeToPush(currentUser?.id);
-              await sendPushToEmployee(currentUser?.id, '🔔 Eyecon Moments', 'Push notifications are working!');
-              alert('Test notification sent — you should receive it in a few seconds.');
+              const sub = await forceResubscribe(currentUser?.id);
+              if (!sub) { alert('❌ Failed to create push subscription. Make sure you are using the installed PWA.'); return; }
+              try {
+                const res = await fetch('/.netlify/functions/send-push', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ subscriptions: [sub.toJSON()], title: '🔔 Eyecon Moments', body: 'Push notifications are working!' }),
+                });
+                const json = await res.json();
+                if (json.sent > 0) alert('✅ Test notification sent! You should receive it now.');
+                else alert(`❌ Push failed: ${JSON.stringify(json)}`);
+              } catch (err) {
+                alert(`❌ Error: ${err.message}`);
+              }
             };
             const handleResubscribe = async () => {
-              await subscribeToPush(currentUser?.id);
-              alert('✅ This device is now subscribed to push notifications.');
+              const sub = await forceResubscribe(currentUser?.id);
+              alert(sub ? '✅ Re-subscribed successfully. Test notification should work now.' : '❌ Re-subscribe failed — try opening the app in Chrome.');
             };
             return (
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
