@@ -13255,52 +13255,83 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const memoryStickCost = costOverrides.memoryStick ?? 25;
 
       let total = 0;
-      const breakdown = [];
-
-      quoteData.dates.forEach((day, idx) => {
+      const multiDay = quoteData.dates.length > 1;
+      const groups = quoteData.dates.map((day, idx) => {
         const start = new Date(`2025-01-01T${day.startTime}`);
         const end = new Date(`2025-01-01T${day.endTime}`);
         const hours = Math.max(0, (end - start) / 3600000);
-        const label = quoteData.dates.length > 1 ? `Day ${idx + 1} – ` : '';
+        const hoursLabel = hours % 1 === 0 ? `${hours}h` : `${hours.toFixed(1)}h`;
 
         const dv = day.video ?? quoteData.wantVideo ?? true;
         const dp = day.photo ?? quoteData.wantPhoto ?? true;
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
+        const dist = day.distance || 0;
+
+        const dateFmt = day.date
+          ? new Date(day.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+          : '';
+
+        const items = [];
 
         if (dv) {
           const staff = dvt === 'dual' ? 2 : 1;
-          const amt = hours * shootRate * staff;
-          total += amt;
-          breakdown.push({ label: `${label}Videographer shoot (${hours}h × ${staff} × £${shootRate}/hr)`, amount: amt });
+          const shootAmt = hours * shootRate * staff;
+          total += shootAmt;
+          items.push({
+            label: `${dvt === 'dual' ? 'Dual' : 'Single'} videographer – shoot`,
+            detail: `${staff} ${staff === 1 ? 'person' : 'people'} × ${hoursLabel} × £${shootRate}/hr`,
+            amount: shootAmt,
+          });
           const editAmt = dvt === 'dual' ? videoEditDual : videoEditSingle;
           total += editAmt;
-          breakdown.push({ label: `${label}Video editing (${dvt})`, amount: editAmt });
+          items.push({
+            label: 'Video editing',
+            detail: `${dvt === 'dual' ? 'Dual-crew' : 'Single-crew'} edit (flat rate)`,
+            amount: editAmt,
+          });
         }
+
         if (dp) {
-          const amt = hours * dnp * shootRate;
-          total += amt;
-          breakdown.push({ label: `${label}Photographer shoot (${hours}h × ${dnp} × £${shootRate}/hr)`, amount: amt });
+          const shootAmt = hours * dnp * shootRate;
+          total += shootAmt;
+          items.push({
+            label: `${dnp >= 2 ? `${dnp} photographers` : 'Single photographer'} – shoot`,
+            detail: `${dnp} ${dnp === 1 ? 'person' : 'people'} × ${hoursLabel} × £${shootRate}/hr`,
+            amount: shootAmt,
+          });
           const editAmt = dnp >= 2 ? photoEditDual : photoEditSingle;
           total += editAmt;
-          breakdown.push({ label: `${label}Photo editing (${dnp >= 2 ? 'dual' : 'single'})`, amount: editAmt });
+          items.push({
+            label: 'Photo editing',
+            detail: `${dnp >= 2 ? 'Dual-photographer' : 'Single-photographer'} edit (flat rate)`,
+            amount: editAmt,
+          });
         }
-      });
 
-      quoteData.dates.forEach((day, idx) => {
-        const dist = day.distance || 0;
         if (dist > 0) {
-          const amt = calculateMileageCost(dist);
-          total += amt;
-          const label = quoteData.dates.length > 1 ? `Day ${idx + 1} – ` : '';
-          breakdown.push({ label: `${label}Travel (${dist} miles return)`, amount: amt });
+          const travelAmt = calculateMileageCost(dist);
+          total += travelAmt;
+          items.push({
+            label: 'Travel',
+            detail: `${dist} miles × £0.45 × 2 (return)`,
+            amount: travelAmt,
+          });
         }
+
+        return {
+          dayLabel: multiDay ? `Day ${idx + 1}` : 'Shoot day',
+          date: dateFmt,
+          timeRange: (day.startTime && day.endTime) ? `${day.startTime}–${day.endTime}` : '',
+          hours: hoursLabel,
+          items,
+        };
       });
 
       total += memoryStickCost;
-      breakdown.push({ label: 'Memory stick', amount: memoryStickCost });
+      const fixed = [{ label: 'Memory stick', detail: 'USB delivery', amount: memoryStickCost }];
 
-      return { total, breakdown };
+      return { total, groups, fixed };
     };
     
     const calculateQuote = () => {
@@ -13365,7 +13396,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     };
 
     const quote = calculateQuote();
-    const { total: costs, breakdown: costBreakdown } = calculateCosts();
+    const { total: costs, groups: costGroups, fixed: costFixed } = calculateCosts();
     const discountAmount = quoteData.discount || 0;
     const adminAdj = quoteData.adminPriceAdjustment || 0;
     const priceOverride = quoteData.priceOverride || 0;
@@ -14189,15 +14220,45 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       </div>
                     )}
 
-                    {/* Line items */}
-                    <div className={`rounded-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                      {costBreakdown.map((item, i) => (
-                        <div key={i} className={`flex justify-between items-center px-3 py-2 text-xs ${i % 2 === 0 ? (darkMode ? 'bg-gray-800' : 'bg-white') : (darkMode ? 'bg-gray-750' : 'bg-gray-50')} ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                          <span>{item.label}</span>
-                          <span className="font-semibold ml-2 shrink-0">£{item.amount.toFixed(2)}</span>
+                    {/* Per-day groups */}
+                    <div className={`rounded-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      {costGroups.map((group, gi) => (
+                        <div key={gi}>
+                          {/* Day header */}
+                          <div className={`flex items-center justify-between px-3 py-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                            <span className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                              {group.dayLabel}{group.date ? ` · ${group.date}` : ''}
+                            </span>
+                            {group.timeRange && (
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                                {group.timeRange} ({group.hours})
+                              </span>
+                            )}
+                          </div>
+                          {/* Day line items */}
+                          {group.items.map((item, ii) => (
+                            <div key={ii} className={`flex items-start justify-between px-4 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'}`}>
+                              <div className="flex-1 min-w-0 pr-2">
+                                <p className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.label}</p>
+                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.detail}</p>
+                              </div>
+                              <span className={`text-xs font-bold shrink-0 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>£{item.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
                         </div>
                       ))}
-                      <div className={`flex justify-between items-center px-3 py-2 font-bold text-sm border-t ${darkMode ? 'border-gray-600 bg-gray-800 text-white' : 'border-gray-300 bg-gray-100 text-gray-900'}`}>
+                      {/* Fixed costs (memory stick etc) */}
+                      {costFixed.map((item, i) => (
+                        <div key={i} className={`flex items-start justify-between px-4 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'}`}>
+                          <div>
+                            <p className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.label}</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.detail}</p>
+                          </div>
+                          <span className={`text-xs font-bold shrink-0 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>£{item.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      {/* Total row */}
+                      <div className={`flex justify-between items-center px-3 py-2.5 font-bold text-sm ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900'}`}>
                         <span>Total Costs</span>
                         <span className="text-red-500">£{costs.toFixed(2)}</span>
                       </div>
