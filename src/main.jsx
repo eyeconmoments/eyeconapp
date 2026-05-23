@@ -269,6 +269,7 @@ function EyeconMoments() {
   const [itineraryShareModal, setItineraryShareModal] = useState(null); // jobId being shared
   const [itineraryShareWith, setItineraryShareWith] = useState([]); // selected employee IDs
   const [adminAssignedOpen, setAdminAssignedOpen] = useState(false);
+  const [otherJobsOpen, setOtherJobsOpen] = useState(false);
   const [selectedCalendarEvents, setSelectedCalendarEvents] = useState([]);
   const [fileChangeHistory, setFileChangeHistory] = useState([]);
   const [showChangeHistory, setShowChangeHistory] = useState(true);
@@ -5448,7 +5449,7 @@ Notes: ${j.notes || 'none'}`;
                     onClick={() => initiateClockOut(liveEntry.id)}
                     className="flex flex-col items-end gap-0.5 bg-red-500 bg-opacity-90 hover:bg-opacity-100 px-3 py-2 rounded-xl text-white"
                   >
-                    <span className="text-xs font-bold flex items-center gap-1">🔴 Clocked In</span>
+                    <span className="text-xs font-bold flex items-center gap-1">🔴 {calculateElapsedTime(liveEntry.clockIn)}</span>
                     <span className="text-xs opacity-80 truncate max-w-[120px]">{liveJob?.jobName || liveEntry.description || 'General'}</span>
                     <span className="text-xs font-semibold mt-0.5 underline">Tap to Clock Out</span>
                   </button>
@@ -5561,6 +5562,58 @@ Notes: ${j.notes || 'none'}`;
               )}
             </div>
           )}
+
+          {/* Other Jobs section */}
+          {(() => {
+            const assignedIds = new Set(getUserAssignedJobs(currentUser.id).map(j => j.id));
+            const liveEntry = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
+            const otherJobs = editingJobs.filter(j => !assignedIds.has(j.id) && !archivedJobIds.includes(j.id));
+            if (otherJobs.length === 0) return null;
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
+                <button onClick={() => setOtherJobsOpen(o => !o)} className={`w-full flex justify-between items-center p-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                  <h3 className="font-bold">Other Jobs ({otherJobs.length})</h3>
+                  <span className="text-lg">{otherJobsOpen ? '▲' : '▼'}</span>
+                </button>
+                {otherJobsOpen && (
+                  <div className="px-4 pb-4 space-y-2">
+                    {otherJobs.map(job => {
+                      const isLiveOnThis = liveEntry?.jobId === job.id;
+                      return (
+                        <div key={job.id} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs ${isLiveOnThis ? 'text-green-500' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {isLiveOnThis ? `🟢 ${calculateElapsedTime(liveEntry.clockIn)}` : job.deadline ? `Due ${new Date(job.deadline).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : 'No deadline'}
+                            </p>
+                          </div>
+                          {isLiveOnThis
+                            ? <button onClick={() => initiateClockOut(liveEntry.id)} className="text-xs bg-red-500 text-white px-2 py-1 rounded ml-2 flex-shrink-0">Clock Out</button>
+                            : <button onClick={async () => {
+                                await handleClockIn(job.id);
+                                // auto-assign first unassigned video stage or photo to this user
+                                const fresh = editingJobs.find(j => j.id === job.id);
+                                if (fresh) {
+                                  const unassignedStage = fresh.stages?.find(s => !s.assignedTo && s.status !== 'completed');
+                                  if (unassignedStage) {
+                                    const updatedStages = fresh.stages.map(s => s.id === unassignedStage.id ? {...s, assignedTo: currentUser.id} : s);
+                                    await db.from('jobs').update({ stages: updatedStages }).eq('id', job.id);
+                                    setEditingJobs(prev => prev.map(j => j.id === job.id ? {...j, stages: updatedStages} : j));
+                                  } else if (fresh.hasPhotos && !fresh.photoAssignedTo) {
+                                    await db.from('jobs').update({ photo_assigned_to: currentUser.id }).eq('id', job.id);
+                                    setEditingJobs(prev => prev.map(j => j.id === job.id ? {...j, photoAssignedTo: currentUser.id} : j));
+                                  }
+                                }
+                              }} className="text-xs bg-green-500 text-white px-2 py-1 rounded ml-2 flex-shrink-0">Clock In</button>
+                          }
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Add Photo Editing Modal */}
           {addPhotoModal && (() => {
