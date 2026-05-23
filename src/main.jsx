@@ -461,6 +461,8 @@ function EyeconMoments() {
   const [showAIJobModal, setShowAIJobModal] = useState(false);
   const [showManualJobModal, setShowManualJobModal] = useState(false);
   const [showProfitAnalysis, setShowProfitAnalysis] = useState(false);
+  const [editingCosts, setEditingCosts] = useState(false);
+  const [costOverrides, setCostOverrides] = useState({});
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
 
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
@@ -13245,39 +13247,60 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     
     // Calculate costs (for profit calculation)
     const calculateCosts = () => {
-      let costs = 0;
-      quoteData.dates.forEach((day) => {
+      const shootRate = costOverrides.shootRate ?? 13;
+      const videoEditDual = costOverrides.videoEditDual ?? 155;
+      const videoEditSingle = costOverrides.videoEditSingle ?? 135;
+      const photoEditDual = costOverrides.photoEditDual ?? 65;
+      const photoEditSingle = costOverrides.photoEditSingle ?? 45;
+      const memoryStickCost = costOverrides.memoryStick ?? 25;
+
+      let total = 0;
+      const breakdown = [];
+
+      quoteData.dates.forEach((day, idx) => {
         const start = new Date(`2025-01-01T${day.startTime}`);
         const end = new Date(`2025-01-01T${day.endTime}`);
-        const hours = (end - start) / (1000 * 60 * 60);
-        
-        // Staff costs at £13/hour
+        const hours = Math.max(0, (end - start) / 3600000);
+        const label = quoteData.dates.length > 1 ? `Day ${idx + 1} – ` : '';
+
         const dv = day.video ?? quoteData.wantVideo ?? true;
         const dp = day.photo ?? quoteData.wantPhoto ?? true;
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
-        if (dv) costs += hours * 13 * (dvt === 'dual' ? 2 : 1);
-        if (dp) costs += hours * dnp * 13;
+
+        if (dv) {
+          const staff = dvt === 'dual' ? 2 : 1;
+          const amt = hours * shootRate * staff;
+          total += amt;
+          breakdown.push({ label: `${label}Videographer shoot (${hours}h × ${staff} × £${shootRate}/hr)`, amount: amt });
+          const editAmt = dvt === 'dual' ? videoEditDual : videoEditSingle;
+          total += editAmt;
+          breakdown.push({ label: `${label}Video editing (${dvt})`, amount: editAmt });
+        }
+        if (dp) {
+          const amt = hours * dnp * shootRate;
+          total += amt;
+          breakdown.push({ label: `${label}Photographer shoot (${hours}h × ${dnp} × £${shootRate}/hr)`, amount: amt });
+          const editAmt = dnp >= 2 ? photoEditDual : photoEditSingle;
+          total += editAmt;
+          breakdown.push({ label: `${label}Photo editing (${dnp >= 2 ? 'dual' : 'single'})`, amount: editAmt });
+        }
       });
-      // Add travel costs (per day)
-      quoteData.dates.forEach(day => {
+
+      quoteData.dates.forEach((day, idx) => {
         const dist = day.distance || 0;
-        if (dist > 0) costs += calculateMileageCost(dist);
+        if (dist > 0) {
+          const amt = calculateMileageCost(dist);
+          total += amt;
+          const label = quoteData.dates.length > 1 ? `Day ${idx + 1} – ` : '';
+          breakdown.push({ label: `${label}Travel (${dist} miles return)`, amount: amt });
+        }
       });
-      // Editing costs — flat fee per day
-      // Video: single = £135 (cut £50 + music £50 + colour £25 + intros £10)
-      //        dual   = £155 (cut £70 + music £50 + colour £25 + intros £10)
-      // Photo: single photographer = £45, dual = £65
-      quoteData.dates.forEach(day => {
-        const dv = day.video ?? quoteData.wantVideo ?? true;
-        const dp = day.photo ?? quoteData.wantPhoto ?? true;
-        const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
-        const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
-        if (dv) costs += dvt === 'dual' ? 155 : 135;
-        if (dp) costs += dnp >= 2 ? 65 : 45;
-      });
-      costs += 25; // Memory stick
-      return costs;
+
+      total += memoryStickCost;
+      breakdown.push({ label: 'Memory stick', amount: memoryStickCost });
+
+      return { total, breakdown };
     };
     
     const calculateQuote = () => {
@@ -13342,7 +13365,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     };
 
     const quote = calculateQuote();
-    const costs = calculateCosts();
+    const { total: costs, breakdown: costBreakdown } = calculateCosts();
     const discountAmount = quoteData.discount || 0;
     const adminAdj = quoteData.adminPriceAdjustment || 0;
     const priceOverride = quoteData.priceOverride || 0;
@@ -14091,32 +14114,95 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               })()}
             </div>
             
-            {/* Profit Calculator (Admin Only View) — hidden by default */}
+            {/* Profit Analysis */}
             <div className="mt-4">
               <button
                 onClick={() => setShowProfitAnalysis(p => !p)}
-                className={`w-full py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-between ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                className={`w-full py-2 px-3 rounded-lg text-sm font-semibold flex items-center justify-between ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               >
                 <span>📊 Profit Analysis</span>
-                <span>{showProfitAnalysis ? '🙈 Hide' : '👁 Show'}</span>
+                <span className="text-xs">{showProfitAnalysis ? '▲ Hide' : '▼ Show'}</span>
               </button>
               {showProfitAnalysis && (
-                <div className={`p-3 mt-2 ${darkMode ? 'bg-blue-900' : 'bg-blue-50'} rounded-lg`}>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Est. Costs</p>
-                      <p className="font-bold text-red-600">£{costs.toFixed(2)}</p>
+                <div className={`mt-2 rounded-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  {/* Summary strip */}
+                  <div className={`grid grid-cols-3 divide-x ${darkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
+                    <div className="py-3 text-center">
+                      <p className={`text-xs mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Est. Costs</p>
+                      <p className="font-bold text-red-500">£{costs.toFixed(2)}</p>
                     </div>
-                    <div>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Profit</p>
-                      <p className={`font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>£{profit.toFixed(2)}</p>
+                    <div className="py-3 text-center">
+                      <p className={`text-xs mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Profit</p>
+                      <p className={`font-bold ${profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>£{profit.toFixed(2)}</p>
                     </div>
-                    <div>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Margin</p>
-                      <p className={`font-bold ${Number(profitMargin) >= 40 ? 'text-green-600' : Number(profitMargin) >= 20 ? 'text-yellow-600' : 'text-red-600'}`}>{profitMargin}%</p>
+                    <div className="py-3 text-center">
+                      <p className={`text-xs mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Margin</p>
+                      <p className={`font-bold ${Number(profitMargin) >= 40 ? 'text-green-500' : Number(profitMargin) >= 20 ? 'text-yellow-500' : 'text-red-500'}`}>{profitMargin}%</p>
                     </div>
                   </div>
-                  <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Shoot: £13/hr/person · Edit: video single £135 / dual £155 · photo single £45 / dual £65 · Memory stick £25</p>
+
+                  {/* Cost breakdown */}
+                  <div className={`px-3 py-3 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Cost Breakdown</span>
+                      <button
+                        onClick={() => setEditingCosts(e => !e)}
+                        className={`text-xs px-2 py-0.5 rounded font-semibold ${editingCosts ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+                      >
+                        {editingCosts ? '✓ Done' : '✏️ Edit Rates'}
+                      </button>
+                    </div>
+
+                    {/* Editable rates panel */}
+                    {editingCosts && (
+                      <div className={`mb-3 p-3 rounded-lg space-y-2 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-amber-50 border border-amber-200'}`}>
+                        <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>Override cost rates for this quote</p>
+                        {[
+                          { key: 'shootRate', label: 'Shooter rate (£/hr/person)', def: 13 },
+                          { key: 'videoEditDual', label: 'Video editing – dual (£/day)', def: 155 },
+                          { key: 'videoEditSingle', label: 'Video editing – single (£/day)', def: 135 },
+                          { key: 'photoEditDual', label: 'Photo editing – dual (£/day)', def: 65 },
+                          { key: 'photoEditSingle', label: 'Photo editing – single (£/day)', def: 45 },
+                          { key: 'memoryStick', label: 'Memory stick (£)', def: 25 },
+                        ].map(({ key, label, def }) => (
+                          <div key={key} className="flex items-center justify-between gap-2">
+                            <span className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{label}</span>
+                            <div className="flex items-center gap-1">
+                              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>£</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.50"
+                                value={costOverrides[key] ?? def}
+                                onChange={e => setCostOverrides(o => ({ ...o, [key]: parseFloat(e.target.value) || 0 }))}
+                                className={`w-20 px-2 py-1 text-xs border rounded text-right font-semibold ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => setCostOverrides({})}
+                          className={`text-xs mt-1 ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
+                        >
+                          Reset to defaults
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Line items */}
+                    <div className={`rounded-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      {costBreakdown.map((item, i) => (
+                        <div key={i} className={`flex justify-between items-center px-3 py-2 text-xs ${i % 2 === 0 ? (darkMode ? 'bg-gray-800' : 'bg-white') : (darkMode ? 'bg-gray-750' : 'bg-gray-50')} ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          <span>{item.label}</span>
+                          <span className="font-semibold ml-2 shrink-0">£{item.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      <div className={`flex justify-between items-center px-3 py-2 font-bold text-sm border-t ${darkMode ? 'border-gray-600 bg-gray-800 text-white' : 'border-gray-300 bg-gray-100 text-gray-900'}`}>
+                        <span>Total Costs</span>
+                        <span className="text-red-500">£{costs.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
