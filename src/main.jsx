@@ -863,6 +863,14 @@ function EyeconMoments() {
     return `${hours}h ${minutes}m`;
   };
 
+  const playClockSound = (type) => {
+    try {
+      const audio = new Audio(type === 'in' ? '/clockin.mp3' : '/clockout.mp3');
+      audio.volume = 0.8;
+      audio.play().catch(() => {});
+    } catch (_) {}
+  };
+
   const handleClockIn = async (jobId, description = null) => {
     // Auto-clock-out of any existing active entry first
     const existingActive = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
@@ -875,6 +883,7 @@ function EyeconMoments() {
     if (error) { alert('Clock in failed: ' + error.message); return; }
     if (data && data[0]) {
       setTimeEntries(prev => [...prev, rowToEntry(data[0])]);
+      playClockSound('in');
       const jobLabel = jobId ? (editingJobs.find(j => j.id === jobId)?.jobName || 'a job') : (description || 'general work');
       sendActivityPush('🟢 Clocked In', `${currentUser.name} clocked in — ${jobLabel}`);
     }
@@ -890,6 +899,7 @@ function EyeconMoments() {
       if (progressNote) updateData.progress_note = progressNote;
       await db.from('time_entries').update(updateData).eq('id', entryId);
       setTimeEntries(prev => prev.map(e => e.id === entryId ? { ...e, clockOut, hoursWorked, progressPercent, progressNote } : e));
+      playClockSound('out');
       const jobLabel = entry.jobId ? (editingJobs.find(j => j.id === entry.jobId)?.jobName || 'a job') : (entry.description || 'general work');
       const emp = employees.find(e => e.id === entry.employeeId);
       sendActivityPush('🔴 Clocked Out', `${emp?.name || 'Staff'} clocked out — ${jobLabel} (${hoursWorked}h)`);
