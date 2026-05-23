@@ -871,6 +871,34 @@ function EyeconMoments() {
     } catch (_) {}
   };
 
+  const showPersistentClockNotification = async (jobLabel) => {
+    try {
+      if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
+      const reg = await navigator.serviceWorker.ready;
+      // Close any previous clock-status notification first
+      const existing = await reg.getNotifications({ tag: 'eyecon-clock-status' });
+      existing.forEach(n => n.close());
+      await reg.showNotification('🟢 Currently Clocked In', {
+        body: jobLabel,
+        tag: 'eyecon-clock-status',
+        requireInteraction: true,
+        renotify: false,
+        icon: '/logo.png',
+        badge: '/logo.png',
+        silent: true,
+      });
+    } catch (_) {}
+  };
+
+  const clearPersistentClockNotification = async () => {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const notifications = await reg.getNotifications({ tag: 'eyecon-clock-status' });
+      notifications.forEach(n => n.close());
+    } catch (_) {}
+  };
+
   const handleClockIn = async (jobId, description = null) => {
     // Auto-clock-out of any existing active entry first
     const existingActive = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
@@ -885,6 +913,7 @@ function EyeconMoments() {
       setTimeEntries(prev => [...prev, rowToEntry(data[0])]);
       playClockSound('in');
       const jobLabel = jobId ? (editingJobs.find(j => j.id === jobId)?.jobName || 'a job') : (description || 'general work');
+      showPersistentClockNotification(jobLabel);
       sendActivityPush('🟢 Clocked In', `${currentUser.name} clocked in — ${jobLabel}`);
     }
   };
@@ -900,6 +929,7 @@ function EyeconMoments() {
       await db.from('time_entries').update(updateData).eq('id', entryId);
       setTimeEntries(prev => prev.map(e => e.id === entryId ? { ...e, clockOut, hoursWorked, progressPercent, progressNote } : e));
       playClockSound('out');
+      clearPersistentClockNotification();
       const jobLabel = entry.jobId ? (editingJobs.find(j => j.id === entry.jobId)?.jobName || 'a job') : (entry.description || 'general work');
       const emp = employees.find(e => e.id === entry.employeeId);
       sendActivityPush('🔴 Clocked Out', `${emp?.name || 'Staff'} clocked out — ${jobLabel} (${hoursWorked}h)`);
