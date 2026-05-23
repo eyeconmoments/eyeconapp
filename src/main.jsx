@@ -816,7 +816,14 @@ function EyeconMoments() {
     const su = params.get('subject') || '';
     const body = params.get('body') || '';
     if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      window.open(`mailto:${to}?subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`);
+      // Programmatic anchor click is the most reliable way to trigger the system
+      // mail handler from a PWA — Chrome routes <a href="mailto:"> differently
+      // to window.location.href, bypassing the in-PWA navigation interception.
+      const a = document.createElement('a');
+      a.href = `mailto:${to}?subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } else {
       window.open(
         `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
@@ -6792,7 +6799,7 @@ LOGGING:
       const body = encodeURIComponent(
 `Dear ${job.customerName},
 
-Thank you for taking the time to work on this itinerary with us. Please find attached the detailed itinerary for your upcoming event on ${formattedDate}.
+Thank you for choosing Eyecon Moments to cover your upcoming event. Please find attached the detailed itinerary for ${formattedDate}.
 
 We have carefully planned each moment to ensure we capture all the special parts of your day. Please review the schedule and let us know if there are any changes or additions you would like to make.
 
