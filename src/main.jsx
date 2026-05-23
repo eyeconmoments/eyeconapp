@@ -802,9 +802,10 @@ function EyeconMoments() {
   const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // On mobile: use the Gmail app's deep-link scheme (googlegmail://) so it opens
-  // the Gmail app directly, not Gmail in the browser. Desktop: Gmail web compose
-  // with the business account pre-selected.
+  // Android: Android Intent URL targets the Gmail app package directly, bypassing
+  // Chrome's mailto handler that was opening Gmail web instead of the app.
+  // iOS: googlegmail:// scheme opens the Gmail app compose screen.
+  // Desktop: Gmail web compose with the business account pre-selected.
   const openMail = (mailtoHref) => {
     const withoutScheme = mailtoHref.slice('mailto:'.length);
     const qIdx = withoutScheme.indexOf('?');
@@ -814,7 +815,9 @@ function EyeconMoments() {
     const to = decodeURIComponent(rawTo);
     const su = params.get('subject') || '';
     const body = params.get('body') || '';
-    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    if (/Android/i.test(navigator.userAgent)) {
+      window.location.href = `intent://send?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}#Intent;scheme=mailto;package=com.google.android.gm;end`;
+    } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
       window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
     } else {
       window.open(
