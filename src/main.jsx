@@ -13253,6 +13253,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       const photoEditDual = costOverrides.photoEditDual ?? 65;
       const photoEditSingle = costOverrides.photoEditSingle ?? 45;
       const memoryStickCost = costOverrides.memoryStick ?? 25;
+      const itemAmt = (id, base) => costOverrides.items?.[id] ?? base;
 
       let total = 0;
       const multiDay = quoteData.dates.length > 1;
@@ -13276,46 +13277,66 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
 
         if (dv) {
           const staff = dvt === 'dual' ? 2 : 1;
-          const shootAmt = hours * shootRate * staff;
-          total += shootAmt;
+          const base = hours * shootRate * staff;
+          const id = `d${idx}_video_shoot`;
+          const amt = itemAmt(id, base);
+          total += amt;
           items.push({
+            id,
             label: `${dvt === 'dual' ? 'Dual' : 'Single'} videographer – shoot`,
             detail: `${staff} ${staff === 1 ? 'person' : 'people'} × ${hoursLabel} × £${shootRate}/hr`,
-            amount: shootAmt,
+            amount: amt,
+            base,
           });
-          const editAmt = dvt === 'dual' ? videoEditDual : videoEditSingle;
+          const editBase = dvt === 'dual' ? videoEditDual : videoEditSingle;
+          const editId = `d${idx}_video_edit`;
+          const editAmt = itemAmt(editId, editBase);
           total += editAmt;
           items.push({
+            id: editId,
             label: 'Video editing',
             detail: `${dvt === 'dual' ? 'Dual-crew' : 'Single-crew'} edit (flat rate)`,
             amount: editAmt,
+            base: editBase,
           });
         }
 
         if (dp) {
-          const shootAmt = hours * dnp * shootRate;
-          total += shootAmt;
+          const base = hours * dnp * shootRate;
+          const id = `d${idx}_photo_shoot`;
+          const amt = itemAmt(id, base);
+          total += amt;
           items.push({
+            id,
             label: `${dnp >= 2 ? `${dnp} photographers` : 'Single photographer'} – shoot`,
             detail: `${dnp} ${dnp === 1 ? 'person' : 'people'} × ${hoursLabel} × £${shootRate}/hr`,
-            amount: shootAmt,
+            amount: amt,
+            base,
           });
-          const editAmt = dnp >= 2 ? photoEditDual : photoEditSingle;
+          const editBase = dnp >= 2 ? photoEditDual : photoEditSingle;
+          const editId = `d${idx}_photo_edit`;
+          const editAmt = itemAmt(editId, editBase);
           total += editAmt;
           items.push({
+            id: editId,
             label: 'Photo editing',
             detail: `${dnp >= 2 ? 'Dual-photographer' : 'Single-photographer'} edit (flat rate)`,
             amount: editAmt,
+            base: editBase,
           });
         }
 
         if (dist > 0) {
-          const travelAmt = calculateMileageCost(dist);
-          total += travelAmt;
+          const base = calculateMileageCost(dist);
+          const id = `d${idx}_travel`;
+          const amt = itemAmt(id, base);
+          total += amt;
           items.push({
+            id,
             label: 'Travel',
             detail: `${dist} miles × £0.45 × 2 (return)`,
-            amount: travelAmt,
+            amount: amt,
+            base,
           });
         }
 
@@ -13328,8 +13349,10 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
         };
       });
 
-      total += memoryStickCost;
-      const fixed = [{ label: 'Memory stick', detail: 'USB delivery', amount: memoryStickCost }];
+      const memBase = memoryStickCost;
+      const memAmt = itemAmt('fixed_memory', memBase);
+      total += memAmt;
+      const fixed = [{ id: 'fixed_memory', label: 'Memory stick', detail: 'USB delivery', amount: memAmt, base: memBase }];
 
       return { total, groups, fixed };
     };
@@ -14212,51 +14235,66 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                           </div>
                         ))}
                         <button
-                          onClick={() => setCostOverrides({})}
+                          onClick={() => { setCostOverrides({}); }}
                           className={`text-xs mt-1 ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
                         >
-                          Reset to defaults
+                          Reset all to defaults
                         </button>
                       </div>
                     )}
 
                     {/* Per-day groups */}
                     <div className={`rounded-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                      {costGroups.map((group, gi) => (
-                        <div key={gi}>
-                          {/* Day header */}
-                          <div className={`flex items-center justify-between px-3 py-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                            <span className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                              {group.dayLabel}{group.date ? ` · ${group.date}` : ''}
-                            </span>
-                            {group.timeRange && (
-                              <span className={`text-xs font-semibold ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
-                                {group.timeRange} ({group.hours})
+                      {(() => {
+                        const setItemOverride = (id, val) => setCostOverrides(o => ({
+                          ...o, items: { ...(o.items || {}), [id]: parseFloat(val) || 0 }
+                        }));
+                        const renderItem = (item, key) => (
+                          <div key={key} className={`flex items-start justify-between px-4 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'}`}>
+                            <div className="flex-1 min-w-0 pr-3">
+                              <p className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.label}</p>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.detail}</p>
+                            </div>
+                            {editingCosts ? (
+                              <div className="flex items-center shrink-0">
+                                <span className={`text-xs mr-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.50"
+                                  value={costOverrides.items?.[item.id] ?? item.base}
+                                  onChange={e => setItemOverride(item.id, e.target.value)}
+                                  className={`w-20 px-2 py-0.5 text-xs border rounded text-right font-bold ${costOverrides.items?.[item.id] !== undefined ? (darkMode ? 'border-amber-500 bg-amber-900 text-amber-200' : 'border-amber-400 bg-amber-50 text-amber-800') : (darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800')}`}
+                                />
+                              </div>
+                            ) : (
+                              <span className={`text-xs font-bold shrink-0 ${costOverrides.items?.[item.id] !== undefined ? 'text-amber-500' : (darkMode ? 'text-gray-200' : 'text-gray-800')}`}>
+                                £{item.amount.toFixed(2)}
                               </span>
                             )}
                           </div>
-                          {/* Day line items */}
-                          {group.items.map((item, ii) => (
-                            <div key={ii} className={`flex items-start justify-between px-4 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'}`}>
-                              <div className="flex-1 min-w-0 pr-2">
-                                <p className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.label}</p>
-                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.detail}</p>
+                        );
+                        return (
+                          <>
+                            {costGroups.map((group, gi) => (
+                              <div key={gi}>
+                                <div className={`flex items-center justify-between px-3 py-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                  <span className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                    {group.dayLabel}{group.date ? ` · ${group.date}` : ''}
+                                  </span>
+                                  {group.timeRange && (
+                                    <span className={`text-xs font-semibold ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                                      {group.timeRange} ({group.hours})
+                                    </span>
+                                  )}
+                                </div>
+                                {group.items.map((item, ii) => renderItem(item, ii))}
                               </div>
-                              <span className={`text-xs font-bold shrink-0 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>£{item.amount.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                      {/* Fixed costs (memory stick etc) */}
-                      {costFixed.map((item, i) => (
-                        <div key={i} className={`flex items-start justify-between px-4 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'}`}>
-                          <div>
-                            <p className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.label}</p>
-                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.detail}</p>
-                          </div>
-                          <span className={`text-xs font-bold shrink-0 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>£{item.amount.toFixed(2)}</span>
-                        </div>
-                      ))}
+                            ))}
+                            {costFixed.map((item, i) => renderItem(item, `f${i}`))}
+                          </>
+                        );
+                      })()}
                       {/* Total row */}
                       <div className={`flex justify-between items-center px-3 py-2.5 font-bold text-sm ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900'}`}>
                         <span>Total Costs</span>
