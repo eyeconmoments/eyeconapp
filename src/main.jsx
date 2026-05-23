@@ -802,10 +802,12 @@ function EyeconMoments() {
   const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // PWA standalone mode: window.location.href for mailto: stays inside the PWA
-  // window and Chrome intercepts it (opening Gmail web). window.open() breaks out
-  // of the PWA context so Android's intent system routes mailto: to the Gmail app.
-  // Desktop: open Gmail web compose with the business account pre-selected.
+  // Desktop: Gmail web compose with the business account pre-selected.
+  // Android: Chrome Intent URL with scheme=googlegmail so Chrome passes control
+  //   directly to the Gmail app package (com.google.android.gm) instead of
+  //   intercepting the link and opening Gmail web. scheme=mailto never works here
+  //   because Chrome owns mailto: handling on Android.
+  // iOS: googlegmail:// URI scheme opens the Gmail app compose screen directly.
   const openMail = (mailtoHref) => {
     const withoutScheme = mailtoHref.slice('mailto:'.length);
     const qIdx = withoutScheme.indexOf('?');
@@ -815,15 +817,10 @@ function EyeconMoments() {
     const to = decodeURIComponent(rawTo);
     const su = params.get('subject') || '';
     const body = params.get('body') || '';
-    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      // Programmatic anchor click is the most reliable way to trigger the system
-      // mail handler from a PWA — Chrome routes <a href="mailto:"> differently
-      // to window.location.href, bypassing the in-PWA navigation interception.
-      const a = document.createElement('a');
-      a.href = `mailto:${to}?subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    if (/Android/i.test(navigator.userAgent)) {
+      window.location.href = `intent://co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}#Intent;scheme=googlegmail;package=com.google.android.gm;end`;
+    } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
     } else {
       window.open(
         `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
