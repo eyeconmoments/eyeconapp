@@ -802,10 +802,10 @@ function EyeconMoments() {
   const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // Android: Android Intent URL targets the Gmail app package directly, bypassing
-  // Chrome's mailto handler that was opening Gmail web instead of the app.
-  // iOS: googlegmail:// scheme opens the Gmail app compose screen.
-  // Desktop: Gmail web compose with the business account pre-selected.
+  // PWA standalone mode: window.location.href for mailto: stays inside the PWA
+  // window and Chrome intercepts it (opening Gmail web). window.open() breaks out
+  // of the PWA context so Android's intent system routes mailto: to the Gmail app.
+  // Desktop: open Gmail web compose with the business account pre-selected.
   const openMail = (mailtoHref) => {
     const withoutScheme = mailtoHref.slice('mailto:'.length);
     const qIdx = withoutScheme.indexOf('?');
@@ -815,11 +815,8 @@ function EyeconMoments() {
     const to = decodeURIComponent(rawTo);
     const su = params.get('subject') || '';
     const body = params.get('body') || '';
-    if (/Android/i.test(navigator.userAgent)) {
-      // intent:EMAIL?subject=...&body=... → Android resolves to mailto:EMAIL?subject=...&body=...
-      window.location.href = `intent:${encodeURIComponent(to)}?subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}#Intent;scheme=mailto;package=com.google.android.gm;end`;
-    } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      window.location.href = `googlegmail:///co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`;
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.open(`mailto:${to}?subject=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`);
     } else {
       window.open(
         `https://mail.google.com/mail/?view=cm&authuser=eyecon.moments%40gmail.com&to=${encodeURIComponent(to)}&su=${encodeURIComponent(su)}&body=${encodeURIComponent(body)}`,
