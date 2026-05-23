@@ -3505,9 +3505,9 @@ Notes: ${j.notes || 'none'}`;
                 </div>
               )}
               {showClockInPrompt && (() => {
-                const _ciJobs = getUserAssignedJobs(currentUser?.id);
-                const _ciIsGeneral = clockInGeneralDesc !== undefined && _ciJobs.length > 0
-                  ? false : false; // computed below per select value
+                const _ciAssigned = getUserAssignedJobs(currentUser?.id);
+                const _ciAssignedIds = new Set(_ciAssigned.map(j => j.id));
+                const _ciOther = editingJobs.filter(j => !_ciAssignedIds.has(j.id));
                 return (
                   <div className="p-6">
                     <div className="text-center mb-5">
@@ -3523,11 +3523,24 @@ Notes: ${j.notes || 'none'}`;
                         style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.35)', color:'white', outline:'none', appearance:'auto'}}
                       >
                         <option value="" style={{background:'#1a2535'}}>— Select a job —</option>
-                        {_ciJobs.map(job => (
-                          <option key={job.id} value={String(job.id)} style={{background:'#1a2535'}}>
-                            {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
-                          </option>
-                        ))}
+                        {_ciAssigned.length > 0 && (
+                          <optgroup label="── My Assigned Jobs ──" style={{background:'#1a2535', color:'#C1A76A'}}>
+                            {_ciAssigned.map(job => (
+                              <option key={job.id} value={String(job.id)} style={{background:'#1a2535', color:'white'}}>
+                                {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {_ciOther.length > 0 && (
+                          <optgroup label="── All Other Jobs ──" style={{background:'#1a2535', color:'#8a9bb0'}}>
+                            {_ciOther.map(job => (
+                              <option key={job.id} value={String(job.id)} style={{background:'#1a2535', color:'white'}}>
+                                {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                         <option value="general" style={{background:'#1a2535'}}>🔧 General / No specific job</option>
                       </select>
                       {clockInPickingJob === 'general' && (
@@ -5063,7 +5076,9 @@ Notes: ${j.notes || 'none'}`;
                 </div>
               )}
               {showClockInPrompt && (() => {
-                const _ciJobs = getUserAssignedJobs(currentUser?.id);
+                const _ciAssigned = getUserAssignedJobs(currentUser?.id);
+                const _ciAssignedIds = new Set(_ciAssigned.map(j => j.id));
+                const _ciOther = editingJobs.filter(j => !_ciAssignedIds.has(j.id));
                 return (
                   <div className="p-6">
                     <div className="text-center mb-5">
@@ -5079,11 +5094,24 @@ Notes: ${j.notes || 'none'}`;
                         style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.35)', color:'white', outline:'none', appearance:'auto'}}
                       >
                         <option value="" style={{background:'#1a2535'}}>— Select a job —</option>
-                        {_ciJobs.map(job => (
-                          <option key={job.id} value={String(job.id)} style={{background:'#1a2535'}}>
-                            {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
-                          </option>
-                        ))}
+                        {_ciAssigned.length > 0 && (
+                          <optgroup label="── My Assigned Jobs ──" style={{background:'#1a2535', color:'#C1A76A'}}>
+                            {_ciAssigned.map(job => (
+                              <option key={job.id} value={String(job.id)} style={{background:'#1a2535', color:'white'}}>
+                                {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {_ciOther.length > 0 && (
+                          <optgroup label="── All Other Jobs ──" style={{background:'#1a2535', color:'#8a9bb0'}}>
+                            {_ciOther.map(job => (
+                              <option key={job.id} value={String(job.id)} style={{background:'#1a2535', color:'white'}}>
+                                {job.jobName}{job.customerName ? ` · ${job.customerName}` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                         <option value="general" style={{background:'#1a2535'}}>🔧 General / No specific job</option>
                       </select>
                       {clockInPickingJob === 'general' && (
@@ -5382,12 +5410,27 @@ Notes: ${j.notes || 'none'}`;
                 <h2 className="text-2xl font-bold mb-1" style={{fontFamily:'Cormorant Garamond, serif'}}>{currentUser.name}</h2>
                 <p className="text-sm" style={{color:'rgba(255,255,255,0.6)'}}>You have {activeJobs.length} active jobs</p>
               </div>
-              <button 
-                onClick={() => setShowCalendarSync(true)}
-                className="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold"
-              >
-                📅 Sync Calendar
-              </button>
+              {(() => {
+                const liveEntry = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
+                const liveJob = liveEntry?.jobId ? editingJobs.find(j => j.id === liveEntry.jobId) : null;
+                return liveEntry ? (
+                  <button
+                    onClick={() => initiateClockOut(liveEntry.id)}
+                    className="flex flex-col items-end gap-0.5 bg-red-500 bg-opacity-90 hover:bg-opacity-100 px-3 py-2 rounded-xl text-white"
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1">🔴 Clocked In</span>
+                    <span className="text-xs opacity-80 truncate max-w-[120px]">{liveJob?.jobName || liveEntry.description || 'General'}</span>
+                    <span className="text-xs font-semibold mt-0.5 underline">Tap to Clock Out</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setClockInPickingJob(''); setShowClockInPrompt(true); }}
+                    className="bg-green-500 bg-opacity-90 hover:bg-opacity-100 px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold text-white"
+                  >
+                    🟢 Clock In
+                  </button>
+                );
+              })()}
             </div>
           </div>
 
