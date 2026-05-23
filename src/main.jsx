@@ -14,7 +14,7 @@ window._loadGoogleAPIs = () => new Promise((resolve) => {
 });
 
 const db = createClient('https://wgqamqzlfnjcqyprphkw.supabase.co', 'sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE');
-const VAPID_PUBLIC_KEY = 'BJYHvcBZl4MjltyfVL_QHqMaBhW-Ek9bHHJMH4tH4-myZGQzt7gH4E9KU7PMQXthXgJ2zQms5jlrU3ZHX5blPKA';
+const VAPID_PUBLIC_KEY = 'BL08gzSk-zy4zKtPKcMCsHs2EVa2uc9xQJ6dCcafzj61W_OQ9OM-uMUqOp2MRMepbFA1jLgdxvXnGi2K4BDNRK4';
 
 // DB helpers - convert snake_case rows to camelCase app objects
 const rowToJob = (r) => ({
