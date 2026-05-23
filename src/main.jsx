@@ -11015,6 +11015,53 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     );
   }
 
+  // Backup helpers — defined here so they're available inside the employees early-return block
+  const generateBackup = () => {
+    const backup = {
+      timestamp: new Date().toISOString(),
+      employees: employees,
+      editingJobs: editingJobs,
+      timeEntries: timeEntries,
+      inquiries: inquiries,
+      archivedJobIds: archivedJobIds,
+      fileChangeHistory: fileChangeHistory,
+      emergencyContactHistory: emergencyContactHistory,
+      looseThreads: looseThreads
+    };
+    return JSON.stringify(backup, null, 2);
+  };
+  const downloadBackup = () => {
+    const backup = generateBackup();
+    const blob = new Blob([backup], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `eyecon_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleRestoreBackup = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const backup = JSON.parse(e.target.result);
+          if (backup.employees) setEmployees(backup.employees);
+          if (backup.editingJobs) setEditingJobs(backup.editingJobs);
+          if (backup.looseThreads) setLooseThreads(backup.looseThreads);
+          if (backup.timeEntries) setTimeEntries(backup.timeEntries);
+          if (backup.inquiries) setInquiries(backup.inquiries);
+          if (backup.archivedJobIds) setArchivedJobIds(backup.archivedJobIds);
+          alert('Backup restored successfully!');
+        } catch (err) {
+          alert('Error restoring backup: Invalid file format');
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
   // EMPLOYEES
   if (currentView === 'employees') {
     return (
@@ -14365,53 +14412,6 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
   }
 
   // BACKUP SYSTEM VIEW (in settings or employees)
-  const generateBackup = () => {
-    const backup = {
-      timestamp: new Date().toISOString(),
-      employees: employees,
-      editingJobs: editingJobs,
-      timeEntries: timeEntries,
-      inquiries: inquiries,
-      archivedJobIds: archivedJobIds,
-      fileChangeHistory: fileChangeHistory,
-      emergencyContactHistory: emergencyContactHistory,
-      looseThreads: looseThreads
-    };
-    return JSON.stringify(backup, null, 2);
-  };
-  
-  const downloadBackup = () => {
-    const backup = generateBackup();
-    const blob = new Blob([backup], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `eyecon_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-  
-  const handleRestoreBackup = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const backup = JSON.parse(e.target.result);
-          if (backup.employees) setEmployees(backup.employees);
-          if (backup.editingJobs) setEditingJobs(backup.editingJobs);
-          if (backup.looseThreads) setLooseThreads(backup.looseThreads);
-          if (backup.timeEntries) setTimeEntries(backup.timeEntries);
-          if (backup.inquiries) setInquiries(backup.inquiries);
-          if (backup.archivedJobIds) setArchivedJobIds(backup.archivedJobIds);
-          alert('Backup restored successfully!');
-        } catch (err) {
-          alert('Error restoring backup: Invalid file format');
-        }
-      };
-      reader.readAsText(file);
-    }
-  };
 
   // FEEDBACK
   if (currentView === 'feedback') {
