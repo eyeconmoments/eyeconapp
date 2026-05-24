@@ -736,6 +736,30 @@ function EyeconMoments() {
     loadAll();
   }, []);
 
+  // Real-time sync: time_entries and jobs update live across all devices/tabs
+  useEffect(() => {
+    const channel = db.channel('eyecon-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'time_entries' }, ({ new: row }) => {
+        setTimeEntries(prev => prev.some(e => e.id === row.id) ? prev : [...prev, rowToEntry(row)]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'time_entries' }, ({ new: row }) => {
+        setTimeEntries(prev => prev.map(e => e.id === row.id ? rowToEntry(row) : e));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'jobs' }, ({ new: row }) => {
+        if (!row.archived) setEditingJobs(prev => prev.some(j => j.id === row.id) ? prev : [...prev, rowToJob(row)]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs' }, ({ new: row }) => {
+        if (row.archived) {
+          setEditingJobs(prev => prev.filter(j => j.id !== row.id));
+          setArchivedJobIds(prev => [...new Set([...prev, row.id])]);
+        } else {
+          setEditingJobs(prev => prev.map(j => j.id === row.id ? rowToJob(row) : j));
+        }
+      })
+      .subscribe();
+    return () => { db.removeChannel(channel); };
+  }, []);
+
   const handleLogin = async () => {
     const employee = employees.find(e =>
       e.username.toLowerCase() === loginUsername.toLowerCase() &&
@@ -3538,7 +3562,7 @@ Notes: ${j.notes || 'none'}`;
               {showClockInPrompt && (() => {
                 const _ciAssigned = getUserAssignedJobs(currentUser?.id);
                 const _ciAssignedIds = new Set(_ciAssigned.map(j => j.id));
-                const _ciOther = editingJobs.filter(j => !_ciAssignedIds.has(j.id));
+                const _ciOther = editingJobs.filter(j => !_ciAssignedIds.has(j.id) && !isJobFullyComplete(j) && !archivedJobIds.includes(j.id));
                 return (
                   <div className="p-6">
                     <div className="text-center mb-5">
@@ -5109,7 +5133,7 @@ Notes: ${j.notes || 'none'}`;
               {showClockInPrompt && (() => {
                 const _ciAssigned = getUserAssignedJobs(currentUser?.id);
                 const _ciAssignedIds = new Set(_ciAssigned.map(j => j.id));
-                const _ciOther = editingJobs.filter(j => !_ciAssignedIds.has(j.id));
+                const _ciOther = editingJobs.filter(j => !_ciAssignedIds.has(j.id) && !isJobFullyComplete(j) && !archivedJobIds.includes(j.id));
                 return (
                   <div className="p-6">
                     <div className="text-center mb-5">
@@ -5567,7 +5591,7 @@ Notes: ${j.notes || 'none'}`;
           {(() => {
             const assignedIds = new Set(getUserAssignedJobs(currentUser.id).map(j => j.id));
             const liveEntry = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
-            const otherJobs = editingJobs.filter(j => !assignedIds.has(j.id) && !archivedJobIds.includes(j.id));
+            const otherJobs = editingJobs.filter(j => !assignedIds.has(j.id) && !archivedJobIds.includes(j.id) && !isJobFullyComplete(j));
             if (otherJobs.length === 0) return null;
             return (
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
@@ -8337,7 +8361,7 @@ Capturing Your Special Day
                     onChange={e => setManualTimeModal(p => ({ ...p, jobId: e.target.value }))}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
                     <option value="">Select job...</option>
-                    {editingJobs.filter(j => !archivedJobIds.includes(j.id)).map(j => <option key={j.id} value={j.id}>{j.jobName}</option>)}
+                    {editingJobs.filter(j => !archivedJobIds.includes(j.id) && !isJobFullyComplete(j)).map(j => <option key={j.id} value={j.id}>{j.jobName}</option>)}
                   </select>
                 </div>
                 {/* Clock In */}
@@ -8409,7 +8433,7 @@ Capturing Your Special Day
                   <select onChange={(e) => { if (e.target.value) { handleClockIn(e.target.value); e.target.value = ''; }}}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-green-50'}`}>
                     <option value="">🟢 Clock In to a Job...</option>
-                    {editingJobs.filter(j => !archivedJobIds.includes(j.id)).map(job => <option key={job.id} value={job.id}>{job.jobName}</option>)}
+                    {editingJobs.filter(j => !archivedJobIds.includes(j.id) && !isJobFullyComplete(j)).map(job => <option key={job.id} value={job.id}>{job.jobName}</option>)}
                   </select>
                   <button onClick={() => setGeneralClockInModal({ description: '' })}
                     className={`mt-2 w-full py-2 rounded-lg font-semibold text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
