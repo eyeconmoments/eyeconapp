@@ -368,6 +368,7 @@ function EyeconMoments() {
   const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
   const [projectFileModal, setProjectFileModal] = useState(null); // { jobId, jobName } — upload project file after video complete
   const [archivePromptJob, setArchivePromptJob] = useState(null); // { id, name } — ask to archive after job fully complete
+  const [gotoFilePrompt, setGotoFilePrompt] = useState(null); // { driveLink, fileName, nextStageName } — open prev stage file when next stage starts
   const [projectFileSelected, setProjectFileSelected] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [gearChecklists, setGearChecklists] = useState([]);
@@ -1047,6 +1048,13 @@ function EyeconMoments() {
       const stage = job.stages.find(s => s.id === stageId);
       const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
       setProjectFileModal({ jobId, jobName: job.jobName, stageName: stage?.name || '', stageLabel });
+      // If this stage already has a drive file (prior session), queue goto prompt for the next stage
+      const existingFile = (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === stage?.name);
+      const stageIdx = job.stages.findIndex(s => s.id === stageId);
+      const nextStage = job.stages[stageIdx + 1];
+      if (existingFile && nextStage) {
+        setGotoFilePrompt({ jobId, stageName: stage?.name || '', nextStageName: nextStage.name.split(',')[0].trim() });
+      }
     }
   };
 
@@ -8334,12 +8342,57 @@ Capturing Your Special Day
                         if (!projectFileSelected) { alert('Please choose or drag a file first.'); return; }
                         await uploadToDrive(projectFileModal.jobId, projectFileSelected, _pfSuggestedName, projectFileModal.stageName);
                         setProjectFileSelected(null);
+                        // Queue goto prompt for the next stage (look up file by jobId+stageName at render time)
+                        const _pfJobNow = editingJobs.find(j => j.id === projectFileModal.jobId);
+                        const _pfStageIdx = (_pfJobNow?.stages || []).findIndex(s => s.name === projectFileModal.stageName);
+                        const _pfNextStage = _pfJobNow?.stages?.[_pfStageIdx + 1];
+                        if (_pfNextStage) {
+                          setGotoFilePrompt({ jobId: projectFileModal.jobId, stageName: projectFileModal.stageName, nextStageName: _pfNextStage.name.split(',')[0].trim() });
+                        }
                         setProjectFileModal(null);
                       }}
                       className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${(driveUploading || !projectFileSelected) ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
                       {driveUploading ? '⏳ Uploading…' : '☁️ Upload to Drive'}
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Go-to-file prompt — shown when next stage is unlocked after a file was uploaded */}
+        {gotoFilePrompt && !projectFileModal && (() => {
+          const _gfJob = editingJobs.find(j => j.id === gotoFilePrompt.jobId);
+          const _gfFile = (_gfJob?.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === gotoFilePrompt.stageName);
+          if (!_gfFile) { setGotoFilePrompt(null); return null; }
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-sm p-6`}>
+                <div className="text-3xl mb-3 text-center">📂</div>
+                <h3 className={`font-bold text-lg mb-1 text-center ${darkMode ? 'text-white' : 'text-gray-800'}`}>Project file ready</h3>
+                <p className={`text-sm text-center mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <span className="font-semibold">{gotoFilePrompt.nextStageName}</span> is now unlocked.
+                </p>
+                <p className={`text-xs text-center mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Open the previous stage file to continue?
+                </p>
+                <div className={`rounded-lg px-3 py-2 mb-5 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                  <p className={`text-xs font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>📄 {_gfFile.fileName}</p>
+                  <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Uploaded by {_gfFile.uploadedBy} · {_gfFile.uploadedAt ? new Date(_gfFile.uploadedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setGotoFilePrompt(null)}
+                    className={`flex-1 py-2.5 rounded-xl font-semibold text-sm border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    Dismiss
+                  </button>
+                  <a href={_gfFile.driveLink} target="_blank" rel="noopener noreferrer"
+                    onClick={() => setGotoFilePrompt(null)}
+                    className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-500 hover:bg-blue-600 text-center">
+                    ☁️ Open in Drive
+                  </a>
                 </div>
               </div>
             </div>
@@ -9453,25 +9506,68 @@ Capturing Your Special Day
                             );
                           }
                           
-                          return (
-                            <div key={stage.id} className={`p-2 ${darkMode ? 'bg-blue-900' : 'bg-blue-50'} rounded`}>
-                              <div className="flex justify-between items-center mb-1">
-                                <span className={`text-xs font-medium ${darkMode ? 'text-blue-200' : ''}`}>{stage.name}</span>
-                                <select value={stage.status} onChange={(e) => updateJobStageStatus(job.id, stage.id, e.target.value)}
-                                  className={`text-xs px-2 py-1 rounded border ${getStatusColor(stage.status)}`}>
-                                  <option value="not-started">Not Started</option>
-                                  <option value="in-progress">In Progress</option>
-                                  <option value="completed">Completed</option>
-                                </select>
+                          return (() => {
+                            const isDone = stage.status === 'completed';
+                            const stageFile = isDone ? (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === stage.name) : null;
+                            const stageHrs = isDone && stage.assignedTo
+                              ? timeEntries.filter(t => String(t.jobId) === String(job.id) && t.employeeId === stage.assignedTo && t.hoursWorked).reduce((a, t) => a + t.hoursWorked, 0)
+                              : 0;
+                            const nextStage = job.stages[idx + 1];
+                            const nextStageFile = !isDone && isPreviousComplete && previousStage
+                              ? (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === previousStage.name)
+                              : null;
+                            return (
+                              <div key={stage.id} className={`p-2 ${isDone ? (darkMode ? 'bg-green-900' : 'bg-green-50') : (darkMode ? 'bg-blue-900' : 'bg-blue-50')} rounded`}>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className={`text-xs font-medium ${isDone ? (darkMode ? 'text-green-300' : 'text-green-700') : (darkMode ? 'text-blue-200' : '')}`}>{stage.name}</span>
+                                  <select value={stage.status} onChange={(e) => updateJobStageStatus(job.id, stage.id, e.target.value)}
+                                    className={`text-xs px-2 py-1 rounded border ${getStatusColor(stage.status)}`}>
+                                    <option value="not-started">Not Started</option>
+                                    <option value="in-progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                  </select>
+                                </div>
+                                {!isDone && (
+                                  <select value={stage.assignedTo} onChange={(e) => updateJobStageAssignment(job.id, stage.id, e.target.value)}
+                                    className="w-full px-2 py-1 text-xs border rounded mb-1"
+                                    disabled={isLocked}>
+                                    <option value={0}>Unassigned</option>
+                                    {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                                  </select>
+                                )}
+                                {isDone && (
+                                  <div className="space-y-1 mt-1">
+                                    <p className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                      ✓ {stage.completedBy || getEmployeeName(stage.assignedTo)}
+                                      {stage.completedAt && ` · ${new Date(stage.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}`}
+                                      {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && stageHrs > 0 && ` · ${stageHrs.toFixed(1)}h`}
+                                    </p>
+                                    {stageFile ? (
+                                      <a href={stageFile.driveLink} target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center gap-1 text-xs text-blue-500 hover:underline">
+                                        <span>📄</span>
+                                        <span className="truncate">{stageFile.fileName}</span>
+                                        <span>↗</span>
+                                      </a>
+                                    ) : (
+                                      <button onClick={() => setProjectFileModal({ jobId: job.id, jobName: job.jobName, stageName: stage.name, stageLabel: stage.name.split(',')[0].trim() })}
+                                        className={`text-xs ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
+                                        + Upload project file
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                                {nextStageFile && (
+                                  <a href={nextStageFile.driveLink} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-xs text-blue-500 hover:underline mt-1">
+                                    <span>📂</span>
+                                    <span className="truncate">Previous file: {nextStageFile.fileName}</span>
+                                    <span>↗</span>
+                                  </a>
+                                )}
                               </div>
-                              <select value={stage.assignedTo} onChange={(e) => updateJobStageAssignment(job.id, stage.id, e.target.value)}
-                                className="w-full px-2 py-1 text-xs border rounded"
-                                disabled={isLocked}>
-                                <option value={0}>Unassigned</option>
-                                {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                              </select>
-                            </div>
-                          );
+                            );
+                          })()}
                         })}
                       </div>
                     )}
