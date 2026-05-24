@@ -367,6 +367,7 @@ function EyeconMoments() {
   const [isDriveSignedIn, setIsDriveSignedIn] = useState(false);
   const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
   const [projectFileModal, setProjectFileModal] = useState(null); // { jobId, jobName } — upload project file after video complete
+  const [archivePromptJob, setArchivePromptJob] = useState(null); // { id, name } — ask to archive after job fully complete
   const [projectFileSelected, setProjectFileSelected] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [gearChecklists, setGearChecklists] = useState([]);
@@ -1083,7 +1084,10 @@ function EyeconMoments() {
     await db.from('jobs').update({ photo_status: newStatus, ...extraUpdate }).eq('id', jobId);
     if (newStatus === 'completed' && job) {
       const videoDoneNow = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
-      if (videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+      if (videoDoneNow) {
+        setProjectFileModal({ jobId, jobName: job.jobName });
+        setArchivePromptJob({ id: jobId, name: job.jobName });
+      }
     }
   };
 
@@ -8275,7 +8279,7 @@ Capturing Your Special Day
                   <div className="flex gap-3">
                     <button onClick={() => { setProjectFileModal(null); setProjectFileSelected(null); }}
                       className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      Skip for now
+                      {archivePromptJob ? 'Next →' : 'Skip for now'}
                     </button>
                     <button
                       disabled={driveUploading || !projectFileSelected}
@@ -8294,6 +8298,33 @@ Capturing Your Special Day
             </div>
           );
         })()}
+
+        {/* Archive prompt — shown after photo/video completion when job is fully done */}
+        {archivePromptJob && !projectFileModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center`}>
+              <div className="text-5xl mb-3">🎉</div>
+              <h3 className={`font-bold text-xl mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Job Complete!</h3>
+              <p className={`text-sm mb-1 font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{archivePromptJob.name}</p>
+              <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>All work is done. Would you like to archive this job?</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setArchivePromptJob(null)}
+                  className={`flex-1 py-2.5 rounded-xl font-semibold text-sm border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  Not yet
+                </button>
+                <button
+                  onClick={async () => {
+                    await toggleArchiveJob(archivePromptJob.id);
+                    setArchivePromptJob(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white bg-yellow-500 hover:bg-yellow-600">
+                  📦 Archive it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Manual Time Entry Override Modal */}
         {/* ── General Clock In Modal ── */}
