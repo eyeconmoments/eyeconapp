@@ -1044,10 +1044,9 @@ function EyeconMoments() {
     await db.from('jobs').update({ stages: newStages, wage_entries: newWageEntries }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, stages: newStages, wageEntries: newWageEntries } : j));
     if (newStatus === 'completed') {
-      const photoDoneNow = !job.hasPhotos || job.photoStatus === 'completed';
-      const videoDoneNow = !job.hasVideo || newStages.every(s => s.status === 'completed');
-      if (photoDoneNow && videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
-      if (videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+      const stage = job.stages.find(s => s.id === stageId);
+      const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      setProjectFileModal({ jobId, jobName: job.jobName, stageName: stage?.name || '', stageLabel });
     }
   };
 
@@ -2240,7 +2239,7 @@ function EyeconMoments() {
     }
   };
 
-  const uploadToDrive = async (jobId, file) => {
+  const uploadToDrive = async (jobId, file, suggestedFileName = null, stageName = null) => {
     const job = editingJobs.find(j => j.id === jobId);
     if (!job) return;
     setDriveUploading(true);
@@ -2252,21 +2251,25 @@ function EyeconMoments() {
         reader.readAsDataURL(file);
       });
 
+      const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
+      const driveFileName = suggestedFileName ? `${suggestedFileName}${ext}` : file.name;
+
       const res = await fetch('/.netlify/functions/upload-drive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileBase64 }),
+        body: JSON.stringify({ fileName: driveFileName, mimeType: file.type || 'application/octet-stream', fileBase64 }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
       const driveEntry = {
         type: 'drive_project_file',
-        fileName: file.name,
+        fileName: driveFileName,
         driveFileId: data.driveFileId,
         driveLink: data.driveLink,
         uploadedAt: new Date().toISOString(),
         uploadedBy: currentUser.name,
+        ...(stageName ? { stageName } : {}),
       };
       const newFileLocations = [...(job.fileLocations || []), driveEntry];
       await db.from('jobs').update({ file_locations: newFileLocations }).eq('id', jobId);
@@ -8248,21 +8251,31 @@ Capturing Your Special Day
 
         {/* Project File Upload Modal — triggered when video editing reaches 100% */}
         {projectFileModal && (() => {
-          let _pfDragOver = false;
           const _pfJob = editingJobs.find(j => j.id === projectFileModal.jobId);
-          const _pfExisting = (_pfJob?.fileLocations || []).filter(f => f.type === 'drive_project_file');
+          const _pfStageLabel = projectFileModal.stageLabel || '';
+          const _pfSuggestedName = _pfStageLabel
+            ? `${projectFileModal.jobName} — ${_pfStageLabel}`
+            : projectFileModal.jobName;
+          const _pfExisting = (_pfJob?.fileLocations || []).filter(f =>
+            f.type === 'drive_project_file' &&
+            (!projectFileModal.stageName || f.stageName === projectFileModal.stageName)
+          );
           return (
             <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl w-full max-w-md`}>
                 <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                   <div className="flex items-start justify-between">
                     <div>
-                      <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🎉 Video Editing Complete!</h2>
+                      <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        🎬 {_pfStageLabel ? `${_pfStageLabel} Stage Complete!` : 'Stage Complete!'}
+                      </h2>
                       <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{projectFileModal.jobName}</p>
                     </div>
                     <button onClick={() => setProjectFileModal(null)} className={`text-2xl leading-none ml-3 mt-0.5 ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}>✕</button>
                   </div>
-                  <p className={`text-sm mt-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload the project file to Google Drive so the team can access it anytime.</p>
+                  <p className={`text-sm mt-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Upload the project file to Google Drive. It will be saved as <span className="font-semibold">{_pfSuggestedName}</span>.
+                  </p>
                 </div>
                 <div className="p-5 space-y-4">
                   {_pfExisting.length > 0 && (
@@ -8319,7 +8332,7 @@ Capturing Your Special Day
                       disabled={driveUploading || !projectFileSelected}
                       onClick={async () => {
                         if (!projectFileSelected) { alert('Please choose or drag a file first.'); return; }
-                        await uploadToDrive(projectFileModal.jobId, projectFileSelected);
+                        await uploadToDrive(projectFileModal.jobId, projectFileSelected, _pfSuggestedName, projectFileModal.stageName);
                         setProjectFileSelected(null);
                         setProjectFileModal(null);
                       }}
