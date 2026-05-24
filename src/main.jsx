@@ -1091,10 +1091,9 @@ function EyeconMoments() {
     await db.from('jobs').update({ photo_status: newStatus, ...extraUpdate }).eq('id', jobId);
     if (newStatus === 'completed' && job) {
       const videoDoneNow = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
-      if (videoDoneNow) {
-        setProjectFileModal({ jobId, jobName: job.jobName });
-        setArchivePromptJob({ id: jobId, name: job.jobName });
-      }
+      if (videoDoneNow) setProjectFileModal({ jobId, jobName: job.jobName });
+      // Always prompt to archive when photo is done — video may still be in progress
+      setArchivePromptJob({ id: jobId, name: job.jobName, videoPending: job.hasVideo && !videoDoneNow });
     }
   };
 
@@ -8399,14 +8398,20 @@ Capturing Your Special Day
           );
         })()}
 
-        {/* Archive prompt — shown after photo/video completion when job is fully done */}
-        {archivePromptJob && !projectFileModal && (
+        {/* Archive prompt — shown after photo completion (video may still be pending) */}
+        {archivePromptJob && !projectFileModal && !gotoFilePrompt && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center`}>
-              <div className="text-5xl mb-3">🎉</div>
-              <h3 className={`font-bold text-xl mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>Job Complete!</h3>
+              <div className="text-5xl mb-3">{archivePromptJob.videoPending ? '📸' : '🎉'}</div>
+              <h3 className={`font-bold text-xl mb-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                {archivePromptJob.videoPending ? 'Photos Complete!' : 'Job Complete!'}
+              </h3>
               <p className={`text-sm mb-1 font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{archivePromptJob.name}</p>
-              <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>All work is done. Would you like to archive this job?</p>
+              <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {archivePromptJob.videoPending
+                  ? 'Photo editing is done. The video pipeline is still in progress. Archive the job now or wait until everything is complete.'
+                  : 'All work is done. Would you like to archive this job?'}
+              </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setArchivePromptJob(null)}
