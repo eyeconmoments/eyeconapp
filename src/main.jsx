@@ -9303,9 +9303,19 @@ Capturing Your Special Day
                       </select>
                     </div>
                     {job.hasPhotos && (
-                      <div className={`mb-3 p-3 ${darkMode ? 'bg-purple-900' : 'bg-purple-50'} rounded-lg`}>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className={`font-semibold text-sm ${darkMode ? 'text-purple-200' : ''}`}><Camera /> Photo Editing</span>
+                      job.photoStatus === 'completed' ? (
+                        <div className={`mb-3 px-3 py-2 rounded-lg flex items-center justify-between ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">✅</span>
+                            <div>
+                              <span className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>📸 Photo Editing — Done</span>
+                              {job.photoAssignedTo > 0 && (
+                                <span className={`text-xs ml-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                  {employees.find(e => e.id === job.photoAssignedTo)?.name || ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                           <select value={job.photoStatus} onChange={(e) => updatePhotoStatus(job.id, e.target.value)}
                             className={`text-xs px-2 py-1 rounded border ${getStatusColor(job.photoStatus)}`}>
                             <option value="not-started">Not Started</option>
@@ -9313,21 +9323,33 @@ Capturing Your Special Day
                             <option value="completed">Completed</option>
                           </select>
                         </div>
-                        <div className="flex items-center gap-1 mb-2">
-                          <span className={`text-xs mr-1 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>📷 Cams:</span>
-                          {[1, 2].map(n => (
-                            <button key={n} onClick={() => updateJobCameras(job.id, 'numPhotographers', n)}
-                              className={`text-xs px-2 py-0.5 rounded font-medium ${(job.numPhotographers || 1) === n ? 'bg-purple-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600 border border-gray-300'}`}>
-                              {n} cam
-                            </button>
-                          ))}
+                      ) : (
+                        <div className={`mb-3 p-3 ${darkMode ? 'bg-purple-900' : 'bg-purple-50'} rounded-lg`}>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className={`font-semibold text-sm ${darkMode ? 'text-purple-200' : ''}`}><Camera /> Photo Editing</span>
+                            <select value={job.photoStatus} onChange={(e) => updatePhotoStatus(job.id, e.target.value)}
+                              className={`text-xs px-2 py-1 rounded border ${getStatusColor(job.photoStatus)}`}>
+                              <option value="not-started">Not Started</option>
+                              <option value="in-progress">In Progress</option>
+                              <option value="completed">Completed</option>
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-1 mb-2">
+                            <span className={`text-xs mr-1 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>📷 Cams:</span>
+                            {[1, 2].map(n => (
+                              <button key={n} onClick={() => updateJobCameras(job.id, 'numPhotographers', n)}
+                                className={`text-xs px-2 py-0.5 rounded font-medium ${(job.numPhotographers || 1) === n ? 'bg-purple-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600 border border-gray-300'}`}>
+                                {n} cam
+                              </button>
+                            ))}
+                          </div>
+                          <select value={job.photoAssignedTo} onChange={(e) => updatePhotoAssignment(job.id, e.target.value)}
+                            className="w-full px-2 py-1 text-xs border rounded">
+                            <option value={0}>Unassigned</option>
+                            {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                          </select>
                         </div>
-                        <select value={job.photoAssignedTo} onChange={(e) => updatePhotoAssignment(job.id, e.target.value)}
-                          className="w-full px-2 py-1 text-xs border rounded">
-                          <option value={0}>Unassigned</option>
-                          {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                        </select>
-                      </div>
+                      )
                     )}
                     {job.hasVideo && (
                       <div className="space-y-2 mb-3">
