@@ -5979,19 +5979,38 @@ Notes: ${j.notes || 'none'}`;
                 {progressDetailOpen && (() => {
                   const photoJobs = activeJobsList.filter(j => j.hasPhotos);
                   const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages);
+                  // Latest reported progress for any job: take the highest progressPercent
+                  // from clock-out entries (prefer most recent non-null)
+                  const getLatestProgress = (jobId) => {
+                    const entries = timeEntries
+                      .filter(e => String(e.jobId) === String(jobId) && e.progressPercent !== null && e.clockOut)
+                      .sort((a, b) => new Date(b.clockOut) - new Date(a.clockOut));
+                    return entries.length > 0 ? entries[0].progressPercent : null;
+                  };
+                  const ProgressBar = ({ pct, color }) => (
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                      <div className={`h-1.5 rounded-full transition-all ${color}`} style={{width:`${pct}%`}} />
+                    </div>
+                  );
                   return (
                     <div className="mt-2 space-y-4">
                       {/* Photos */}
                       {photoJobs.length > 0 && (
                         <div>
                           <p className="text-xs font-bold text-gray-700 mb-1">📸 Photos</p>
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {photoJobs.map(job => {
                               const done = job.photoStatus === 'completed';
+                              const reported = done ? 100 : (getLatestProgress(job.id) ?? 0);
                               return (
-                                <div key={job.id} className="flex items-center justify-between text-xs py-1 px-2 rounded" style={{background: done ? '#f0fdf4' : '#fef9f0'}}>
-                                  <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
-                                  <span className={`font-semibold shrink-0 ${done ? 'text-green-600' : 'text-orange-500'}`}>{done ? '✅ Done' : '⏳ Pending'}</span>
+                                <div key={job.id} className="text-xs py-1.5 px-2 rounded" style={{background: done ? '#f0fdf4' : '#fef9f0'}}>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
+                                    <span className={`font-bold shrink-0 ${done ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                                      {done ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
+                                    </span>
+                                  </div>
+                                  <ProgressBar pct={reported} color={done ? 'bg-green-500' : 'bg-orange-400'} />
                                 </div>
                               );
                             })}
@@ -6002,15 +6021,30 @@ Notes: ${j.notes || 'none'}`;
                       {videoJobs.length > 0 && (
                         <div>
                           <p className="text-xs font-bold text-gray-700 mb-1">🎥 Video</p>
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {videoJobs.map(job => {
-                              const total = job.stages.length;
-                              const done = job.stages.filter(s => s.status === 'completed').length;
-                              const allDone = done === total;
+                              const totalStages = job.stages.length;
+                              const doneStages = job.stages.filter(s => s.status === 'completed').length;
+                              const allDone = doneStages === totalStages && totalStages > 0;
+                              // Stage-level base: completed stages give fixed progress, then add reported progress on current stage
+                              const stageBase = totalStages > 0 ? Math.round((doneStages / totalStages) * 100) : 0;
+                              const currentStage = job.stages.find(s => s.status !== 'completed');
+                              const reportedOnStage = currentStage ? (getLatestProgress(job.id) ?? null) : null;
+                              // Within current stage, progress is from 0–(1/totalStages), scaled by reportedOnStage
+                              const stageSlice = totalStages > 0 ? (1 / totalStages) * 100 : 0;
+                              const pct = allDone ? 100 : reportedOnStage !== null
+                                ? Math.min(99, Math.round(stageBase + (reportedOnStage / 100) * stageSlice))
+                                : stageBase;
                               return (
-                                <div key={job.id} className="flex items-center justify-between text-xs py-1 px-2 rounded" style={{background: allDone ? '#f0fdf4' : '#fef9f0'}}>
-                                  <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
-                                  <span className={`font-semibold shrink-0 ${allDone ? 'text-green-600' : 'text-orange-500'}`}>{allDone ? '✅ Done' : `⏳ ${done}/${total}`}</span>
+                                <div key={job.id} className="text-xs py-1.5 px-2 rounded" style={{background: allDone ? '#f0fdf4' : '#fef9f0'}}>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
+                                    <span className={`font-bold shrink-0 ${allDone ? 'text-green-600' : pct > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                      {allDone ? '✅ 100%' : `${pct}%`}
+                                      <span className="font-normal text-gray-400 ml-1">({doneStages}/{totalStages})</span>
+                                    </span>
+                                  </div>
+                                  <ProgressBar pct={pct} color={allDone ? 'bg-green-500' : 'bg-blue-500'} />
                                 </div>
                               );
                             })}
