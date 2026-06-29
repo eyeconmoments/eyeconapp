@@ -1477,8 +1477,9 @@ function EyeconMoments() {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
     doc.text('PAYMENT DETAILS', mx, y); y += 5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
-    const bankLine = [inv.bankName, inv.bankAccount ? `Account: ${inv.bankAccount}` : '', inv.bankSort ? `Sort Code: ${inv.bankSort}` : ''].filter(Boolean).join('  ·  ');
-    doc.text(bankLine || 'Bank details not provided', mx, y); y += 5;
+    if (inv.bankName) { doc.setFont('helvetica', 'bold'); doc.text(inv.bankName, mx, y); y += 5; }
+    const bankLine2 = [inv.bankAccount ? `ACC: ${inv.bankAccount}` : '', inv.bankSort ? `SC: ${inv.bankSort}` : ''].filter(Boolean).join('   ');
+    if (bankLine2) { doc.setFont('helvetica', 'normal'); doc.text(bankLine2, mx, y); y += 5; }
     doc.text('Reference: ' + inv.invoiceNum, mx, y); y += 8;
 
     // Notes
@@ -9805,7 +9806,7 @@ Capturing Your Special Day
                                 extraHours: '', extraRate: svcType === 'photo' ? '125' : '150',
                                 depositPaid: '',
                                 notes: 'Thank you for choosing Eyecon Moments!',
-                                bankName: savedBank.name || 'Monzo',
+                                bankName: savedBank.name || 'EYECON MOMENTS LTD',
                                 bankAccount: savedBank.account || '25406742',
                                 bankSort: savedBank.sort || '04-06-05',
                               });
@@ -10211,7 +10212,7 @@ Capturing Your Special Day
                   <div className={`rounded-xl p-3 space-y-2 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Details</p>
                     <div className="grid grid-cols-3 gap-2">
-                      {[['Bank', 'bankName'], ['Account No.', 'bankAccount'], ['Sort Code', 'bankSort']].map(([label, key]) => (
+                      {[['Account Name', 'bankName'], ['Account No.', 'bankAccount'], ['Sort Code', 'bankSort']].map(([label, key]) => (
                         <div key={key}>
                           <label className={lbl}>{label}</label>
                           <input value={invoiceModal[key]} onChange={e => {
