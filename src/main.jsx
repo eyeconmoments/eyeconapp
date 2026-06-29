@@ -1382,7 +1382,7 @@ function EyeconMoments() {
 
     y += 5;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...BLACK);
-    doc.text(job.customerName || 'Client', mx, y);
+    doc.text(inv.customerName || job.customerName || 'Client', mx, y);
 
     // Right column details
     const detailRows = [
@@ -1420,9 +1420,14 @@ function EyeconMoments() {
     doc.text('AMOUNT', W - mx - 3, y + 0.5, { align: 'right' });
     y += 9;
 
-    // Line items
+    // Line items — build full list including pro-rata extra time
+    const extraAmt = (parseFloat(inv.extraHours) || 0) * (parseFloat(inv.extraRate) || 0);
+    const allLines = [
+      ...(inv.lines || []),
+      ...(extraAmt > 0 ? [{ description: `Additional Time — ${inv.extraHours} hrs × £${inv.extraRate}/hr`, amount: String(extraAmt) }] : []),
+    ];
     let subtotal = 0;
-    (inv.lines || []).forEach((line, i) => {
+    allLines.forEach((line, i) => {
       const amt = parseFloat(line.amount) || 0;
       subtotal += amt;
       if (i % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(mx, y - 4, cw, 8, 'F'); }
@@ -1472,7 +1477,8 @@ function EyeconMoments() {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
     doc.text('PAYMENT DETAILS', mx, y); y += 5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
-    doc.text('Bank: Monzo  ·  Account: 25406742  ·  Sort Code: 04-06-05', mx, y); y += 5;
+    const bankLine = [inv.bankName, inv.bankAccount ? `Account: ${inv.bankAccount}` : '', inv.bankSort ? `Sort Code: ${inv.bankSort}` : ''].filter(Boolean).join('  ·  ');
+    doc.text(bankLine || 'Bank details not provided', mx, y); y += 5;
     doc.text('Reference: ' + inv.invoiceNum, mx, y); y += 8;
 
     // Notes
@@ -9778,10 +9784,26 @@ Capturing Your Special Day
                               const yr = d.getFullYear(), mo = String(d.getMonth()+1).padStart(2,'0');
                               const shortId = String(job.id).replace(/[^a-z0-9]/gi,'').slice(-4).toUpperCase();
                               const price = calculateJobRevenue(job);
-                              const lines = price > 0
-                                ? [{ description: job.hasPhotos && job.hasVideo ? 'Photography & Videography Package' : job.hasPhotos ? 'Photography Package' : 'Videography Package', amount: String(price) }]
-                                : [{ description: 'Photography & Videography Services', amount: '' }];
-                              setInvoiceModal({ jobId: job.id, invoiceNum: `INV-${yr}${mo}-${shortId}`, invoiceDate: d.toISOString().slice(0,10), lines, depositPaid: '', notes: 'Thank you for choosing Eyecon Moments!' });
+                              const savedBank = (() => { try { return JSON.parse(localStorage.getItem('eyecon_bank_details') || '{}'); } catch { return {}; } })();
+                              const hrs = job.shootHours || 0;
+                              const svcType = job.hasPhotos && job.hasVideo ? 'photo-video' : job.hasPhotos ? 'photo' : 'video';
+                              const svcLabel = svcType === 'photo-video'
+                                ? `Photography & Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
+                                : svcType === 'photo' ? `Photography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
+                                : `Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`;
+                              setInvoiceModal({
+                                jobId: job.id,
+                                invoiceNum: `INV-${yr}${mo}-${shortId}`,
+                                invoiceDate: d.toISOString().slice(0,10),
+                                customerName: job.customerName || '',
+                                lines: [{ description: svcLabel, amount: price > 0 ? String(price) : '' }],
+                                extraHours: '', extraRate: svcType === 'photo' ? '125' : '150',
+                                depositPaid: '',
+                                notes: 'Thank you for choosing Eyecon Moments!',
+                                bankName: savedBank.name || 'Monzo',
+                                bankAccount: savedBank.account || '',
+                                bankSort: savedBank.sort || '',
+                              });
                             }}
                             className="w-full py-1.5 rounded text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600">
                             📄 Generate Invoice
@@ -10046,96 +10068,188 @@ Capturing Your Special Day
         {invoiceModal && (() => {
           const invJob = editingJobs.find(j => j.id === invoiceModal.jobId);
           if (!invJob) return null;
-          const subtotal = invoiceModal.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+          const extraAmt = (parseFloat(invoiceModal.extraHours) || 0) * (parseFloat(invoiceModal.extraRate) || 0);
+          const subtotal = invoiceModal.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0) + extraAmt;
           const deposit = parseFloat(invoiceModal.depositPaid) || 0;
           const balance = subtotal - deposit;
+          const inp = `w-full px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`;
+          const lbl = `block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`;
+          const svcPresets = invJob.hasPhotos && invJob.hasVideo
+            ? ['Photography & Videography', 'Wedding Photography & Videography', 'Event Photography & Videography', 'Corporate Photography & Videography']
+            : invJob.hasPhotos
+            ? ['Photography', 'Wedding Photography', 'Event Photography', 'Corporate Photography']
+            : ['Videography', 'Wedding Videography', 'Event Videography', 'Corporate Videography'];
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col`}>
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-lg max-h-[94vh] flex flex-col`}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor: darkMode ? '#374151' : '#e5e7eb'}}>
-                  <div>
-                    <h2 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>📄 Invoice</h2>
-                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{invJob.customerName} · {invJob.jobName}</p>
+                <div className="flex items-center justify-between px-5 py-3 border-b" style={{borderColor: darkMode ? '#374151' : '#e5e7eb'}}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{background:'#c1a76a'}}>
+                      <span className="text-white text-base">📄</span>
+                    </div>
+                    <div>
+                      <h2 className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Invoice Generator</h2>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{invJob.jobName}</p>
+                    </div>
                   </div>
-                  <button onClick={() => setInvoiceModal(null)} className={`text-xl ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}>✕</button>
+                  <button onClick={() => setInvoiceModal(null)} className={`w-7 h-7 rounded-full flex items-center justify-center ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'}`}>✕</button>
                 </div>
+
                 <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-                  {/* Invoice meta */}
+
+                  {/* Bill To + Invoice Details */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Invoice No.</label>
-                      <input value={invoiceModal.invoiceNum} onChange={e => setInvoiceModal(p => ({...p, invoiceNum: e.target.value}))}
-                        className={`w-full px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                      <label className={lbl}>BILL TO</label>
+                      <input value={invoiceModal.customerName}
+                        onChange={e => setInvoiceModal(p => ({...p, customerName: e.target.value}))}
+                        placeholder="Client name" className={inp} />
                     </div>
-                    <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Date</label>
-                      <input type="date" value={invoiceModal.invoiceDate} onChange={e => setInvoiceModal(p => ({...p, invoiceDate: e.target.value}))}
-                        className={`w-full px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                    <div className="space-y-2">
+                      <div>
+                        <label className={lbl}>INVOICE NO.</label>
+                        <input value={invoiceModal.invoiceNum} onChange={e => setInvoiceModal(p => ({...p, invoiceNum: e.target.value}))} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>DATE</label>
+                        <input type="date" value={invoiceModal.invoiceDate} onChange={e => setInvoiceModal(p => ({...p, invoiceDate: e.target.value}))} className={inp} />
+                      </div>
                     </div>
                   </div>
-                  {/* Line items */}
-                  <div>
-                    <label className={`block text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Line Items</label>
-                    <div className="space-y-2">
-                      {invoiceModal.lines.map((line, i) => (
-                        <div key={i} className="flex gap-2 items-center">
-                          <input value={line.description} placeholder="Description"
-                            onChange={e => setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, description: e.target.value} : l)}))}
-                            className={`flex-1 px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
-                          <div className="relative w-28 shrink-0">
-                            <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
-                            <input type="number" value={line.amount} placeholder="0.00"
-                              onChange={e => setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, amount: e.target.value} : l)}))}
-                              className={`w-full pl-6 pr-2 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
-                          </div>
+
+                  {/* Services */}
+                  <div className={`rounded-xl p-3 space-y-2 ${darkMode ? 'bg-gray-750 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Services</p>
+                    {invoiceModal.lines.map((line, i) => (
+                      <div key={i} className="space-y-1.5">
+                        <div className="flex gap-2">
+                          <select onChange={e => { if (e.target.value) setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, description: e.target.value} : l)})); }}
+                            className={`text-xs px-2 py-1 rounded-lg border shrink-0 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-white border-gray-300 text-gray-600'}`}>
+                            <option value="">— Quick fill —</option>
+                            {svcPresets.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
                           <button onClick={() => setInvoiceModal(p => ({...p, lines: p.lines.filter((_,j) => j!==i)}))}
-                            className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0">✕</button>
+                            className="text-red-400 hover:text-red-500 text-sm shrink-0 ml-auto">✕</button>
                         </div>
-                      ))}
-                    </div>
+                        <input value={line.description} placeholder="Service description (e.g. Wedding Photography & Videography — 8 Hours)"
+                          onChange={e => setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, description: e.target.value} : l)}))}
+                          className={inp} />
+                        <div className="relative">
+                          <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                          <input type="number" value={line.amount} placeholder="0.00"
+                            onChange={e => setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, amount: e.target.value} : l)}))}
+                            className={`${inp} pl-7`} />
+                        </div>
+                      </div>
+                    ))}
                     <button onClick={() => setInvoiceModal(p => ({...p, lines: [...p.lines, {description:'', amount:''}]}))}
-                      className={`mt-2 text-xs font-semibold ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}>
-                      + Add line item
+                      className={`text-xs font-semibold ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}>
+                      + Add service line
                     </button>
                   </div>
+
+                  {/* Additional / Overtime */}
+                  <div className={`rounded-xl p-3 ${darkMode ? 'border border-gray-700' : 'bg-amber-50 border border-amber-200'}`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-gray-400' : 'text-amber-700'}`}>Additional Time (Pro Rata)</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <label className={lbl}>Extra hours</label>
+                        <input type="number" min="0" step="0.5" value={invoiceModal.extraHours} placeholder="0"
+                          onChange={e => setInvoiceModal(p => ({...p, extraHours: e.target.value}))}
+                          className={inp} />
+                      </div>
+                      <div className="shrink-0 pt-4 text-gray-400 text-sm">×</div>
+                      <div className="flex-1">
+                        <label className={lbl}>Rate / hr</label>
+                        <div className="relative">
+                          <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                          <input type="number" value={invoiceModal.extraRate} placeholder="150"
+                            onChange={e => setInvoiceModal(p => ({...p, extraRate: e.target.value}))}
+                            className={`${inp} pl-7`} />
+                        </div>
+                      </div>
+                      <div className="shrink-0 pt-4 text-gray-400 text-sm">=</div>
+                      <div className="flex-1">
+                        <label className={lbl}>Total</label>
+                        <div className={`px-3 py-1.5 text-sm rounded-lg border font-semibold ${extraAmt > 0 ? (darkMode ? 'border-amber-600 text-amber-300 bg-amber-900' : 'border-amber-300 text-amber-700 bg-amber-100') : (darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400')}`}>
+                          £{extraAmt.toLocaleString('en-GB', {minimumFractionDigits:2})}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Totals */}
-                  <div className={`rounded-xl p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} space-y-2`}>
-                    <div className="flex justify-between text-sm">
+                  <div className={`rounded-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <div className={`px-4 py-2.5 flex justify-between text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                       <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Subtotal</span>
                       <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>£{subtotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm shrink-0 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Deposit Received</span>
-                      <div className="relative flex-1 max-w-[110px] ml-auto">
-                        <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                    <div className={`px-4 py-2.5 flex items-center gap-3 border-t ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                      <span className={`text-sm shrink-0 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Deposit received</span>
+                      <div className="relative ml-auto w-32">
+                        <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
                         <input type="number" value={invoiceModal.depositPaid} placeholder="0.00"
                           onChange={e => setInvoiceModal(p => ({...p, depositPaid: e.target.value}))}
-                          className={`w-full pl-6 pr-2 py-1 text-sm rounded-lg border ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'border-gray-300 bg-white'}`} />
+                          className={`w-full pl-7 pr-2 py-1 text-sm rounded-lg border text-right ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
                       </div>
                     </div>
-                    <div className={`flex justify-between text-base font-bold pt-1 border-t ${darkMode ? 'border-gray-600 text-white' : 'border-gray-200 text-gray-900'}`}>
-                      <span>Balance Due</span>
-                      <span style={{color: balance <= 0 ? '#22c55e' : '#ef4444'}}>£{balance.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+                    <div className={`px-4 py-3 flex justify-between items-center border-t ${darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-200'}`}>
+                      <span className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Balance Due</span>
+                      <span className="font-bold text-xl" style={{color: balance <= 0 ? '#22c55e' : '#c1a76a'}}>
+                        £{balance.toLocaleString('en-GB', {minimumFractionDigits:2})}
+                      </span>
                     </div>
                   </div>
+
+                  {/* Bank Details */}
+                  <div className={`rounded-xl p-3 space-y-2 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Bank Details</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className={lbl}>Bank</label>
+                        <input value={invoiceModal.bankName} onChange={e => setInvoiceModal(p => ({...p, bankName: e.target.value}))} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Account No.</label>
+                        <input value={invoiceModal.bankAccount} onChange={e => setInvoiceModal(p => ({...p, bankAccount: e.target.value}))} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Sort Code</label>
+                        <input value={invoiceModal.bankSort} onChange={e => setInvoiceModal(p => ({...p, bankSort: e.target.value}))} className={inp} />
+                      </div>
+                    </div>
+                    <button onClick={() => { localStorage.setItem('eyecon_bank_details', JSON.stringify({ name: invoiceModal.bankName, account: invoiceModal.bankAccount, sort: invoiceModal.bankSort })); }}
+                      className={`text-xs font-semibold ${darkMode ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700'}`}>
+                      ✓ Save as default bank details
+                    </button>
+                  </div>
+
                   {/* Notes */}
                   <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Notes</label>
+                    <label className={lbl}>Notes / Message</label>
                     <textarea rows={2} value={invoiceModal.notes} onChange={e => setInvoiceModal(p => ({...p, notes: e.target.value}))}
                       className={`w-full px-3 py-2 text-sm rounded-lg border resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
                   </div>
+
                 </div>
+
                 {/* Footer */}
-                <div className={`px-5 py-4 border-t flex gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                <div className={`px-5 py-3 border-t flex gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                   <button onClick={() => setInvoiceModal(null)}
-                    className={`flex-1 py-2.5 rounded-xl font-semibold text-sm border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    className={`px-4 py-2.5 rounded-xl font-semibold text-sm border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                     Cancel
                   </button>
                   <button onClick={() => downloadInvoicePDF(invJob, invoiceModal)}
-                    className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-700">
-                    ⬇️ Download PDF
+                    className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2" style={{background:'#c1a76a'}}>
+                    ⬇ Download PDF
                   </button>
+                  {invJob.email && (
+                    <a href={`mailto:${invJob.email}?subject=${encodeURIComponent(invoiceModal.invoiceNum + ' — Eyecon Moments')}&body=${encodeURIComponent('Hi ' + invoiceModal.customerName + ',\n\nPlease find your invoice attached.\n\nBalance due: £' + balance.toLocaleString('en-GB', {minimumFractionDigits:2}) + '\n\nBank: ' + invoiceModal.bankName + '\nAccount: ' + invoiceModal.bankAccount + '\nSort Code: ' + invoiceModal.bankSort + '\nRef: ' + invoiceModal.invoiceNum + '\n\n' + invoiceModal.notes + '\n\nKind regards,\nEyecon Moments')}`}
+                      className="px-4 py-2.5 rounded-xl font-semibold text-sm text-white flex items-center gap-1.5" style={{background:'#3b82f6'}}>
+                      ✉ Email
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
