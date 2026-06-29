@@ -397,6 +397,7 @@ function EyeconMoments() {
   const [payScaleOpen, setPayScaleOpen] = useState({}); // { [employeeId]: bool }
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
   const [finalPaymentModal, setFinalPaymentModal] = useState(null); // { jobId, amount, email }
+  const [invoiceModal, setInvoiceModal] = useState(null); // { jobId, invoiceNum, invoiceDate, lines, depositPaid, notes }
   const [paymentRequests, setPaymentRequests] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_payment_requests') || '[]'); } catch { return []; } });
   const [wagesCollapsed, setWagesCollapsed] = useState({}); // { [empId]: bool } — true = collapsed
   const [quoteData, setQuoteData] = useState(() => {
@@ -1342,6 +1343,151 @@ function EyeconMoments() {
       const body = encodeURIComponent(`Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
       openMail(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
     }
+  };
+
+  const downloadInvoicePDF = async (job, inv) => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, mx = 18, cw = W - mx * 2;
+    const GOLD = [193,167,106], BLACK = [20,20,20], GRAY = [100,100,100], LGRAY = [235,235,235], RED = [180,40,40], GREEN = [40,140,80];
+
+    const fmtMoney = n => '£' + Number(n||0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtDate = ds => { if (!ds) return ''; const d = new Date(ds + (ds.length === 10 ? 'T12:00:00' : '')); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); };
+
+    let y = 18;
+
+    // Header bar
+    doc.setFillColor(...GOLD);
+    doc.rect(0, 0, W, 38, 'F');
+
+    // Logo
+    try { doc.addImage(EYECON_LOGO, 'PNG', mx, 8, 22, 22); } catch(_) {}
+
+    // Company name
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(255, 255, 255);
+    doc.text('EYECON MOMENTS', mx + 26, 18);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    doc.text('eyecon.moments@gmail.com  ·  www.eyeconmoments.co.uk', mx + 26, 24);
+
+    // INVOICE label (right)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(26); doc.setTextColor(255, 255, 255);
+    doc.text('INVOICE', W - mx, 24, { align: 'right' });
+
+    y = 50;
+
+    // Two-column: Bill To (left) | Invoice Details (right)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...GRAY);
+    doc.text('BILL TO', mx, y);
+    doc.text('INVOICE DETAILS', W - mx - 60, y);
+
+    y += 5;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...BLACK);
+    doc.text(job.customerName || 'Client', mx, y);
+
+    // Right column details
+    const detailRows = [
+      ['Invoice No:', inv.invoiceNum],
+      ['Invoice Date:', fmtDate(inv.invoiceDate)],
+      ...(job.shootDate ? [['Event Date:', fmtDate(job.shootDate.toISOString().slice(0,10))]] : []),
+    ];
+    let dy = y;
+    detailRows.forEach(([label, val]) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...GRAY);
+      doc.text(label, W - mx - 60, dy);
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...BLACK);
+      doc.text(String(val), W - mx, dy, { align: 'right' });
+      dy += 6;
+    });
+
+    if (job.jobName) {
+      y += 6;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...GRAY);
+      doc.text(job.jobName, mx, y);
+    }
+
+    y = Math.max(y + 8, dy + 4);
+
+    // Divider
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.6);
+    doc.line(mx, y, W - mx, y);
+    y += 7;
+
+    // Line items table header
+    doc.setFillColor(...LGRAY);
+    doc.rect(mx, y - 4, cw, 8, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BLACK);
+    doc.text('DESCRIPTION', mx + 3, y + 0.5);
+    doc.text('AMOUNT', W - mx - 3, y + 0.5, { align: 'right' });
+    y += 9;
+
+    // Line items
+    let subtotal = 0;
+    (inv.lines || []).forEach((line, i) => {
+      const amt = parseFloat(line.amount) || 0;
+      subtotal += amt;
+      if (i % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(mx, y - 4, cw, 8, 'F'); }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...BLACK);
+      doc.text(String(line.description || ''), mx + 3, y + 0.5);
+      doc.text(fmtMoney(amt), W - mx - 3, y + 0.5, { align: 'right' });
+      y += 8;
+    });
+
+    // Totals block
+    y += 2;
+    doc.setDrawColor(...LGRAY); doc.setLineWidth(0.3);
+    doc.line(W - mx - 70, y, W - mx, y);
+    y += 5;
+
+    const deposit = parseFloat(inv.depositPaid) || 0;
+    const balance = subtotal - deposit;
+
+    const totalRows = [
+      ['Subtotal', subtotal, false],
+      ...(deposit > 0 ? [['Deposit Received', -deposit, false]] : []),
+      ['Balance Due', balance, true],
+    ];
+    totalRows.forEach(([label, amt, bold]) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(bold ? 11 : 9.5);
+      doc.setTextColor(...(bold ? BLACK : GRAY));
+      doc.text(label, W - mx - 70, y);
+      doc.text(fmtMoney(amt < 0 ? -amt : amt) + (amt < 0 ? ' (paid)' : ''), W - mx, y, { align: 'right' });
+      y += bold ? 8 : 6;
+    });
+
+    // PAID stamp
+    if (job.finalPaymentReceived) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(32);
+      doc.setTextColor(...GREEN); doc.setGState && doc.setGState(doc.GState({ opacity: 0.18 }));
+      doc.text('PAID', W / 2, 180, { align: 'center', angle: -30 });
+      doc.setGState && doc.setGState(doc.GState({ opacity: 1 }));
+    }
+
+    y += 6;
+    doc.setDrawColor(...GOLD); doc.setLineWidth(0.5);
+    doc.line(mx, y, W - mx, y);
+    y += 8;
+
+    // Bank details
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
+    doc.text('PAYMENT DETAILS', mx, y); y += 5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
+    doc.text('Bank: Monzo  ·  Account: 25406742  ·  Sort Code: 04-06-05', mx, y); y += 5;
+    doc.text('Reference: ' + inv.invoiceNum, mx, y); y += 8;
+
+    // Notes
+    if (inv.notes) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...GRAY);
+      doc.splitTextToSize(inv.notes, cw).forEach(line => { doc.text(line, mx, y); y += 5; });
+    }
+
+    // Footer
+    doc.setFillColor(...GOLD);
+    doc.rect(0, 285, W, 12, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
+    doc.text('Eyecon Moments  ·  eyecon.moments@gmail.com  ·  www.eyeconmoments.co.uk', W / 2, 292, { align: 'center' });
+
+    doc.save(`${inv.invoiceNum} - ${job.customerName || job.jobName}.pdf`);
   };
 
   const toggleArchiveJob = async (jobId) => {
@@ -9620,11 +9766,27 @@ Capturing Your Special Day
                           </span>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setFinalPaymentModal({ jobId: job.id, amount: String(calculateJobRevenue(job) || ''), email: '' })}
-                          className="w-full py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">
-                          Mark Balance Paid
-                        </button>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => setFinalPaymentModal({ jobId: job.id, amount: String(calculateJobRevenue(job) || ''), email: '' })}
+                            className="w-full py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">
+                            Mark Balance Paid
+                          </button>
+                          <button
+                            onClick={() => {
+                              const d = new Date();
+                              const yr = d.getFullYear(), mo = String(d.getMonth()+1).padStart(2,'0');
+                              const shortId = String(job.id).replace(/[^a-z0-9]/gi,'').slice(-4).toUpperCase();
+                              const price = calculateJobRevenue(job);
+                              const lines = price > 0
+                                ? [{ description: job.hasPhotos && job.hasVideo ? 'Photography & Videography Package' : job.hasPhotos ? 'Photography Package' : 'Videography Package', amount: String(price) }]
+                                : [{ description: 'Photography & Videography Services', amount: '' }];
+                              setInvoiceModal({ jobId: job.id, invoiceNum: `INV-${yr}${mo}-${shortId}`, invoiceDate: d.toISOString().slice(0,10), lines, depositPaid: '', notes: 'Thank you for choosing Eyecon Moments!' });
+                            }}
+                            className="w-full py-1.5 rounded text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600">
+                            📄 Generate Invoice
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -9875,6 +10037,106 @@ Capturing Your Special Day
                     Dismiss for now
                   </button>
                 )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Invoice Modal */}
+        {invoiceModal && (() => {
+          const invJob = editingJobs.find(j => j.id === invoiceModal.jobId);
+          if (!invJob) return null;
+          const subtotal = invoiceModal.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+          const deposit = parseFloat(invoiceModal.depositPaid) || 0;
+          const balance = subtotal - deposit;
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col`}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor: darkMode ? '#374151' : '#e5e7eb'}}>
+                  <div>
+                    <h2 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>📄 Invoice</h2>
+                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{invJob.customerName} · {invJob.jobName}</p>
+                  </div>
+                  <button onClick={() => setInvoiceModal(null)} className={`text-xl ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}>✕</button>
+                </div>
+                <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+                  {/* Invoice meta */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Invoice No.</label>
+                      <input value={invoiceModal.invoiceNum} onChange={e => setInvoiceModal(p => ({...p, invoiceNum: e.target.value}))}
+                        className={`w-full px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Date</label>
+                      <input type="date" value={invoiceModal.invoiceDate} onChange={e => setInvoiceModal(p => ({...p, invoiceDate: e.target.value}))}
+                        className={`w-full px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                    </div>
+                  </div>
+                  {/* Line items */}
+                  <div>
+                    <label className={`block text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Line Items</label>
+                    <div className="space-y-2">
+                      {invoiceModal.lines.map((line, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <input value={line.description} placeholder="Description"
+                            onChange={e => setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, description: e.target.value} : l)}))}
+                            className={`flex-1 px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                          <div className="relative w-28 shrink-0">
+                            <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                            <input type="number" value={line.amount} placeholder="0.00"
+                              onChange={e => setInvoiceModal(p => ({...p, lines: p.lines.map((l,j) => j===i ? {...l, amount: e.target.value} : l)}))}
+                              className={`w-full pl-6 pr-2 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                          </div>
+                          <button onClick={() => setInvoiceModal(p => ({...p, lines: p.lines.filter((_,j) => j!==i)}))}
+                            className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => setInvoiceModal(p => ({...p, lines: [...p.lines, {description:'', amount:''}]}))}
+                      className={`mt-2 text-xs font-semibold ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}>
+                      + Add line item
+                    </button>
+                  </div>
+                  {/* Totals */}
+                  <div className={`rounded-xl p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} space-y-2`}>
+                    <div className="flex justify-between text-sm">
+                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Subtotal</span>
+                      <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>£{subtotal.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm shrink-0 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Deposit Received</span>
+                      <div className="relative flex-1 max-w-[110px] ml-auto">
+                        <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£</span>
+                        <input type="number" value={invoiceModal.depositPaid} placeholder="0.00"
+                          onChange={e => setInvoiceModal(p => ({...p, depositPaid: e.target.value}))}
+                          className={`w-full pl-6 pr-2 py-1 text-sm rounded-lg border ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'border-gray-300 bg-white'}`} />
+                      </div>
+                    </div>
+                    <div className={`flex justify-between text-base font-bold pt-1 border-t ${darkMode ? 'border-gray-600 text-white' : 'border-gray-200 text-gray-900'}`}>
+                      <span>Balance Due</span>
+                      <span style={{color: balance <= 0 ? '#22c55e' : '#ef4444'}}>£{balance.toLocaleString('en-GB', {minimumFractionDigits:2})}</span>
+                    </div>
+                  </div>
+                  {/* Notes */}
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Notes</label>
+                    <textarea rows={2} value={invoiceModal.notes} onChange={e => setInvoiceModal(p => ({...p, notes: e.target.value}))}
+                      className={`w-full px-3 py-2 text-sm rounded-lg border resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} />
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className={`px-5 py-4 border-t flex gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                  <button onClick={() => setInvoiceModal(null)}
+                    className={`flex-1 py-2.5 rounded-xl font-semibold text-sm border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    Cancel
+                  </button>
+                  <button onClick={() => downloadInvoicePDF(invJob, invoiceModal)}
+                    className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-700">
+                    ⬇️ Download PDF
+                  </button>
+                </div>
               </div>
             </div>
           );
