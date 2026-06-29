@@ -1388,7 +1388,7 @@ function EyeconMoments() {
     const detailRows = [
       ['Invoice No:', inv.invoiceNum],
       ['Invoice Date:', fmtDate(inv.invoiceDate)],
-      ...(job.shootDate ? [['Event Date:', fmtDate(job.shootDate.toISOString().slice(0,10))]] : []),
+      ...(job.shootDate ? [['Event Date:', fmtDate(typeof job.shootDate === 'string' ? job.shootDate : job.shootDate.toISOString().slice(0,10))]] : []),
     ];
     let dy = y;
     detailRows.forEach(([label, val]) => {
@@ -9255,6 +9255,26 @@ Capturing Your Special Day
             <button onClick={() => setShowAIJobModal(true)} className="px-4 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold whitespace-nowrap hover:bg-purple-600">
               📸 Add from Screenshot
             </button>
+            <button onClick={() => {
+              const d = new Date();
+              const yr = d.getFullYear(), mo = String(d.getMonth()+1).padStart(2,'0');
+              const savedBank = (() => { try { return JSON.parse(localStorage.getItem('eyecon_bank_details') || '{}'); } catch { return {}; } })();
+              setInvoiceModal({
+                jobId: null,
+                invoiceNum: `INV-${yr}${mo}-${Math.random().toString(36).slice(2,6).toUpperCase()}`,
+                invoiceDate: d.toISOString().slice(0,10),
+                customerName: '',
+                lines: [{ description: '', amount: '' }],
+                extraHours: '', extraRate: '150',
+                depositPaid: '',
+                notes: 'Thank you for choosing Eyecon Moments!',
+                bankName: savedBank.name || 'EYECON MOMENTS LTD',
+                bankAccount: savedBank.account || '25406742',
+                bankSort: savedBank.sort || '04-06-05',
+              });
+            }} className="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-semibold whitespace-nowrap hover:bg-yellow-600">
+              📄 Invoice
+            </button>
           </div>
 
           {/* Team Workload Section */}
@@ -10101,19 +10121,14 @@ Capturing Your Special Day
 
         {/* Invoice Modal */}
         {invoiceModal && (() => {
-          const invJob = editingJobs.find(j => j.id === invoiceModal.jobId);
-          if (!invJob) return null;
+          const invJob = invoiceModal.jobId ? editingJobs.find(j => j.id === invoiceModal.jobId) : null;
           const extraAmt = (parseFloat(invoiceModal.extraHours) || 0) * (parseFloat(invoiceModal.extraRate) || 0);
           const subtotal = invoiceModal.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0) + extraAmt;
           const deposit = parseFloat(invoiceModal.depositPaid) || 0;
           const balance = subtotal - deposit;
           const inp = `w-full px-3 py-1.5 text-sm rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`;
           const lbl = `block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`;
-          const svcPresets = invJob.hasPhotos && invJob.hasVideo
-            ? ['Photography & Videography', 'Wedding Photography & Videography', 'Event Photography & Videography', 'Corporate Photography & Videography']
-            : invJob.hasPhotos
-            ? ['Photography', 'Wedding Photography', 'Event Photography', 'Corporate Photography']
-            : ['Videography', 'Wedding Videography', 'Event Videography', 'Corporate Videography'];
+          const svcPresets = ['Photography & Videography', 'Wedding Photography & Videography', 'Event Photography & Videography', 'Corporate Photography & Videography', 'Photography', 'Wedding Photography', 'Videography', 'Wedding Videography'];
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-lg max-h-[94vh] flex flex-col`}>
@@ -10125,7 +10140,7 @@ Capturing Your Special Day
                     </div>
                     <div>
                       <h2 className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Invoice Generator</h2>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{invJob.jobName}</p>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{invJob ? invJob.jobName : 'Standalone Invoice'}</p>
                     </div>
                   </div>
                   <button onClick={() => setInvoiceModal(null)} className={`w-7 h-7 rounded-full flex items-center justify-center ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-400 hover:bg-gray-100'}`}>✕</button>
@@ -10272,11 +10287,11 @@ Capturing Your Special Day
                     className={`px-4 py-2.5 rounded-xl font-semibold text-sm border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                     Cancel
                   </button>
-                  <button onClick={() => downloadInvoicePDF(invJob, invoiceModal)}
+                  <button onClick={() => downloadInvoicePDF(invJob || {}, invoiceModal)}
                     className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2" style={{background:'#c1a76a'}}>
                     ⬇ Download PDF
                   </button>
-                  {invJob.email && (
+                  {invJob?.email && (
                     <a href={`mailto:${invJob.email}?subject=${encodeURIComponent(invoiceModal.invoiceNum + ' — Eyecon Moments')}&body=${encodeURIComponent('Hi ' + invoiceModal.customerName + ',\n\nPlease find your invoice attached.\n\nBalance due: £' + balance.toLocaleString('en-GB', {minimumFractionDigits:2}) + '\n\nBank: ' + invoiceModal.bankName + '\nAccount: ' + invoiceModal.bankAccount + '\nSort Code: ' + invoiceModal.bankSort + '\nRef: ' + invoiceModal.invoiceNum + '\n\n' + invoiceModal.notes + '\n\nKind regards,\nEyecon Moments')}`}
                       className="px-4 py-2.5 rounded-xl font-semibold text-sm text-white flex items-center gap-1.5" style={{background:'#3b82f6'}}>
                       ✉ Email
