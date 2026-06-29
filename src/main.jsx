@@ -9783,7 +9783,6 @@ Capturing Your Special Day
                               const d = new Date();
                               const yr = d.getFullYear(), mo = String(d.getMonth()+1).padStart(2,'0');
                               const shortId = String(job.id).replace(/[^a-z0-9]/gi,'').slice(-4).toUpperCase();
-                              const price = calculateJobRevenue(job);
                               const savedBank = (() => { try { return JSON.parse(localStorage.getItem('eyecon_bank_details') || '{}'); } catch { return {}; } })();
                               const hrs = job.shootHours || 0;
                               const svcType = job.hasPhotos && job.hasVideo ? 'photo-video' : job.hasPhotos ? 'photo' : 'video';
@@ -9791,6 +9790,12 @@ Capturing Your Special Day
                                 ? `Photography & Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
                                 : svcType === 'photo' ? `Photography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
                                 : `Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`;
+                              // Price: customPrice → calculated revenue → shoot-hours estimate
+                              let price = calculateJobRevenue(job);
+                              if (!price && hrs > 0) {
+                                const ratePerHr = svcType === 'photo-video' ? 250 : 150;
+                                price = hrs * ratePerHr;
+                              }
                               setInvoiceModal({
                                 jobId: job.id,
                                 invoiceNum: `INV-${yr}${mo}-${shortId}`,
@@ -9801,8 +9806,8 @@ Capturing Your Special Day
                                 depositPaid: '',
                                 notes: 'Thank you for choosing Eyecon Moments!',
                                 bankName: savedBank.name || 'Monzo',
-                                bankAccount: savedBank.account || '',
-                                bankSort: savedBank.sort || '',
+                                bankAccount: savedBank.account || '25406742',
+                                bankSort: savedBank.sort || '04-06-05',
                               });
                             }}
                             className="w-full py-1.5 rounded text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600">
@@ -10202,27 +10207,24 @@ Capturing Your Special Day
                     </div>
                   </div>
 
-                  {/* Bank Details */}
+                  {/* Bank Details — auto-saved on every change */}
                   <div className={`rounded-xl p-3 space-y-2 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Bank Details</p>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Details</p>
                     <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className={lbl}>Bank</label>
-                        <input value={invoiceModal.bankName} onChange={e => setInvoiceModal(p => ({...p, bankName: e.target.value}))} className={inp} />
-                      </div>
-                      <div>
-                        <label className={lbl}>Account No.</label>
-                        <input value={invoiceModal.bankAccount} onChange={e => setInvoiceModal(p => ({...p, bankAccount: e.target.value}))} className={inp} />
-                      </div>
-                      <div>
-                        <label className={lbl}>Sort Code</label>
-                        <input value={invoiceModal.bankSort} onChange={e => setInvoiceModal(p => ({...p, bankSort: e.target.value}))} className={inp} />
-                      </div>
+                      {[['Bank', 'bankName'], ['Account No.', 'bankAccount'], ['Sort Code', 'bankSort']].map(([label, key]) => (
+                        <div key={key}>
+                          <label className={lbl}>{label}</label>
+                          <input value={invoiceModal[key]} onChange={e => {
+                            const val = e.target.value;
+                            setInvoiceModal(p => {
+                              const next = {...p, [key]: val};
+                              localStorage.setItem('eyecon_bank_details', JSON.stringify({ name: next.bankName, account: next.bankAccount, sort: next.bankSort }));
+                              return next;
+                            });
+                          }} className={inp} />
+                        </div>
+                      ))}
                     </div>
-                    <button onClick={() => { localStorage.setItem('eyecon_bank_details', JSON.stringify({ name: invoiceModal.bankName, account: invoiceModal.bankAccount, sort: invoiceModal.bankSort })); }}
-                      className={`text-xs font-semibold ${darkMode ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700'}`}>
-                      ✓ Save as default bank details
-                    </button>
                   </div>
 
                   {/* Notes */}
