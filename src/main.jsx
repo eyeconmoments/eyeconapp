@@ -9852,6 +9852,35 @@ Capturing Your Special Day
                       }} className="px-3 py-2 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200" title="Share progress link with client">
                         🔗
                       </button>
+                      <button title="Generate Invoice" onClick={() => {
+                        const d = new Date();
+                        const yr = d.getFullYear(), mo = String(d.getMonth()+1).padStart(2,'0');
+                        const shortId = String(job.id).replace(/[^a-z0-9]/gi,'').slice(-4).toUpperCase();
+                        const savedBank = (() => { try { return JSON.parse(localStorage.getItem('eyecon_bank_details') || '{}'); } catch { return {}; } })();
+                        const hrs = job.shootHours || 0;
+                        const svcType = job.hasPhotos && job.hasVideo ? 'photo-video' : job.hasPhotos ? 'photo' : 'video';
+                        const svcLabel = svcType === 'photo-video'
+                          ? `Photography & Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
+                          : svcType === 'photo' ? `Photography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
+                          : `Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`;
+                        let price = calculateJobRevenue(job);
+                        if (!price && hrs > 0) price = hrs * (svcType === 'photo-video' ? 250 : 150);
+                        setInvoiceModal({
+                          jobId: job.id,
+                          invoiceNum: `INV-${yr}${mo}-${shortId}`,
+                          invoiceDate: d.toISOString().slice(0,10),
+                          customerName: job.customerName || '',
+                          lines: [{ description: svcLabel, amount: price > 0 ? String(price) : '' }],
+                          extraHours: '', extraRate: svcType === 'photo' ? '125' : '150',
+                          depositPaid: '',
+                          notes: 'Thank you for choosing Eyecon Moments!',
+                          bankName: savedBank.name || 'EYECON MOMENTS LTD',
+                          bankAccount: savedBank.account || '25406742',
+                          bankSort: savedBank.sort || '04-06-05',
+                        });
+                      }} className="px-3 py-2 rounded text-sm bg-yellow-100 text-yellow-700 hover:bg-yellow-200">
+                        📄
+                      </button>
                       <button onClick={async () => {
                         if (!window.confirm(`Permanently delete "${job.jobName}"? This cannot be undone.`)) return;
                         await db.from('jobs').delete().eq('id', job.id);
