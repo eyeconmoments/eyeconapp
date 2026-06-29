@@ -9718,7 +9718,7 @@ Capturing Your Special Day
                                 )}
                               </div>
                             );
-                          })()}
+                          })()
                         })}
                       </div>
                     )}
