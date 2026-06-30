@@ -468,6 +468,17 @@ function EyeconMoments() {
   const [editingCosts, setEditingCosts] = useState(false);
   const [costOverrides, setCostOverrides] = useState({});
   const [showKeyboardInput, setShowKeyboardInput] = useState(false);
+  const [pwaInstallPrompt, setPwaInstallPrompt] = useState(null);
+  const [showInvoiceLog, setShowInvoiceLog] = useState(false);
+  const [invoiceLog, setInvoiceLog] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_invoices') || '[]'); } catch { return []; } });
+  const [localDataRefresh, setLocalDataRefresh] = useState(0);
+  const refreshLocal = () => setLocalDataRefresh(n => n + 1);
+  const [depositFormJobId, setDepositFormJobId] = useState(null);
+  const [depositFormAmt, setDepositFormAmt] = useState('');
+  const [depositFormDate, setDepositFormDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [calendarSelectedDay, setCalendarSelectedDay] = useState(null);
 
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -512,6 +523,12 @@ function EyeconMoments() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setPwaInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
   // Save loose threads to localStorage whenever they change
@@ -1495,6 +1512,14 @@ function EyeconMoments() {
     doc.text('Eyecon Moments  ·  eyecon.moments@gmail.com  ·  www.eyeconmoments.co.uk', W / 2, 292, { align: 'center' });
 
     doc.save(`${inv.invoiceNum} - ${job.customerName || job.jobName}.pdf`);
+    // Log invoice
+    try {
+      const logEntry = { id: Date.now(), jobId: job?.id, jobName: job?.jobName || inv?.jobName || '', customerName: inv?.customerName || job?.customerName || '', invoiceNum: inv?.invoiceNum || '', amount: inv?.lines?.reduce((s,l)=>s+(parseFloat(l.amount)||0),0) || 0, date: new Date().toISOString(), status: 'sent' };
+      const existing = (() => { try { return JSON.parse(localStorage.getItem('eyecon_invoices') || '[]'); } catch { return []; } })();
+      const updated = [logEntry, ...existing];
+      localStorage.setItem('eyecon_invoices', JSON.stringify(updated));
+      setInvoiceLog(updated);
+    } catch(e) {}
   };
 
   const toggleArchiveJob = async (jobId) => {
@@ -5040,6 +5065,7 @@ Notes: ${j.notes || 'none'}`;
       { key: 'feedback',   label: 'Feedback' },
       { key: 'post-ideas', label: 'Posts' },
       { key: 'checklist',  label: 'Gear ✓' },
+      { key: 'calendar',   label: 'Cal' },
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
@@ -5066,6 +5092,15 @@ Notes: ${j.notes || 'none'}`;
     const navActiveEntry = getUserActiveTimeEntry(currentUser?.id);
     return (
       <>
+      {pwaInstallPrompt && (
+        <div style={{background:'#c1a76a', color:'#1a2535'}} className="flex items-center justify-between px-4 py-2 text-sm font-semibold">
+          <span>📲 Install App for quick access</span>
+          <div className="flex gap-2">
+            <button onClick={() => { pwaInstallPrompt.prompt(); setPwaInstallPrompt(null); }} className="px-3 py-1 bg-white rounded text-xs font-bold" style={{color:'#1a2535'}}>Install</button>
+            <button onClick={() => setPwaInstallPrompt(null)} className="px-2 py-1 text-xs opacity-70 hover:opacity-100">✕</button>
+          </div>
+        </div>
+      )}
       <div className="sticky top-0 z-10 shadow-lg" style={{background: darkMode ? '#111827' : '#1a2535'}}>
         <div className="px-4 pt-3 pb-2">
           <div className="flex justify-between items-center mb-3">
@@ -9275,6 +9310,9 @@ Capturing Your Special Day
             }} className="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-semibold whitespace-nowrap hover:bg-yellow-600">
               📄 Invoice
             </button>
+            <button onClick={() => { setInvoiceLog((() => { try { return JSON.parse(localStorage.getItem('eyecon_invoices') || '[]'); } catch { return []; } })()); setShowInvoiceLog(true); }} className="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm font-semibold whitespace-nowrap hover:bg-indigo-600">
+              📋 Invoice Log
+            </button>
           </div>
 
           {/* Team Workload Section */}
@@ -9797,6 +9835,42 @@ Capturing Your Special Day
                       );
                     })()}
 
+                    {/* Deposit Tracking — Feature 3 */}
+                    {(() => {
+                      const depKey = `eyecon_deposit_${job.id}`;
+                      const depData = (() => { try { return JSON.parse(localStorage.getItem(depKey) || 'null'); } catch { return null; } })();
+                      const [depAmt, setDepAmtLocal] = React.useState(depData?.amount || '');
+                      const [depDate, setDepDateLocal] = React.useState(depData?.date || '');
+                      const [depPaid, setDepPaidLocal] = React.useState(depData?.paid || false);
+                      const saveDeposit = () => {
+                        const d = { amount: depAmt, date: depDate, paid: depPaid };
+                        localStorage.setItem(depKey, JSON.stringify(d));
+                        alert('Deposit saved');
+                      };
+                      return (
+                        <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💰 Deposit</p>
+                          {depPaid ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-500 text-sm font-semibold">✅ Deposit received {depAmt ? `£${depAmt}` : ''}</span>
+                              <button onClick={() => { setDepPaidLocal(false); localStorage.setItem(depKey, JSON.stringify({ amount: depAmt, date: depDate, paid: false })); }} className="text-xs text-gray-400 underline">undo</button>
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <div className="flex gap-2">
+                                <input type="number" placeholder="Amount £" value={depAmt} onChange={e => setDepAmtLocal(e.target.value)} className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                                <input type="date" value={depDate} onChange={e => setDepDateLocal(e.target.value)} className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={saveDeposit} className="flex-1 py-1 rounded text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600">Save</button>
+                                <button onClick={() => { setDepPaidLocal(true); localStorage.setItem(depKey, JSON.stringify({ amount: depAmt, date: depDate, paid: true })); }} className="flex-1 py-1 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">Mark Paid</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Final Payment */}
                     <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                       <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💷 Final Payment</p>
@@ -9853,6 +9927,137 @@ Capturing Your Special Day
                         </div>
                       )}
                     </div>
+
+                    {/* Delivery Link — Feature 7 */}
+                    {(() => {
+                      const dlvKey = `eyecon_delivery_${job.id}`;
+                      const dlvData = (() => { try { return JSON.parse(localStorage.getItem(dlvKey) || 'null'); } catch { return null; } })();
+                      const [dlvLink, setDlvLinkLocal] = React.useState(dlvData?.link || '');
+                      const [dlvSent, setDlvSentLocal] = React.useState(dlvData?.sent || false);
+                      return (
+                        <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>🔗 Client Delivery Link</p>
+                          <div className="space-y-1.5">
+                            <input type="url" placeholder="https://drive.google.com/..." value={dlvLink} onChange={e => setDlvLinkLocal(e.target.value)} className={`w-full px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                            <div className="flex gap-2">
+                              <button onClick={() => { localStorage.setItem(dlvKey, JSON.stringify({ link: dlvLink, sent: dlvSent })); alert('Link saved'); }} className="flex-1 py-1 rounded text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600">Save</button>
+                              <button onClick={() => { if (dlvLink) { navigator.clipboard?.writeText(dlvLink); alert('Link copied!'); } }} className="flex-1 py-1 rounded text-xs font-semibold bg-gray-500 text-white hover:bg-gray-600">Copy</button>
+                              <button onClick={() => { setDlvSentLocal(true); localStorage.setItem(dlvKey, JSON.stringify({ link: dlvLink, sent: true })); alert('Marked as sent'); }} className={`flex-1 py-1 rounded text-xs font-semibold text-white ${dlvSent ? 'bg-green-500' : 'bg-purple-500 hover:bg-purple-600'}`}>{dlvSent ? '✅ Sent' : 'Mark Sent'}</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Equipment/Kit Tracking — Feature 10 */}
+                    {(() => {
+                      const eqKey = `eyecon_equip_${job.id}`;
+                      const eqData = (() => { try { return JSON.parse(localStorage.getItem(eqKey) || '[]'); } catch { return []; } })();
+                      const [eqOpen, setEqOpen] = React.useState(false);
+                      const [eqItems, setEqItems] = React.useState(eqData);
+                      const [eqNewItem, setEqNewItem] = React.useState('');
+                      const saveEq = (items) => { localStorage.setItem(eqKey, JSON.stringify(items)); setEqItems(items); };
+                      return (
+                        <div className={`mb-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <button onClick={() => setEqOpen(v => !v)} className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            <span>🎒 Equipment / Kit ({eqItems.length})</span>
+                            <span>{eqOpen ? '▲' : '▼'}</span>
+                          </button>
+                          {eqOpen && (
+                            <div className="px-3 pb-3 space-y-1.5">
+                              {eqItems.map((item, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  <input type="checkbox" checked={item.packed} onChange={() => { const upd = eqItems.map((it,i) => i===idx ? {...it, packed: !it.packed} : it); saveEq(upd); }} className="rounded" />
+                                  <span className={`flex-1 text-xs ${item.packed ? 'line-through opacity-50' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.name}</span>
+                                  <button onClick={() => saveEq(eqItems.filter((_,i) => i !== idx))} className="text-red-400 text-xs">✕</button>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-2">
+                                <input type="text" placeholder="Add item..." value={eqNewItem} onChange={e => setEqNewItem(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && eqNewItem.trim()) { saveEq([...eqItems, { name: eqNewItem.trim(), packed: false }]); setEqNewItem(''); }}} className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                                <button onClick={() => { if (eqNewItem.trim()) { saveEq([...eqItems, { name: eqNewItem.trim(), packed: false }]); setEqNewItem(''); }}} className="px-3 py-1 rounded text-xs font-semibold bg-blue-500 text-white">Add</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Mileage / Expenses — Feature 11 */}
+                    {(() => {
+                      const extKey = `eyecon_extras_${job.id}`;
+                      const extData = (() => { try { return JSON.parse(localStorage.getItem(extKey) || '[]'); } catch { return []; } })();
+                      const [extOpen, setExtOpen] = React.useState(false);
+                      const [extItems, setExtItems] = React.useState(extData);
+                      const [extDesc, setExtDesc] = React.useState('');
+                      const [extAmt, setExtAmt] = React.useState('');
+                      const saveExt = (items) => { localStorage.setItem(extKey, JSON.stringify(items)); setExtItems(items); };
+                      const total = extItems.reduce((s,i) => s + (parseFloat(i.amount)||0), 0);
+                      return (
+                        <div className={`mb-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <button onClick={() => setExtOpen(v => !v)} className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            <span>🚗 Expenses / Mileage {total > 0 ? `(£${total.toFixed(2)})` : ''}</span>
+                            <span>{extOpen ? '▲' : '▼'}</span>
+                          </button>
+                          {extOpen && (
+                            <div className="px-3 pb-3 space-y-1.5">
+                              {extItems.map((item, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  <span className={`flex-1 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.desc}</span>
+                                  <span className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>£{parseFloat(item.amount).toFixed(2)}</span>
+                                  <button onClick={() => saveExt(extItems.filter((_,i) => i !== idx))} className="text-red-400 text-xs">✕</button>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-2">
+                                <input type="text" placeholder="Description" value={extDesc} onChange={e => setExtDesc(e.target.value)} className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                                <input type="number" placeholder="£" value={extAmt} onChange={e => setExtAmt(e.target.value)} className={`w-16 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                                <button onClick={() => { if (extDesc.trim() && extAmt) { saveExt([...extItems, { desc: extDesc.trim(), amount: extAmt }]); setExtDesc(''); setExtAmt(''); }}} className="px-3 py-1 rounded text-xs font-semibold bg-blue-500 text-white">Add</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Client Reminders — Feature 8 */}
+                    {(() => {
+                      const remKey = `eyecon_reminders_${job.id}`;
+                      const remData = (() => { try { return JSON.parse(localStorage.getItem(remKey) || '[]'); } catch { return []; } })();
+                      const [remOpen, setRemOpen] = React.useState(false);
+                      const [remItems, setRemItems] = React.useState(remData);
+                      const [remMsg, setRemMsg] = React.useState('');
+                      const [remDate, setRemDateLocal] = React.useState('');
+                      const saveRem = (items) => { localStorage.setItem(remKey, JSON.stringify(items)); setRemItems(items); };
+                      const pendingCount = remItems.filter(r => !r.sent).length;
+                      return (
+                        <div className={`mb-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <button onClick={() => setRemOpen(v => !v)} className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            <span>🔔 Client Reminders {pendingCount > 0 ? `(${pendingCount} pending)` : ''}</span>
+                            <span>{remOpen ? '▲' : '▼'}</span>
+                          </button>
+                          {remOpen && (
+                            <div className="px-3 pb-3 space-y-2">
+                              {remItems.map((rem, idx) => (
+                                <div key={idx} className={`flex items-start gap-2 p-2 rounded ${rem.sent ? 'opacity-60' : ''} ${darkMode ? 'bg-gray-600' : 'bg-white'} border ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
+                                  <div className="flex-1">
+                                    <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{rem.msg}</p>
+                                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{rem.date ? new Date(rem.date).toLocaleDateString('en-GB') : ''} {rem.sent ? '· Sent' : '· Pending'}</p>
+                                  </div>
+                                  <button onClick={() => { const upd = remItems.map((r,i) => i===idx ? {...r, sent: true} : r); saveRem(upd); }} className={`text-xs px-2 py-0.5 rounded font-semibold ${rem.sent ? 'bg-green-200 text-green-700' : 'bg-orange-500 text-white'}`}>{rem.sent ? '✓' : 'Mark Sent'}</button>
+                                  <button onClick={() => saveRem(remItems.filter((_,i) => i !== idx))} className="text-red-400 text-xs">✕</button>
+                                </div>
+                              ))}
+                              <div className="space-y-1.5">
+                                <textarea rows={2} placeholder="Reminder message..." value={remMsg} onChange={e => setRemMsg(e.target.value)} className={`w-full px-2 py-1 rounded border text-xs resize-none ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                                <div className="flex gap-2">
+                                  <input type="date" value={remDate} onChange={e => setRemDateLocal(e.target.value)} className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                                  <button onClick={() => { if (remMsg.trim()) { saveRem([...remItems, { msg: remMsg.trim(), date: remDate, sent: false }]); setRemMsg(''); setRemDateLocal(''); }}} className="px-3 py-1 rounded text-xs font-semibold bg-blue-500 text-white">Add</button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="flex gap-2">
                       <button onClick={() => toggleArchiveJob(job.id)}
@@ -10070,6 +10275,43 @@ Capturing Your Special Day
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Invoice Log Modal — Feature 2 */}
+        {showInvoiceLog && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 Invoice Log</h2>
+                <button onClick={() => setShowInvoiceLog(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              </div>
+              {invoiceLog.length === 0 ? (
+                <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No invoices generated yet</p>
+              ) : (
+                <div className="space-y-3">
+                  {invoiceLog.map(entry => (
+                    <div key={entry.id} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{entry.invoiceNum}</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{entry.customerName} — {entry.jobName}</p>
+                          <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{new Date(entry.date).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-bold text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>£{(entry.amount||0).toFixed(2)}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${entry.status === 'sent' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>{entry.status}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className={`pt-2 border-t ${darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-200 text-gray-700'} text-sm font-semibold text-right`}>
+                    Total: £{invoiceLog.reduce((s,e) => s + (e.amount||0), 0).toFixed(2)}
+                  </div>
+                </div>
+              )}
+              <button onClick={() => setShowInvoiceLog(false)} className={`mt-4 w-full py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Close</button>
             </div>
           </div>
         )}
@@ -10971,6 +11213,22 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       ✉️ Open Email
                     </button>
                   </div>
+                  {/* Feature 1: Create Job from booking with price pre-filled */}
+                  <button onClick={() => {
+                    setManualJob(prev => ({
+                      ...prev,
+                      jobName: inq.eventType ? `${inq.customerName} ${inq.eventType.charAt(0).toUpperCase() + inq.eventType.slice(1)}` : inq.customerName,
+                      customerName: inq.customerName || '',
+                      shootDate: bookingDate || '',
+                      customPrice: bookingTotalPrice || '',
+                    }));
+                    setShowBookingConfirmModal(false);
+                    setBookingConfirmInquiry(null);
+                    setCurrentView('jobs');
+                    setTimeout(() => setShowManualJobModal(true), 200);
+                  }} className="mt-2 w-full py-2.5 rounded-lg text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600">
+                    ➕ Create Job (£{parseFloat(bookingTotalPrice||0).toFixed(0)} pre-filled)
+                  </button>
                 </div>
               </div>
             );
@@ -16498,6 +16756,81 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               ))}
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'calendar') {
+    const now = new Date();
+    const [calYear, setCalYear] = React.useState(now.getFullYear());
+    const [calMonth, setCalMonth] = React.useState(now.getMonth());
+    const firstDay = new Date(calYear, calMonth, 1);
+    const lastDay = new Date(calYear, calMonth + 1, 0);
+    const startPad = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Mon-start
+    const totalCells = startPad + lastDay.getDate();
+    const weeks = Math.ceil(totalCells / 7);
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+    const getJobsForDay = (day) => {
+      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      return editingJobs.filter(j => j.shootDate && j.shootDate.slice(0,10) === dateStr);
+    };
+
+    return (
+      <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        <div className="px-4 py-4 max-w-2xl mx-auto">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1); } else setCalMonth(m => m-1); }} className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800'} shadow`}>◀</button>
+            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{monthNames[calMonth]} {calYear}</h2>
+            <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1); } else setCalMonth(m => m+1); }} className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800'} shadow`}>▶</button>
+          </div>
+          <div className={`rounded-xl shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className="grid grid-cols-7">
+              {dayNames.map(d => (
+                <div key={d} className={`text-center text-xs font-bold py-2 ${darkMode ? 'text-gray-400 bg-gray-750' : 'text-gray-500 bg-gray-50'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{d}</div>
+              ))}
+              {Array.from({length: weeks * 7}).map((_, idx) => {
+                const day = idx - startPad + 1;
+                const isValid = day >= 1 && day <= lastDay.getDate();
+                const isToday = isValid && day === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
+                const dayJobs = isValid ? getJobsForDay(day) : [];
+                return (
+                  <div key={idx} className={`min-h-[60px] p-1 border-b border-r ${darkMode ? 'border-gray-700' : 'border-gray-100'} ${!isValid ? (darkMode ? 'bg-gray-850' : 'bg-gray-50') : ''}`}>
+                    {isValid && (
+                      <>
+                        <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold mb-0.5 ${isToday ? 'text-white' : darkMode ? 'text-gray-300' : 'text-gray-700'}`} style={isToday ? {background:'var(--gold)'} : {}}>{day}</div>
+                        {dayJobs.slice(0,2).map(j => (
+                          <div key={j.id} onClick={() => setCurrentView('jobs')} className="text-xs px-1 py-0.5 rounded mb-0.5 truncate cursor-pointer" style={{background:'rgba(193,167,106,0.25)', color: darkMode ? '#c1a76a' : '#8a6d2e'}} title={j.jobName}>{j.jobName}</div>
+                        ))}
+                        {dayJobs.length > 2 && <div className="text-xs text-gray-400">+{dayJobs.length-2} more</div>}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            <h3 className={`font-semibold text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Jobs this month</h3>
+            {editingJobs.filter(j => {
+              if (!j.shootDate) return false;
+              const d = new Date(j.shootDate);
+              return d.getFullYear() === calYear && d.getMonth() === calMonth;
+            }).sort((a,b) => a.shootDate.localeCompare(b.shootDate)).map(j => (
+              <div key={j.id} onClick={() => setCurrentView('jobs')} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50'} shadow`}>
+                <div className="text-center min-w-[36px]">
+                  <div className="text-xs font-bold" style={{color:'var(--gold)'}}>{new Date(j.shootDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
+                  <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.customerName}</p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${j.photoStatus === 'done' ? 'bg-green-100 text-green-700' : j.photoStatus === 'in-progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{j.photoStatus || 'not-started'}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
