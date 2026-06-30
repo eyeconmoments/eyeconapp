@@ -9686,14 +9686,18 @@ Capturing Your Special Day
                           
                           return (() => {
                             const isDone = stage.status === 'completed';
-                            const stageFile = isDone ? (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === stage.name) : null;
+                            const allLocs = job.fileLocations || [];
+                            // Drive-uploaded file for this stage
+                            const stageFile = isDone ? allLocs.find(f => f.type === 'drive_project_file' && f.stageName === stage.name) : null;
+                            // Hardware/path location logged by employee for this stage
+                            const stageLoc = isDone ? allLocs.find(f => !f.type && (f.stage === stage.name || f.stageName === stage.name)) : null;
                             const stageHrs = isDone && stage.assignedTo
                               ? timeEntries.filter(t => String(t.jobId) === String(job.id) && t.employeeId === stage.assignedTo && t.hoursWorked).reduce((a, t) => a + t.hoursWorked, 0)
                               : 0;
-                            const nextStage = job.stages[idx + 1];
                             const nextStageFile = !isDone && isPreviousComplete && previousStage
-                              ? (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === previousStage.name)
+                              ? allLocs.find(f => f.type === 'drive_project_file' && f.stageName === previousStage.name)
                               : null;
+                            const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
                             return (
                               <div key={stage.id} className={`p-2 ${isDone ? (darkMode ? 'bg-green-900' : 'bg-green-50') : (darkMode ? 'bg-blue-900' : 'bg-blue-50')} rounded`}>
                                 <div className="flex justify-between items-center mb-1">
@@ -9715,22 +9719,34 @@ Capturing Your Special Day
                                 )}
                                 {isDone && (
                                   <div className="space-y-1 mt-1">
+                                    {/* Who · When · Hours */}
                                     <p className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                                       ✓ {stage.completedBy || getEmployeeName(stage.assignedTo)}
-                                      {stage.completedAt && ` · ${new Date(stage.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}`}
-                                      {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && stageHrs > 0 && ` · ${stageHrs.toFixed(1)}h`}
+                                      {stage.completedAt && ` · ${new Date(stage.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })} ${new Date(stage.completedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+                                      {isAdmin && stageHrs > 0 && ` · ${stageHrs.toFixed(1)}h`}
                                     </p>
+                                    {/* Where they worked + file path */}
+                                    {stageLoc && (stageLoc.hardware || stageLoc.drive || stageLoc.path || stageLoc.filename) && (
+                                      <div className={`text-xs rounded px-2 py-1 ${darkMode ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800'}`}>
+                                        {stageLoc.hardware && <span className="font-medium">💻 {stageLoc.hardware}</span>}
+                                        {stageLoc.drive && <span className="ml-1">· {stageLoc.drive}</span>}
+                                        {stageLoc.path && <span className="ml-1 opacity-75">· {stageLoc.path}</span>}
+                                        {stageLoc.filename && <div className="mt-0.5 opacity-90">📁 {stageLoc.filename}</div>}
+                                        {isAdmin && stageLoc.setAt && <div className="opacity-60 text-xs">Logged {new Date(stageLoc.setAt).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}</div>}
+                                      </div>
+                                    )}
+                                    {/* Google Drive file */}
                                     {stageFile ? (
                                       <a href={stageFile.driveLink} target="_blank" rel="noopener noreferrer"
                                         className="flex items-center gap-1 text-xs text-blue-500 hover:underline">
-                                        <span>📄</span>
+                                        <span>☁️</span>
                                         <span className="truncate">{stageFile.fileName}</span>
                                         <span>↗</span>
                                       </a>
                                     ) : (
                                       <button onClick={() => setProjectFileModal({ jobId: job.id, jobName: job.jobName, stageName: stage.name, stageLabel: stage.name.split(',')[0].trim() })}
                                         className={`text-xs ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
-                                        + Upload project file
+                                        + Upload to Drive
                                       </button>
                                     )}
                                   </div>
