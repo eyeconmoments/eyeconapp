@@ -11748,13 +11748,14 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                           <p className={`text-sm mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{loc.notes || loc.path}</p>
                         )}
 
-                        {/* Set by */}
-                        {loc.setBy && (
-                          <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                            Set by {loc.setBy}{loc.setAt ? ` · ${new Date(loc.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}` : ''}
-                            {loc.stage ? ` · ${loc.stage}` : ''}
-                          </p>
-                        )}
+                        {/* Set by — include PC + HDD in text */}
+                        <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          Set by <span className="font-medium">{loc.setBy || 'Unknown'}</span>
+                          {hwName && hwName !== 'Unknown' && <span className={`font-semibold ml-1 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>on {hwName}</span>}
+                          {loc.drive && <span className={`ml-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>· {loc.drive}</span>}
+                          {loc.setAt && <span className="ml-1">· {new Date(loc.setAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}</span>}
+                          {loc.stage && <span className="ml-1">· {loc.stage}</span>}
+                        </p>
 
                         {/* History */}
                         {loc.history && loc.history.length > 0 && (
@@ -11765,14 +11766,15 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                                 const hHwName = h.hardware ? (hardwareLocations.find(hw => hw.id === h.hardware)?.name || h.hardware) : null;
                                 return (
                                 <div key={hi} className={`text-xs pl-2 border-l-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                                  {(h.stage || h.notes || h.path) && (
-                                    <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.stage || h.notes || h.path}</p>
-                                  )}
-                                  <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    {hHwName && <span className="font-semibold text-blue-400">{hHwName}</span>}
-                                    {hHwName && h.drive && ' · '}
-                                    {h.drive && <span>📁 {h.drive}</span>}
+                                  <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {hHwName
+                                      ? <span className="font-semibold text-blue-400">{hHwName}</span>
+                                      : <span className={`italic ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>PC not recorded</span>}
+                                    {h.drive && <span className={`ml-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>· {h.drive}</span>}
                                   </p>
+                                  {(h.stage || h.notes || h.path) && (
+                                    <p className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{h.stage || h.notes || h.path}</p>
+                                  )}
                                   <p className={`mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                     {(h.changedBy || h.setBy) && (h.changedBy || h.setBy) !== 'Unknown'
                                       ? `👤 ${h.changedBy || h.setBy}`
