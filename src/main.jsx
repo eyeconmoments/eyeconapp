@@ -483,6 +483,7 @@ function EyeconMoments() {
   const toggleJobSection = (key) => setExpandedJobSections(p => ({...p, [key]: !p[key]}));
   const [jobSectionInputs, setJobSectionInputs] = useState({});
   const setJobInput = (key, val) => setJobSectionInputs(p => ({...p, [key]: val}));
+  const [galleryEmailModal, setGalleryEmailModal] = useState(null); // { jobId, email, driveLink }
 
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -10095,6 +10096,13 @@ Capturing Your Special Day
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
                         <Archive /> {isArchived ? 'Unarchive' : 'Archive'}
                       </button>
+                      <button title="Send gallery / delivery email to client" onClick={() => {
+                        const inqMatch = inquiries.find(i => i.customerName?.toLowerCase() === job.customerName?.toLowerCase());
+                        const savedDlv = (() => { try { return JSON.parse(localStorage.getItem(`eyecon_delivery_${job.id}`) || 'null'); } catch { return null; } })();
+                        setGalleryEmailModal({ jobId: job.id, email: inqMatch?.email || '', driveLink: savedDlv?.link || '' });
+                      }} className="px-3 py-2 rounded text-sm bg-teal-100 text-teal-700 hover:bg-teal-200">
+                        📧
+                      </button>
                       <button onClick={async () => {
                         const assigned = [];
                         if (job.photoAssignedTo) { const e = employees.find(x => x.id === job.photoAssignedTo); if (e?.phone) assigned.push(e); }
@@ -10383,6 +10391,56 @@ Capturing Your Special Day
                     setDepositFormJobId(null);
                     refreshLocal();
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white">✅ Save + Paid</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {galleryEmailModal && (() => {
+          const gemJob = editingJobs.find(j => j.id === galleryEmailModal.jobId);
+          const firstName = gemJob?.customerName?.split(' ')[0] || 'there';
+          const driveLink = galleryEmailModal.driveLink || '';
+          const AMENDMENTS_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScRohZan4TEjemmFqGvjSYYjkIkTlHTi4m0Gn0nNnFFdmqcvw/viewform?pli=1';
+          const emailBody = `Hello ${firstName},\n\nThank you again for using Eyecon Moments to capture your big day.\n\nClick here to view your files: ${driveLink}\n\nYour shareable link is as follows: ${driveLink}\n\nWe would advise you to download the files to maintain quality. Sometimes, large files won't play on Google Drive if they were recently uploaded; you must download the files.\n\nPlease let us know what you think of our work, and rest assured amendments can be made if you so wish. Should you wish to make amendments please write them out clearly, along with timestamps in the link below. This should be completed no later than 30 days after this email, after this 30 day period the files will be automatically deleted from our hard drive unless we are informed of the changes. Click here to complete the amendments form if you'd like to use it: ${AMENDMENTS_URL}\n\nAs part of our quality assurance we usually send files online prior to burning them onto a stick. Once we get the thumbs up from yourselves we will post your completed memory stick to you.\n\nKind regards,\nEyecon Moments`;
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto`}>
+                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Send Gallery Email</h2>
+                {gemJob && <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{gemJob.customerName} · {gemJob.jobName}</p>}
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email</label>
+                    <input type="email" value={galleryEmailModal.email}
+                      onChange={e => setGalleryEmailModal(p => ({ ...p, email: e.target.value }))}
+                      placeholder="client@example.com" autoFocus
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                    {!galleryEmailModal.email && <p className="text-xs text-amber-500 mt-1">⚠ No email found in CRM — please enter manually</p>}
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Google Drive link</label>
+                    <input type="url" value={galleryEmailModal.driveLink}
+                      onChange={e => setGalleryEmailModal(p => ({ ...p, driveLink: e.target.value }))}
+                      placeholder="https://drive.google.com/..."
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Email preview</label>
+                    <pre className={`text-xs p-3 rounded-lg whitespace-pre-wrap font-sans leading-relaxed border ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>{emailBody}</pre>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => setGalleryEmailModal(null)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button
+                    disabled={!galleryEmailModal.email || !galleryEmailModal.driveLink}
+                    onClick={() => {
+                      openGmail(galleryEmailModal.email, 'Your Files Are Ready — Eyecon Moments', emailBody);
+                      setGalleryEmailModal(null);
+                    }}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity ${(!galleryEmailModal.email || !galleryEmailModal.driveLink) ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    style={{background:'var(--gold)'}}>
+                    Open in Gmail ✉
+                  </button>
                 </div>
               </div>
             </div>
