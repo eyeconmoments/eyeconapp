@@ -10434,7 +10434,9 @@ Capturing Your Special Day
                   <button
                     disabled={!galleryEmailModal.email || !galleryEmailModal.driveLink}
                     onClick={() => {
-                      openGmail(galleryEmailModal.email, 'Your Files Are Ready — Eyecon Moments', emailBody);
+                      const subject = encodeURIComponent('Your Files Are Ready — Eyecon Moments');
+                      const body = encodeURIComponent(emailBody);
+                      openMail(`mailto:${encodeURIComponent(galleryEmailModal.email)}?subject=${subject}&body=${body}`);
                       setGalleryEmailModal(null);
                     }}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity ${(!galleryEmailModal.email || !galleryEmailModal.driveLink) ? 'opacity-40 cursor-not-allowed' : ''}`}
