@@ -12082,7 +12082,21 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           {(() => {
             const activeLocs = filteredLocations.filter(l => !l.isArchived);
             const archivedLocs = filteredLocations.filter(l => l.isArchived);
+            // Each unique archived job gets its own colour from this palette
+            const ARCH_PALETTE = [
+              { border: '#3b82f6', bg: darkMode ? '#172554' : '#eff6ff' }, // blue
+              { border: '#a855f7', bg: darkMode ? '#2e1065' : '#faf5ff' }, // purple
+              { border: '#22c55e', bg: darkMode ? '#052e16' : '#f0fdf4' }, // green
+              { border: '#ef4444', bg: darkMode ? '#450a0a' : '#fef2f2' }, // red
+              { border: '#14b8a6', bg: darkMode ? '#042f2e' : '#f0fdfa' }, // teal
+              { border: '#f97316', bg: darkMode ? '#431407' : '#fff7ed' }, // orange
+              { border: '#6366f1', bg: darkMode ? '#1e1b4b' : '#eef2ff' }, // indigo
+              { border: '#ec4899', bg: darkMode ? '#500724' : '#fdf2f8' }, // pink
+            ];
+            const uniqueArchIds = [...new Set(archivedLocs.map(l => l.jobId))];
+            const archColorMap = Object.fromEntries(uniqueArchIds.map((id, i) => [id, ARCH_PALETTE[i % ARCH_PALETTE.length]]));
             const renderCard = (loc, idx, isArchSection) => {
+                  const archColor = isArchSection ? archColorMap[loc.jobId] : null;
                   const job = editingJobs.find(j => j.id === loc.jobId);
                   const locationIndex = loc.originalIndex;
                   
@@ -12111,15 +12125,19 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   const hwName = hardwareLocations.find(h => h.id === loc.hardware)?.name || (loc.hardware ? loc.hardware : loc.drive) || 'Unknown';
                   
                   return (
-                    <div key={`${loc.jobId}-${locationIndex}`} className={`flex items-stretch gap-0 rounded-xl overflow-hidden border shadow-sm ${isArchSection ? (darkMode ? 'border-amber-800 opacity-80' : 'border-amber-300 opacity-80') : (darkMode ? 'border-gray-700' : 'border-gray-200')}`}>
+                    <div key={`${loc.jobId}-${locationIndex}`}
+                      className={`flex items-stretch gap-0 rounded-xl overflow-hidden border shadow-sm ${isArchSection ? 'opacity-90' : (darkMode ? 'border-gray-700' : 'border-gray-200')}`}
+                      style={isArchSection ? { borderColor: archColor.border } : {}}>
                       {/* Color strip */}
-                      <div className={`w-1.5 flex-shrink-0 ${isArchSection ? 'bg-amber-500' : hwColor.badge}`}></div>
+                      <div className={`w-1.5 flex-shrink-0 ${isArchSection ? '' : hwColor.badge}`}
+                        style={isArchSection ? { backgroundColor: archColor.border } : {}}></div>
 
                       {/* Main content */}
-                      <div className={`flex-1 p-3 ${isArchSection ? (darkMode ? 'bg-amber-950' : 'bg-amber-50') : (darkMode ? 'bg-gray-800' : 'bg-white')}`}>
+                      <div className={`flex-1 p-3 ${isArchSection ? '' : (darkMode ? 'bg-gray-800' : 'bg-white')}`}
+                        style={isArchSection ? { backgroundColor: archColor.bg } : {}}>
                         {/* Badges row */}
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                          {isArchSection && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">📦 Archived</span>}
+                          {isArchSection && <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: archColor.border }}>📦 Archived</span>}
                           {loc.hardware && hardwareLocations.find(h => h.id === loc.hardware) && (
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${hwColor.badge}`}>{hwName}</span>
                           )}
@@ -12192,7 +12210,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       </div>
 
                       {/* Override + Lock buttons */}
-                      <div className={`flex flex-col items-stretch border-l ${isArchSection ? (darkMode ? 'border-amber-800 bg-amber-950' : 'border-amber-200 bg-amber-50') : (darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-gray-50')}`}>
+                      <div className={`flex flex-col items-stretch border-l ${isArchSection ? '' : (darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-gray-50')}`}
+                        style={isArchSection ? { backgroundColor: archColor.bg, borderColor: archColor.border } : {}}>
                         {!loc.locked && !isArchSection && (
                           <button
                             onClick={() => setFileOverrideModal({ jobId: loc.jobId, locationIndex, drive: loc.drive || '', path: loc.path || '', notes: loc.notes || '' })}
