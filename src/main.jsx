@@ -20,7 +20,7 @@ const VAPID_PUBLIC_KEY = 'BL08gzSk-zy4zKtPKcMCsHs2EVa2uc9xQJ6dCcafzj61W_OQ9OM-uM
 const rowToJob = (r) => ({
   id: r.id, jobName: r.job_name, customerName: r.customer_name,
   shootDate: r.shoot_date ? new Date(r.shoot_date) : null,
-  deadline: r.deadline ? new Date(r.deadline) : null,
+  deadline: (() => { const d = r.deadline ? new Date(r.deadline) : null; return d && !isNaN(d) && d.getFullYear() > 1970 ? d : null; })(),
   jobType: r.job_type, hasPhotos: r.has_photos, hasVideo: r.has_video,
   photoStatus: r.photo_status, photoAssignedTo: r.photo_assigned_to || 0,
   notes: r.notes || '', shootHours: r.shoot_hours || 0,
@@ -1753,8 +1753,10 @@ function EyeconMoments() {
   };
 
   const updateJobDates = async (jobId, shootDate, deadline) => {
-    await db.from('jobs').update({ shoot_date: shootDate, deadline: deadline }).eq('id', jobId);
-    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, shootDate: new Date(shootDate), deadline: new Date(deadline) } : j));
+    await db.from('jobs').update({ shoot_date: shootDate || null, deadline: deadline || null }).eq('id', jobId);
+    const safeSD = shootDate ? new Date(shootDate) : null;
+    const safeDL = (() => { const d = deadline ? new Date(deadline) : null; return d && !isNaN(d) && d.getFullYear() > 1970 ? d : null; })();
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, shootDate: safeSD, deadline: safeDL } : j));
     setEditingJobDates(null);
   };
 
@@ -9889,63 +9891,6 @@ Capturing Your Special Day
                       );
                     })()}
 
-                    {/* Final Payment */}
-                    <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💷 Final Payment</p>
-                      {job.finalPaymentReceived ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-green-500 text-sm font-semibold">✅ Balance received</span>
-                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {job.finalPaymentDate ? new Date(job.finalPaymentDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'}) : ''}
-                            {job.finalPaymentBy ? ` · ${job.finalPaymentBy}` : ''}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <button
-                            onClick={() => setFinalPaymentModal({ jobId: job.id, amount: String(calculateJobRevenue(job) || ''), email: '' })}
-                            className="w-full py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">
-                            Mark Balance Paid
-                          </button>
-                          <button
-                            onClick={() => {
-                              const d = new Date();
-                              const yr = d.getFullYear(), mo = String(d.getMonth()+1).padStart(2,'0');
-                              const shortId = String(job.id).replace(/[^a-z0-9]/gi,'').slice(-4).toUpperCase();
-                              const savedBank = (() => { try { return JSON.parse(localStorage.getItem('eyecon_bank_details') || '{}'); } catch { return {}; } })();
-                              const hrs = job.shootHours || 0;
-                              const svcType = job.hasPhotos && job.hasVideo ? 'photo-video' : job.hasPhotos ? 'photo' : 'video';
-                              const svcLabel = svcType === 'photo-video'
-                                ? `Photography & Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
-                                : svcType === 'photo' ? `Photography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`
-                                : `Videography${hrs > 0 ? ` — ${hrs} Hours Coverage` : ''}`;
-                              // Price: customPrice → calculated revenue → shoot-hours estimate
-                              let price = calculateJobRevenue(job);
-                              if (!price && hrs > 0) {
-                                const ratePerHr = svcType === 'photo-video' ? 250 : 150;
-                                price = hrs * ratePerHr;
-                              }
-                              setInvoiceModal({
-                                jobId: job.id,
-                                invoiceNum: `INV-${yr}${mo}-${shortId}`,
-                                invoiceDate: d.toISOString().slice(0,10),
-                                customerName: job.customerName || '',
-                                lines: [{ description: svcLabel, amount: price > 0 ? String(price) : '' }],
-                                extraHours: '', extraRate: svcType === 'photo' ? '125' : '150',
-                                depositPaid: '',
-                                notes: 'Thank you for choosing Eyecon Moments!',
-                                bankName: savedBank.name || 'EYECON MOMENTS LTD',
-                                bankAccount: savedBank.account || '25406742',
-                                bankSort: savedBank.sort || '04-06-05',
-                              });
-                            }}
-                            className="w-full py-1.5 rounded text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600">
-                            📄 Generate Invoice
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
                     {/* Delivery Link — Feature 7 */}
                     {(() => {
                       const dlvKey = `eyecon_delivery_${job.id}`;
@@ -9968,147 +9913,6 @@ Capturing Your Special Day
                               {dlv?.link && <a href={dlv.link} target="_blank" rel="noopener noreferrer" className="flex-1 py-1 rounded text-xs font-semibold bg-green-500 text-white text-center">↗ Open</a>}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Equipment/Kit Tracking — Feature 10 */}
-                    {(() => {
-                      const eqKey = `eyecon_equip_${job.id}`;
-                      const eqItems = (() => { try { return JSON.parse(localStorage.getItem(eqKey) || '[]'); } catch { return []; } })();
-                      const eqOpen = expandedJobSections[`${job.id}-eq`];
-                      const eqNewItem = jobSectionInputs[`${job.id}-eq-new`] || '';
-                      const saveEq = (items) => { localStorage.setItem(eqKey, JSON.stringify(items)); refreshLocal(); };
-                      return (
-                        <div className={`mb-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                          <button onClick={() => toggleJobSection(`${job.id}-eq`)} className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                            <span>📷 Equipment / Kit {eqItems.length > 0 ? `(${eqItems.length})` : ''}</span>
-                            <span>{eqOpen ? '▲' : '▼'}</span>
-                          </button>
-                          {eqOpen && (
-                            <div className="px-3 pb-3 space-y-1.5">
-                              {eqItems.map((item, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <input type="checkbox" checked={item.packed || false} onChange={() => { const upd = eqItems.map((it,i) => i===idx ? {...it, packed: !it.packed} : it); saveEq(upd); }} className="rounded" />
-                                  <span className={`flex-1 text-xs ${item.packed ? 'line-through opacity-50' : ''} ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.name}</span>
-                                  <button onClick={() => saveEq(eqItems.filter((_,i) => i !== idx))} className="text-red-400 text-xs">✕</button>
-                                </div>
-                              ))}
-                              <div className="flex gap-2 mt-2">
-                                <input type="text" placeholder="Add item (e.g. Canon R5)..."
-                                  value={eqNewItem}
-                                  onChange={e => setJobInput(`${job.id}-eq-new`, e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter' && eqNewItem.trim()) { saveEq([...eqItems, { name: eqNewItem.trim(), packed: false }]); setJobInput(`${job.id}-eq-new`, ''); }}}
-                                  className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
-                                <button onClick={() => { if (eqNewItem.trim()) { saveEq([...eqItems, { name: eqNewItem.trim(), packed: false }]); setJobInput(`${job.id}-eq-new`, ''); }}} className="px-3 py-1 rounded text-xs font-semibold bg-blue-500 text-white">Add</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Mileage / Expenses — Feature 11 */}
-                    {(() => {
-                      const extKey = `eyecon_extras_${job.id}`;
-                      const extItems = (() => { try { return JSON.parse(localStorage.getItem(extKey) || '[]'); } catch { return []; } })();
-                      const extOpen = expandedJobSections[`${job.id}-exp`];
-                      const extDesc = jobSectionInputs[`${job.id}-exp-desc`] || '';
-                      const extAmt = jobSectionInputs[`${job.id}-exp-amt`] || '';
-                      const saveExt = (items) => { localStorage.setItem(extKey, JSON.stringify(items)); refreshLocal(); };
-                      const total = extItems.reduce((s,i) => s + (parseFloat(i.amount)||0), 0);
-                      return (
-                        <div className={`mb-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                          <button onClick={() => toggleJobSection(`${job.id}-exp`)} className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                            <span>🚗 Travel & Expenses {total > 0 ? `· £${total.toFixed(2)} total` : ''}</span>
-                            <span>{extOpen ? '▲' : '▼'}</span>
-                          </button>
-                          {extOpen && (
-                            <div className="px-3 pb-3 space-y-1.5">
-                              {extItems.length === 0 && <p className={`text-xs italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No expenses recorded</p>}
-                              {extItems.map((item, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <span className={`flex-1 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.desc}</span>
-                                  <span className={`text-xs font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>£{parseFloat(item.amount||0).toFixed(2)}</span>
-                                  <button onClick={() => saveExt(extItems.filter((_,i) => i !== idx))} className="text-red-400 text-xs">✕</button>
-                                </div>
-                              ))}
-                              {total > 0 && <div className={`text-xs font-bold border-t pt-1 ${darkMode ? 'text-white border-gray-500' : 'text-gray-900 border-gray-200'}`}>Total: £{total.toFixed(2)}</div>}
-                              <div className="flex gap-2 mt-1">
-                                <input type="text" placeholder="e.g. Fuel, Parking, Mileage..."
-                                  value={extDesc}
-                                  onChange={e => setJobInput(`${job.id}-exp-desc`, e.target.value)}
-                                  className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
-                                <input type="number" placeholder="£"
-                                  value={extAmt}
-                                  onChange={e => setJobInput(`${job.id}-exp-amt`, e.target.value)}
-                                  className={`w-16 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
-                                <button onClick={() => { if (extDesc.trim() && extAmt) { saveExt([...extItems, { desc: extDesc.trim(), amount: extAmt }]); setJobInput(`${job.id}-exp-desc`, ''); setJobInput(`${job.id}-exp-amt`, ''); }}} className="px-3 py-1 rounded text-xs font-semibold bg-blue-500 text-white">Add</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Client Reminders — Feature 8 */}
-                    {(() => {
-                      const remKey = `eyecon_reminders_${job.id}`;
-                      const remItems = (() => { try { return JSON.parse(localStorage.getItem(remKey) || '[]'); } catch { return []; } })();
-                      const remOpen = expandedJobSections[`${job.id}-rem`];
-                      const remMsg = jobSectionInputs[`${job.id}-rem-msg`] || '';
-                      const remDate = jobSectionInputs[`${job.id}-rem-date`] || '';
-                      const saveRem = (items) => { localStorage.setItem(remKey, JSON.stringify(items)); refreshLocal(); };
-                      const pendingCount = remItems.filter(r => !r.sent).length;
-                      // Quick-fill templates
-                      const dlv = (() => { try { return JSON.parse(localStorage.getItem(`eyecon_delivery_${job.id}`) || 'null'); } catch { return null; } })();
-                      const revenue = calculateJobRevenue(job);
-                      const inqMatch = inquiries.find(i => i.customerName?.toLowerCase() === job.customerName?.toLowerCase());
-                      const clientFirstName = job.customerName?.split(' ')[0] || 'there';
-                      const templates = [
-                        { label: '📸 Gallery Ready', msg: `Hi ${clientFirstName}! Your gallery is ready. Here's your link: ${dlv?.link || '[add delivery link]'}\n\nWe hope you love it! – Eyecon Moments` },
-                        { label: '💰 Balance Due', msg: `Hi ${clientFirstName}, just a reminder that your balance${revenue ? ` of £${revenue}` : ''} is due. Please transfer at your earliest convenience.\n\nThank you! – Eyecon Moments` },
-                        { label: '✅ Booking Confirmed', msg: `Hi ${clientFirstName}, your booking with Eyecon Moments is confirmed! We're really looking forward to it. If you have any questions, just reply to this message.\n\nKind regards,\nEyecon Moments` },
-                      ];
-                      return (
-                        <div className={`mb-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                          <button onClick={() => toggleJobSection(`${job.id}-rem`)} className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                            <span>📨 Client Messages {pendingCount > 0 ? `· ${pendingCount} pending` : ''}</span>
-                            <span>{remOpen ? '▲' : '▼'}</span>
-                          </button>
-                          {remOpen && (
-                            <div className="px-3 pb-3 space-y-2">
-                              <div className="flex flex-wrap gap-1 mb-1">
-                                {templates.map(t => (
-                                  <button key={t.label} onClick={() => setJobInput(`${job.id}-rem-msg`, t.msg)} className={`text-xs px-2 py-0.5 rounded-full border ${darkMode ? 'border-gray-500 text-gray-300 hover:bg-gray-600' : 'border-gray-300 text-gray-600 hover:bg-gray-100'}`}>{t.label}</button>
-                                ))}
-                              </div>
-                              {remItems.map((rem, idx) => (
-                                <div key={idx} className={`flex items-start gap-2 p-2 rounded ${rem.sent ? 'opacity-60' : ''} ${darkMode ? 'bg-gray-600' : 'bg-white'} border ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
-                                  <div className="flex-1">
-                                    <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} style={{whiteSpace:'pre-wrap'}}>{rem.msg}</p>
-                                    <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{rem.date ? new Date(rem.date + 'T12:00:00').toLocaleDateString('en-GB') : ''} {rem.sent ? '· Sent ✓' : '· Pending'}</p>
-                                  </div>
-                                  <div className="flex flex-col gap-1">
-                                    {inqMatch?.phone && !rem.sent && <a href={`https://wa.me/${inqMatch.phone.replace(/\D/g,'')}?text=${encodeURIComponent(rem.msg)}`} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-0.5 rounded bg-green-500 text-white whitespace-nowrap">WhatsApp</a>}
-                                    {inqMatch?.email && !rem.sent && <a href={`mailto:${inqMatch.email}?subject=Eyecon Moments&body=${encodeURIComponent(rem.msg)}`} className="text-xs px-2 py-0.5 rounded bg-blue-500 text-white">Email</a>}
-                                    {!rem.sent && <button onClick={() => { const upd = remItems.map((r,i) => i===idx ? {...r, sent: true} : r); saveRem(upd); }} className="text-xs px-2 py-0.5 rounded bg-orange-500 text-white whitespace-nowrap">Mark Sent</button>}
-                                    <button onClick={() => saveRem(remItems.filter((_,i) => i !== idx))} className="text-red-400 text-xs self-end">✕</button>
-                                  </div>
-                                </div>
-                              ))}
-                              <div className="space-y-1.5">
-                                <textarea rows={3} placeholder="Type or use a template above..."
-                                  value={remMsg}
-                                  onChange={e => setJobInput(`${job.id}-rem-msg`, e.target.value)}
-                                  className={`w-full px-2 py-1 rounded border text-xs resize-none ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
-                                <div className="flex gap-2">
-                                  <input type="date" value={remDate} onChange={e => setJobInput(`${job.id}-rem-date`, e.target.value)} className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
-                                  <button onClick={() => { if (remMsg.trim()) { saveRem([...remItems, { msg: remMsg.trim(), date: remDate, sent: false }]); setJobInput(`${job.id}-rem-msg`, ''); setJobInput(`${job.id}-rem-date`, ''); }}} className="px-3 py-1 rounded text-xs font-semibold bg-blue-500 text-white">Save</button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       );
                     })()}
