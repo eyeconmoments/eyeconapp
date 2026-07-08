@@ -1539,9 +1539,18 @@ function EyeconMoments() {
   const toggleArchiveJob = async (jobId) => {
     const isArchived = archivedJobIds.includes(jobId);
     const job = editingJobs.find(j => j.id === jobId);
+    if (!isArchived) {
+      const fileLoc = job?.fileLocations?.[0];
+      const driveInfo = fileLoc ? ` Files are on ${fileLoc.drive || fileLoc.path || 'recorded drive'} — visible in the Files tab under Archived.` : ' No file location recorded for this job.';
+      const ok = window.confirm(`Archive "${job?.jobName}"?\n\nThe job will be hidden from your active list but ALL data is kept safe.${driveInfo}\n\nYou can find it again in Jobs → Show Archived, or in the Files tab.`);
+      if (!ok) return;
+    }
     await db.from('jobs').update({ archived: !isArchived }).eq('id', jobId);
     setArchivedJobIds(prev => isArchived ? prev.filter(id => id !== jobId) : [...prev, jobId]);
     logActivity(isArchived ? 'Job unarchived' : 'Job archived', job?.jobName || '', '');
+    if (!isArchived) {
+      window.__toast(`"${job?.jobName}" archived. Find it in Jobs → Show Archived or the Files tab.`, 'info', 6000);
+    }
   };
 
     const addFileLocation = async (jobId) => {
@@ -10175,10 +10184,13 @@ Capturing Your Special Day
                         📄
                       </button>
                       <button onClick={async () => {
-                        if (!window.confirm(`Permanently delete "${job.jobName}"? This cannot be undone.`)) return;
+                        const typed = window.prompt(`⚠️ PERMANENT DELETE — this cannot be undone.\n\nType the job name to confirm:\n"${job.jobName}"`);
+                        if (typed === null) return;
+                        if (typed.trim() !== job.jobName.trim()) { alert('Job name did not match. Delete cancelled.'); return; }
                         await db.from('jobs').delete().eq('id', job.id);
                         setEditingJobs(prev => prev.filter(j => j.id !== job.id));
-                      }} className="px-3 py-2 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200">
+                        logActivity('Job permanently deleted', job.jobName, '');
+                      }} className="px-3 py-2 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200" title="Permanently delete (cannot be undone)">
                         🗑️
                       </button>
                     </div>
