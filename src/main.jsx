@@ -12079,16 +12079,10 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           </div>
 
           {/* File locations grid */}
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
-            <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>All File Locations</h3>
-
-            {filteredLocations.length === 0 ? (
-              <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {fileSearchQuery ? 'No matching file locations found' : 'No file locations saved yet'}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {filteredLocations.map((loc, idx) => {
+          {(() => {
+            const activeLocs = filteredLocations.filter(l => !l.isArchived);
+            const archivedLocs = filteredLocations.filter(l => l.isArchived);
+            const renderCard = (loc, idx, isArchSection) => {
                   const job = editingJobs.find(j => j.id === loc.jobId);
                   const locationIndex = loc.originalIndex;
                   
@@ -12117,14 +12111,15 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   const hwName = hardwareLocations.find(h => h.id === loc.hardware)?.name || (loc.hardware ? loc.hardware : loc.drive) || 'Unknown';
                   
                   return (
-                    <div key={`${loc.jobId}-${locationIndex}`} className={`flex items-stretch gap-0 rounded-xl overflow-hidden border shadow-sm ${loc.isArchived ? 'opacity-50' : ''} ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <div key={`${loc.jobId}-${locationIndex}`} className={`flex items-stretch gap-0 rounded-xl overflow-hidden border shadow-sm ${isArchSection ? (darkMode ? 'border-amber-800 opacity-80' : 'border-amber-300 opacity-80') : (darkMode ? 'border-gray-700' : 'border-gray-200')}`}>
                       {/* Color strip */}
-                      <div className={`w-1.5 flex-shrink-0 ${hwColor.badge}`}></div>
+                      <div className={`w-1.5 flex-shrink-0 ${isArchSection ? 'bg-amber-500' : hwColor.badge}`}></div>
 
                       {/* Main content */}
-                      <div className={`flex-1 p-3 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                      <div className={`flex-1 p-3 ${isArchSection ? (darkMode ? 'bg-amber-950' : 'bg-amber-50') : (darkMode ? 'bg-gray-800' : 'bg-white')}`}>
                         {/* Badges row */}
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          {isArchSection && <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">📦 Archived</span>}
                           {loc.hardware && hardwareLocations.find(h => h.id === loc.hardware) && (
                             <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${hwColor.badge}`}>{hwName}</span>
                           )}
@@ -12197,15 +12192,15 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       </div>
 
                       {/* Override + Lock buttons */}
-                      <div className={`flex flex-col items-stretch border-l ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-gray-50'}`}>
-                        {!loc.locked && (
+                      <div className={`flex flex-col items-stretch border-l ${isArchSection ? (darkMode ? 'border-amber-800 bg-amber-950' : 'border-amber-200 bg-amber-50') : (darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-gray-50')}`}>
+                        {!loc.locked && !isArchSection && (
                           <button
                             onClick={() => setFileOverrideModal({ jobId: loc.jobId, locationIndex, drive: loc.drive || '', path: loc.path || '', notes: loc.notes || '' })}
                             className={`flex-1 px-3 text-xs font-medium border-b transition-colors ${darkMode ? 'border-gray-700 text-orange-400 hover:bg-gray-700' : 'border-gray-100 text-orange-500 hover:bg-orange-50'}`}>
                             ✏️ Override
                           </button>
                         )}
-                        {currentUser?.role === 'admin' && (
+                        {currentUser?.role === 'admin' && !isArchSection && (
                           <button onClick={() => toggleFileLock(loc.jobId, locationIndex)}
                             title={loc.locked ? 'Unlock' : 'Lock'}
                             className={`flex-1 px-3 text-xs font-medium transition-colors ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}>
@@ -12215,10 +12210,31 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       </div>
                     </div>
                   );
-                })}
-              </div>
-            )}
-          </div>
+            };
+            return (
+              <>
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                  <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>All File Locations</h3>
+                  {activeLocs.length === 0 && archivedLocs.length === 0 ? (
+                    <p className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fileSearchQuery ? 'No matching file locations found' : 'No file locations saved yet'}</p>
+                  ) : activeLocs.length === 0 ? (
+                    <p className={`text-center py-4 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No active file locations{fileSearchQuery ? ' matching search' : ''}.</p>
+                  ) : (
+                    <div className="space-y-3">{activeLocs.map((loc, idx) => renderCard(loc, idx, false))}</div>
+                  )}
+                </div>
+                {archivedLocs.length > 0 && (
+                  <div className={`rounded-lg shadow p-4 border-2 ${darkMode ? 'bg-amber-950 border-amber-800' : 'bg-amber-50 border-amber-200'}`}>
+                    <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-amber-300' : 'text-amber-800'}`}>
+                      📦 Archived Jobs — File Locations
+                      <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${darkMode ? 'bg-amber-800 text-amber-300' : 'bg-amber-200 text-amber-700'}`}>{archivedLocs.length}</span>
+                    </h3>
+                    <div className="space-y-3">{archivedLocs.map((loc, idx) => renderCard(loc, idx, true))}</div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
     );
