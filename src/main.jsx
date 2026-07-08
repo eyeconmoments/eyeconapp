@@ -487,6 +487,14 @@ function EyeconMoments() {
 
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
+  const [activityLog, setActivityLog] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_activity_log') || '[]'); } catch { return []; } });
+  const logActivity = (action, jobName = '', details = '') => {
+    const entry = { id: Date.now(), ts: new Date().toISOString(), action, jobName, details };
+    const prev = (() => { try { return JSON.parse(localStorage.getItem('eyecon_activity_log') || '[]'); } catch { return []; } })();
+    const updated = [entry, ...prev].slice(0, 1000);
+    localStorage.setItem('eyecon_activity_log', JSON.stringify(updated));
+    setActivityLog(updated);
+  };
   const [extractedJobData, setExtractedJobData] = useState(null);
   const [isExtracting, setIsExtracting] = useState(false);
   
@@ -678,7 +686,7 @@ function EyeconMoments() {
     try {
       const jobRes = await db.from('jobs').select('*').order('created_at');
       if (jobRes.data) {
-        setEditingJobs(jobRes.data.filter(r => !r.archived).map(rowToJob));
+        setEditingJobs(jobRes.data.map(rowToJob));
         setArchivedJobIds(jobRes.data.filter(r => r.archived).map(r => r.id));
       }
     } catch(e) { console.error('Job refresh error:', e); }
@@ -771,14 +779,15 @@ function EyeconMoments() {
         setTimeEntries(prev => prev.map(e => e.id === row.id ? rowToEntry(row) : e));
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'jobs' }, ({ new: row }) => {
-        if (!row.archived) setEditingJobs(prev => prev.some(j => j.id === row.id) ? prev : [...prev, rowToJob(row)]);
+        setEditingJobs(prev => prev.some(j => j.id === row.id) ? prev : [...prev, rowToJob(row)]);
+        if (row.archived) setArchivedJobIds(prev => [...new Set([...prev, row.id])]);
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs' }, ({ new: row }) => {
+        setEditingJobs(prev => prev.map(j => j.id === row.id ? rowToJob(row) : j));
         if (row.archived) {
-          setEditingJobs(prev => prev.filter(j => j.id !== row.id));
           setArchivedJobIds(prev => [...new Set([...prev, row.id])]);
         } else {
-          setEditingJobs(prev => prev.map(j => j.id === row.id ? rowToJob(row) : j));
+          setArchivedJobIds(prev => prev.filter(id => id !== row.id));
         }
       })
       .subscribe();
@@ -1529,8 +1538,10 @@ function EyeconMoments() {
 
   const toggleArchiveJob = async (jobId) => {
     const isArchived = archivedJobIds.includes(jobId);
+    const job = editingJobs.find(j => j.id === jobId);
     await db.from('jobs').update({ archived: !isArchived }).eq('id', jobId);
     setArchivedJobIds(prev => isArchived ? prev.filter(id => id !== jobId) : [...prev, jobId]);
+    logActivity(isArchived ? 'Job unarchived' : 'Job archived', job?.jobName || '', '');
   };
 
     const addFileLocation = async (jobId) => {
@@ -1900,6 +1911,7 @@ function EyeconMoments() {
       notes: notes || ''
     };
     setPipelineLog(prev => [logEntry, ...prev]);
+    logActivity('Pipeline stage completed', job.jobName, job.stages[stageIdx].name.split(',')[0]);
     // Also update file location (single entry with history) if drive given
     if (drive) {
       const existing = job.fileLocations?.[0];
@@ -5070,7 +5082,7 @@ Notes: ${j.notes || 'none'}`;
       { key: 'feedback',   label: 'Feedback' },
       { key: 'post-ideas', label: 'Posts' },
       { key: 'checklist',  label: 'Gear ✓' },
-      { key: 'calendar',   label: 'Cal' },
+      { key: 'log',        label: 'Log' },
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
@@ -9520,6 +9532,7 @@ Capturing Your Special Day
                           {jobsInStage.map(job => (
                             <div key={job.id} className={`${darkMode ? 'bg-gray-600' : 'bg-white'} rounded p-2 shadow-sm`}>
                               <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                              <span className={`inline-block text-xs px-1.5 py-0.5 rounded mb-1 ${job.jobType === 'photo' ? 'bg-blue-100 text-blue-700' : job.jobType === 'video' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}`}>{job.jobType === 'photo' ? '📷 Photo' : job.jobType === 'video' ? '🎬 Video' : '📷🎬 Photo+Video'}</span>
                               {job.stages.filter(s => s.status === 'completed' && s.completedBy).length > 0 && (
                                 <div className={`mt-1 mb-1 space-y-0.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                   {job.stages.filter(s => s.status === 'completed' && s.completedBy).map(s => (
@@ -10382,12 +10395,14 @@ Capturing Your Special Day
                   <button onClick={() => {
                     const dep = { amount: depositFormAmt, date: depositFormDate, paid: false };
                     localStorage.setItem(depKey, JSON.stringify(dep));
+                    logActivity('Deposit recorded', depJob?.jobName || '', `£${depositFormAmt}`);
                     setDepositFormJobId(null);
                     refreshLocal();
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Save Deposit</button>
                   <button onClick={() => {
                     const dep = { amount: depositFormAmt, date: depositFormDate, paid: true };
                     localStorage.setItem(depKey, JSON.stringify(dep));
+                    logActivity('Deposit paid', depJob?.jobName || '', `£${depositFormAmt}`);
                     setDepositFormJobId(null);
                     refreshLocal();
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white">✅ Save + Paid</button>
@@ -10437,6 +10452,7 @@ Capturing Your Special Day
                       const subject = encodeURIComponent('Your Files Are Ready — Eyecon Moments');
                       const body = encodeURIComponent(emailBody);
                       openMail(`mailto:${encodeURIComponent(galleryEmailModal.email)}?subject=${subject}&body=${body}`);
+                      logActivity('Gallery email sent', gemJob?.jobName || '', galleryEmailModal.email);
                       setGalleryEmailModal(null);
                     }}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity ${(!galleryEmailModal.email || !galleryEmailModal.driveLink) ? 'opacity-40 cursor-not-allowed' : ''}`}
@@ -16894,88 +16910,52 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     );
   }
 
-  if (currentView === 'calendar') {
-    const now = new Date();
-    const calYear = calendarYear;
-    const calMonth = calendarMonth;
-    const setCalYear = setCalendarYear;
-    const setCalMonth = setCalendarMonth;
-    const firstDay = new Date(calYear, calMonth, 1);
-    const lastDay = new Date(calYear, calMonth + 1, 0);
-    const startPad = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Mon-start
-    const totalCells = startPad + lastDay.getDate();
-    const weeks = Math.ceil(totalCells / 7);
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-    const toDateStr = (d) => d instanceof Date ? d.toISOString().slice(0,10) : (d ? String(d).slice(0,10) : '');
-    const getJobsForDay = (day) => {
-      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      return editingJobs.filter(j => j.shootDate && toDateStr(j.shootDate) === dateStr);
+  if (currentView === 'log') {
+    const ACTION_ICONS = {
+      'Job archived': '📦',
+      'Job unarchived': '📤',
+      'Pipeline stage completed': '✅',
+      'Gallery email sent': '📧',
+      'Deposit recorded': '💰',
+      'Deposit paid': '💚',
     };
-
-    const getDeadlinesForDay = (day) => {
-      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      return editingJobs.filter(j => j.deadline && toDateStr(j.deadline) === dateStr);
-    };
+    const [logSearch, setLogSearch] = React.useState('');
+    const filtered = activityLog.filter(e =>
+      !logSearch || e.jobName?.toLowerCase().includes(logSearch.toLowerCase()) || e.action?.toLowerCase().includes(logSearch.toLowerCase()) || e.details?.toLowerCase().includes(logSearch.toLowerCase())
+    );
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {NavBar()}
         <div className="px-4 py-4 max-w-2xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1); } else setCalMonth(m => m-1); }} className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800'} shadow`}>◀</button>
-            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{monthNames[calMonth]} {calYear}</h2>
-            <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1); } else setCalMonth(m => m+1); }} className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800'} shadow`}>▶</button>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Activity Log</h2>
+            {activityLog.length > 0 && (
+              <button onClick={() => { localStorage.removeItem('eyecon_activity_log'); setActivityLog([]); }} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded">Clear all</button>
+            )}
           </div>
-          <div className={`rounded-xl shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className="grid grid-cols-7">
-              {dayNames.map(d => (
-                <div key={d} className={`text-center text-xs font-bold py-2 ${darkMode ? 'text-gray-400 bg-gray-750' : 'text-gray-500 bg-gray-50'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>{d}</div>
-              ))}
-              {Array.from({length: weeks * 7}).map((_, idx) => {
-                const day = idx - startPad + 1;
-                const isValid = day >= 1 && day <= lastDay.getDate();
-                const isToday = isValid && day === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
-                const dayJobs = isValid ? getJobsForDay(day) : [];
-                const dayDeadlines = isValid ? getDeadlinesForDay(day) : [];
-                return (
-                  <div key={idx} className={`min-h-[60px] p-1 border-b border-r ${darkMode ? 'border-gray-700' : 'border-gray-100'} ${!isValid ? (darkMode ? 'bg-gray-850' : 'bg-gray-50') : ''}`}>
-                    {isValid && (
-                      <>
-                        <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold mb-0.5 ${isToday ? 'text-white' : darkMode ? 'text-gray-300' : 'text-gray-700'}`} style={isToday ? {background:'var(--gold)'} : {}}>{day}</div>
-                        {dayJobs.slice(0,1).map(j => (
-                          <div key={j.id} onClick={() => setCurrentView('jobs')} className="text-xs px-1 py-0.5 rounded mb-0.5 truncate cursor-pointer" style={{background:'rgba(193,167,106,0.25)', color: darkMode ? '#c1a76a' : '#8a6d2e'}} title={j.jobName}>📸 {j.jobName.split(' ')[0]}</div>
-                        ))}
-                        {dayDeadlines.slice(0,1).map(j => (
-                          <div key={'d'+j.id} onClick={() => setCurrentView('jobs')} className="text-xs px-1 py-0.5 rounded mb-0.5 truncate cursor-pointer bg-red-100 text-red-700" title={`Deadline: ${j.jobName}`}>⏰ {j.jobName.split(' ')[0]}</div>
-                        ))}
-                        {(dayJobs.length + dayDeadlines.length) > 2 && <div className="text-xs text-gray-400">+{dayJobs.length + dayDeadlines.length - 2}</div>}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
+          <input value={logSearch} onChange={e => setLogSearch(e.target.value)} placeholder="Search by job or action…"
+            className={`w-full px-3 py-2 rounded-lg border text-sm mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`} />
+          {filtered.length === 0 ? (
+            <div className={`text-center py-16 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className="text-4xl mb-3">📋</div>
+              <p className="text-sm">{activityLog.length === 0 ? 'No activity yet — actions will appear here as you use the app.' : 'No results for that search.'}</p>
             </div>
-          </div>
-          <div className="mt-4 space-y-2">
-            <h3 className={`font-semibold text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Jobs this month</h3>
-            {editingJobs.filter(j => {
-              if (!j.shootDate) return false;
-              const d = new Date(j.shootDate);
-              return d.getFullYear() === calYear && d.getMonth() === calMonth;
-            }).sort((a,b) => new Date(a.shootDate) - new Date(b.shootDate)).map(j => (
-              <div key={j.id} onClick={() => setCurrentView('jobs')} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50'} shadow`}>
-                <div className="text-center min-w-[36px]">
-                  <div className="text-xs font-bold" style={{color:'var(--gold)'}}>{new Date(j.shootDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+          ) : (
+            <div className={`rounded-xl overflow-hidden shadow ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              {filtered.map((entry, i) => (
+                <div key={entry.id} className={`flex items-start gap-3 px-4 py-3 ${i < filtered.length - 1 ? `border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}` : ''}`}>
+                  <span className="text-lg flex-shrink-0 mt-0.5">{ACTION_ICONS[entry.action] || '🔔'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{entry.action}</p>
+                    {entry.jobName && <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{entry.jobName}{entry.details ? ` · ${entry.details}` : ''}</p>}
+                  </div>
+                  <p className={`text-xs whitespace-nowrap ml-2 flex-shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {new Date(entry.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
-                  <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.customerName}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${j.photoStatus === 'done' ? 'bg-green-100 text-green-700' : j.photoStatus === 'in-progress' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{j.photoStatus || 'not-started'}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
