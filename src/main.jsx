@@ -6470,63 +6470,60 @@ Notes: ${j.notes || 'none'}`;
                       </div>
 
                       {isLive ? (
-                        // LIVE VIEW — current item large, surrounding items contextual
-                        <div className="px-4 pb-4 space-y-2">
-                          {/* Header: start→end times */}
-                          <div className={`flex justify-between text-xs px-1 pb-1 border-b ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                        // LIVE VIEW — full scrollable itinerary
+                        <div className="pb-4">
+                          <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
                             <span>⏱ {itin.startTime || '?'} → {itin.endTime || '?'}</span>
                             <span>{itemsWithTime.length} items</span>
                           </div>
                           {currentIdx === -1 && (
-                            <div className={`text-center py-6 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                              <p className={`text-2xl font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started yet</p>
-                              <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First item: {itemsWithTime[0]?.computedTime} — {itemsWithTime[0]?.name}</p>
+                            <div className={`mx-4 mb-2 text-center py-3 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                              <p className={`text-base font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started yet</p>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First: {itemsWithTime[0]?.computedTime} — {itemsWithTime[0]?.name}</p>
                             </div>
                           )}
                           {(() => {
-                            // Group-aware boundaries: concurrent items share computedMins
                             const _curMins = currentIdx >= 0 ? itemsWithTime[currentIdx].computedMins : -1;
                             const _nextMins = itemsWithTime.find(it => it.computedMins > _curMins)?.computedMins ?? Infinity;
-                            const _afterNextMins = itemsWithTime.find(it => it.computedMins > _nextMins)?.computedMins ?? Infinity;
-                            return (<>
-                          {itemsWithTime.map((item, idx) => {
-                            const isCurrent = _curMins >= 0 && item.computedMins === _curMins;
-                            const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
-                            const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
-                            if (!isCurrent && !isNext && !isPast) return null;
                             return (
-                              <div key={idx} className={`rounded-xl transition-all ${
-                                isCurrent ? 'p-4 border-2' : isPast ? 'p-2 opacity-40' : 'p-3 border'
-                              } ${darkMode ? (isCurrent ? 'bg-gray-700' : 'bg-gray-700') : (isCurrent ? 'bg-yellow-50' : 'bg-gray-50')}`}
-                                style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : {}}>
-                                <div className="flex items-center gap-3">
-                                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
-                                  <div className="flex-1">
-                                    <p className={`font-bold ${isCurrent ? 'text-xl' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || item.label || 'Item'}</p>
-                                    <p className={`${isCurrent ? 'text-sm' : 'text-xs'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                      {item.computedTime}{isCurrent ? ' — NOW' : isNext ? ' — up next' : ' — done'}
-                                      {isCurrent && item.duration ? ` · ${Math.max(...itemsWithTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15}min` : ''}
-                                    </p>
-                                  </div>
-                                  {isCurrent && <span className="text-2xl">▶️</span>}
-                                  {isPast && <span className="text-lg">✅</span>}
-                                </div>
+                              <div className="overflow-y-auto max-h-[60vh] px-4 space-y-1.5 pb-2">
+                                {itemsWithTime.map((item, idx) => {
+                                  const isCurrent = _curMins >= 0 && item.computedMins === _curMins;
+                                  const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
+                                  const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
+                                  const groupDurMins = Math.max(...itemsWithTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15;
+                                  return (
+                                    <div key={idx} className={`rounded-xl transition-all ${
+                                      isCurrent ? 'p-4 border-2' :
+                                      isPast    ? 'p-2 opacity-40' :
+                                      isNext    ? 'p-3 border' :
+                                                 'p-2.5'
+                                    } ${darkMode
+                                      ? isCurrent ? 'bg-gray-700' : 'bg-gray-750'
+                                      : isCurrent ? 'bg-yellow-50' : isPast ? 'bg-gray-50' : isNext ? 'bg-blue-50' : 'bg-gray-50'
+                                    }`}
+                                    style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : isNext ? {border:'1px solid #93c5fd'} : {}}>
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className={`font-bold truncate ${isCurrent ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || item.label || 'Item'}</p>
+                                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            {item.computedTime}
+                                            {isCurrent ? <span className="text-orange-500 font-semibold"> — NOW · {groupDurMins}min</span>
+                                             : isNext   ? <span className="text-blue-500 font-semibold"> — up next</span>
+                                             : isPast   ? ' — done'
+                                             : ''}
+                                          </p>
+                                        </div>
+                                        {isCurrent && <span className="text-xl flex-shrink-0">▶️</span>}
+                                        {isPast    && <span className="text-base flex-shrink-0">✅</span>}
+                                        {isNext    && <span className="text-base flex-shrink-0">⏭️</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
-                          })}
-                          {/* Coming up list — everything after the next group */}
-                          {_afterNextMins < Infinity && (
-                            <div className={`rounded-lg p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                              <p className={`text-xs font-semibold mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Coming up:</p>
-                              {itemsWithTime.filter(it => it.computedMins >= _afterNextMins).map((item, i) => (
-                                <div key={i} className="flex items-center gap-2 py-0.5">
-                                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
-                                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.computedTime} — {item.name || item.label || 'Item'}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                            </>);
                           })()}
                         </div>
                       ) : (
@@ -8144,37 +8141,55 @@ Capturing Your Special Day
                         const _curMins = _curIdx >= 0 ? _withTime[_curIdx].computedMins : -1;
                         const _nextMins = _withTime.find(it => it.computedMins > _curMins)?.computedMins ?? Infinity;
                         return (
-                          <div className={`px-4 pb-4 pt-2 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                            <div className={`flex justify-between text-xs px-1 pb-1 border-b ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                          <div className={`pb-4 pt-2 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
                               <span>⏱ {itinerary.startTime || '?'} → {itinerary.endTime || '?'}</span>
                               <span>{_withTime.length} items</span>
                             </div>
-                            {_curIdx === -1 && <div className={`text-center py-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}><p className={`text-xl font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started</p><p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First: {_withTime[0]?.computedTime} — {_withTime[0]?.name}</p></div>}
-                            {_withTime.map((item, idx) => {
-                              const isCurrent = _curMins >= 0 && item.computedMins === _curMins;
-                              const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
-                              const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
-                              if (!isCurrent && !isNext && !isPast) return null;
-                              const groupDurMins = Math.max(..._withTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15;
-                              return (
-                                <div key={idx} className={`rounded-xl transition-all ${isCurrent ? 'p-4 border-2' : isPast ? 'p-2 opacity-40' : 'p-3 border'} ${darkMode ? 'bg-gray-700' : isCurrent ? 'bg-yellow-50' : 'bg-gray-50'}`}
-                                  style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : {}}>
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
-                                    <div className="flex-1">
-                                      <p className={`font-bold ${isCurrent ? 'text-xl' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || 'Item'}</p>
-                                      <p className={`${isCurrent ? 'text-sm' : 'text-xs'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        {item.computedTime}{isCurrent ? ' — NOW' : isNext ? ' — up next' : ' — done'}
-                                        {isCurrent ? ` · ${groupDurMins}min` : ''}
-                                      </p>
-                                      {item.notes && isCurrent && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.notes}</p>}
+                            {_curIdx === -1 && (
+                              <div className={`mx-4 mb-2 text-center py-3 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                                <p className={`text-base font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started</p>
+                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First: {_withTime[0]?.computedTime} — {_withTime[0]?.name}</p>
+                              </div>
+                            )}
+                            <div className="overflow-y-auto max-h-[60vh] px-4 space-y-1.5 pb-2">
+                              {_withTime.map((item, idx) => {
+                                const isCurrent = _curMins >= 0 && item.computedMins === _curMins;
+                                const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
+                                const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
+                                const groupDurMins = Math.max(..._withTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15;
+                                return (
+                                  <div key={idx} className={`rounded-xl transition-all ${
+                                    isCurrent ? 'p-4 border-2' :
+                                    isPast    ? 'p-2 opacity-40' :
+                                    isNext    ? 'p-3 border'  :
+                                               'p-2.5'
+                                  } ${darkMode
+                                    ? isCurrent ? 'bg-gray-700' : 'bg-gray-750'
+                                    : isCurrent ? 'bg-yellow-50' : isPast ? 'bg-gray-50' : isNext ? 'bg-blue-50' : 'bg-gray-50'
+                                  }`}
+                                  style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : isNext ? {border:'1px solid #93c5fd'} : {}}>
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`font-bold truncate ${isCurrent ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || 'Item'}</p>
+                                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          {item.computedTime}
+                                          {isCurrent ? <span className="text-orange-500 font-semibold"> — NOW · {groupDurMins}min</span>
+                                           : isNext   ? <span className="text-blue-500 font-semibold"> — up next</span>
+                                           : isPast   ? ' — done'
+                                           : ''}
+                                        </p>
+                                        {item.notes && isCurrent && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.notes}</p>}
+                                      </div>
+                                      {isCurrent && <span className="text-xl flex-shrink-0">▶️</span>}
+                                      {isPast    && <span className="text-base flex-shrink-0">✅</span>}
+                                      {isNext    && <span className="text-base flex-shrink-0">⏭️</span>}
                                     </div>
-                                    {isCurrent && <span className="text-2xl">▶️</span>}
-                                    {isPast && <span className="text-lg">✅</span>}
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                         );
                       })()}
