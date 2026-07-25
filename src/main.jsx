@@ -6373,7 +6373,7 @@ Notes: ${j.notes || 'none'}`;
                           jobId: j.id,
                           totalPrice: total,
                           depositPaid,
-                          finalAmount: remaining > 0 ? remaining.toFixed(2) : '',
+                          finalAmount: depositPaid > 0 && remaining > 0 ? remaining.toFixed(2) : '',
                           overtime: '',
                           notes: '',
                         })} className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg font-semibold shrink-0 hover:bg-green-600">
@@ -10787,7 +10787,7 @@ Capturing Your Special Day
                               jobId: job.id,
                               totalPrice: total2,
                               depositPaid: depositPaid2,
-                              finalAmount: remaining2 > 0 ? remaining2.toFixed(2) : '',
+                              finalAmount: depositPaid2 > 0 && remaining2 > 0 ? remaining2.toFixed(2) : '',
                               overtime: '',
                               notes: '',
                             })} className={`text-xs ${darkMode ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700'} underline`}>
