@@ -802,6 +802,25 @@ function EyeconMoments() {
     return () => { db.removeChannel(channel); };
   }, []);
 
+  // Sync liveItineraryJob from DB — when admin sets isLive on a job, all clients see it
+  useEffect(() => {
+    const liveJob = editingJobs.find(j => j.itinerary?.isLive === true && !archivedJobIds.includes(j.id));
+    setLiveItineraryJob(liveJob?.id ?? null);
+  }, [editingJobs, archivedJobIds]);
+
+  // Admin-only: persist Go Live state to DB so all staff see it instantly via real-time
+  const toggleLiveJob = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const isCurrentlyLive = job.itinerary?.isLive === true;
+    // Clear isLive from any other jobs
+    const otherLive = editingJobs.filter(j => j.itinerary?.isLive === true && j.id !== jobId);
+    for (const lj of otherLive) {
+      await db.from('jobs').update({ itinerary: { ...lj.itinerary, isLive: false } }).eq('id', lj.id);
+    }
+    await db.from('jobs').update({ itinerary: { ...(job.itinerary || {}), isLive: !isCurrentlyLive } }).eq('id', jobId);
+  };
+
   const handleLogin = async () => {
     const employee = employees.find(e =>
       e.username.toLowerCase() === loginUsername.toLowerCase() &&
@@ -4004,13 +4023,16 @@ Notes: ${j.notes || 'none'}`;
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-5 gap-1 mt-1">
+            <div className="grid grid-cols-8 gap-1 mt-1">
               {[
                 { key: 'employee-dashboard', label: 'My Jobs' },
-                { key: 'files', label: 'Files' },
-                { key: 'availability', label: 'Avail.' },
-                { key: 'time', label: 'Time' },
-                { key: 'checklist', label: 'Gear ✓' },
+                { key: 'timeclock',          label: 'Clock' },
+                { key: 'files',              label: 'Files' },
+                { key: 'availability',       label: 'Avail.' },
+                { key: 'time',               label: 'Time' },
+                { key: 'feedback',           label: 'Feedback' },
+                { key: 'post-ideas',         label: 'Posts' },
+                { key: 'checklist',          label: 'Gear ✓' },
               ].map(tab => (
                 <button key={tab.key} onClick={() => setCurrentView(tab.key)}
                   className={`py-2 px-1 rounded-lg text-center text-xs font-semibold tracking-wide transition-all ${currentView === tab.key ? 'nav-tab-active' : ''}`}
@@ -4454,6 +4476,8 @@ Notes: ${j.notes || 'none'}`;
             const todayMidnight2 = new Date(); todayMidnight2.setHours(0,0,0,0);
             const todayJobs = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || !j.itinerary) return false;
+              // Always show jobs admin has set live
+              if (j.itinerary.isLive === true) return true;
               if (!j.shootDate) return false;
               const s = new Date(j.shootDate); s.setHours(0,0,0,0);
               if (s.getTime() !== todayMidnight2.getTime()) return false;
@@ -5248,9 +5272,12 @@ Notes: ${j.notes || 'none'}`;
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
+      { key: 'timeclock',          label: 'Clock' },
       { key: 'files',              label: 'Files' },
       { key: 'availability',       label: 'Avail.' },
       { key: 'time',               label: 'Time' },
+      { key: 'feedback',           label: 'Feedback' },
+      { key: 'post-ideas',         label: 'Posts' },
       { key: 'checklist',          label: 'Gear ✓' },
     ];
     const tabs = isNavAdmin ? adminTabs : employeeTabs;
@@ -5325,7 +5352,7 @@ Notes: ${j.notes || 'none'}`;
               <div className="grid grid-cols-7 gap-1">{adminTabs.slice(8).map(renderTabBtn)}</div>
             </div>
           ) : (
-            <div className="grid grid-cols-5 gap-1">{tabs.map(renderTabBtn)}</div>
+            <div className="grid grid-cols-8 gap-1">{tabs.map(renderTabBtn)}</div>
           )}
         </div>
       </div>
@@ -6575,6 +6602,8 @@ Notes: ${j.notes || 'none'}`;
             const myItineraryJobs = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || !j.itinerary) return false;
               if (itinHasEnded(j)) return false;
+              // Admin-set live jobs always visible to all staff
+              if (j.itinerary.isLive === true) return true;
               const myId = String(currentUser.id);
               const isAssigned = assignedIds.has(j.id);
               const isSharedWithMe = j.itinerary?.sharedWith?.some(id => String(id) === myId);
@@ -8344,12 +8373,10 @@ Capturing Your Special Day
                                   <span className="bg-yellow-400 text-yellow-900 rounded-full px-1 font-bold" style={{fontSize:'9px'}}>{job.itinerary.sharedWith.length}</span>
                                 )}
                               </button>
-                              {isToday && (
-                                <button onClick={() => setLiveItineraryJob(liveItineraryJob === job.id ? null : job.id)}
-                                  className={`text-xs px-2 py-1 rounded font-semibold ${liveItineraryJob === job.id ? 'bg-red-600 text-white animate-pulse' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
-                                  {liveItineraryJob === job.id ? '🔴 LIVE' : '▶ Go Live'}
-                                </button>
-                              )}
+                              <button onClick={() => toggleLiveJob(job.id)}
+                                className={`text-xs px-2 py-1 rounded font-semibold ${liveItineraryJob === job.id ? 'bg-red-600 text-white animate-pulse' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
+                                {liveItineraryJob === job.id ? '🔴 LIVE' : '▶ Go Live'}
+                              </button>
                               {currentUser.isAdmin && (
                                 <button onClick={async () => {
                                   if (window.confirm(`Archive "${job.jobName}"? It will be hidden from Upcoming.`)) {
