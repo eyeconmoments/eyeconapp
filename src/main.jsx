@@ -328,6 +328,8 @@ function EyeconMoments() {
   const [bookingTotalPrice, setBookingTotalPrice] = useState('');
   const [bookingDeposit, setBookingDeposit] = useState('');
   const [showCRMAIModal, setShowCRMAIModal] = useState(false);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [addContactForm, setAddContactForm] = useState({ name: '', phone: '', email: '', eventType: 'wedding', eventDate: '', notes: '' });
   const [crmAIImage, setCrmAIImage] = useState(null);
   const [crmAIExtracted, setCrmAIExtracted] = useState(null);
   const [isExtractingCRM, setIsExtractingCRM] = useState(false);
@@ -1220,39 +1222,6 @@ function EyeconMoments() {
     checkDeadlineNotifications();
   }, [currentUser, checkDeadlineNotifications]);
 
-  // ── Remaining balance reminders ───────────────────────────────────────────
-  const checkBalanceReminders = React.useCallback(() => {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) return;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const due = editingJobs.filter(job => {
-      if (archivedJobIds.includes(job.id) || job.finalPaymentReceived || !job.shootDate) return false;
-      const shoot = new Date(job.shootDate); shoot.setHours(0, 0, 0, 0);
-      if (shoot > today) return false; // future shoots excluded; today and past included
-      const deferUntil = localStorage.getItem('eyecon_balance_defer_' + job.id);
-      if (deferUntil && today < new Date(deferUntil)) return false;
-      return true;
-    });
-    if (due.length === 0) return;
-    due.sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
-    const job = due[0];
-    const total = calculateJobRevenue(job);
-    const dep = (() => { try { return JSON.parse(localStorage.getItem('eyecon_deposit_' + job.id) || 'null'); } catch { return null; } })();
-    const depositPaid = dep?.paid ? (parseFloat(dep.amount) || 0) : 0;
-    const outstanding = total > 0 ? Math.max(0, total - depositPaid).toFixed(2) : '';
-    const inquiry = inquiries.find(i =>
-      (i.name || '').toLowerCase() === (job.customerName || '').toLowerCase() ||
-      (job.jobName || '').toLowerCase().includes((i.name || '').toLowerCase())
-    );
-    setFinalPaymentModal({ jobId: job.id, amount: outstanding, email: inquiry?.email || '', fromReminder: true, totalRevenue: total, depositPaid, extraHours: '', extraHourRate: '' });
-  }, [editingJobs, archivedJobIds, currentUser, inquiries]);
-
-  React.useEffect(() => {
-    if (!currentUser || editingJobs.length === 0) return;
-    const key = 'eyecon_bal_checked';
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, '1');
-    checkBalanceReminders();
-  }, [currentUser, editingJobs, checkBalanceReminders]);
 
   // ── Smart clock reminder ──────────────────────────────────────────────────
   const fmtMins = (mins) => {
@@ -1359,29 +1328,6 @@ function EyeconMoments() {
     return { total: assignedJobs.length, dueThisWeek, jobs: assignedJobs };
   };
 
-  const markFinalPayment = async () => {
-    if (!finalPaymentModal) return;
-    const { jobId, amount, email } = finalPaymentModal;
-    const now = new Date().toISOString();
-    const markedBy = currentUser.name;
-    await db.from('jobs').update({
-      final_payment_received: true,
-      final_payment_date: now,
-      final_payment_by: markedBy,
-    }).eq('id', jobId);
-    setEditingJobs(prev => prev.map(j => j.id === jobId
-      ? { ...j, finalPaymentReceived: true, finalPaymentDate: now, finalPaymentBy: markedBy }
-      : j
-    ));
-    setFinalPaymentModal(null);
-    if (email && amount) {
-      const job = editingJobs.find(j => j.id === jobId);
-      const firstName = (job?.customerName || '').split(' ')[0] || 'there';
-      const subject = encodeURIComponent('Payment Received — Eyecon Moments');
-      const body = encodeURIComponent(`Hi ${firstName},\n\nThank you — we have received your final payment of £${parseFloat(amount).toFixed(2)}.\n\nYour account is now fully settled. We look forward to delivering your finished content very soon.\n\nKind regards,\n\nEyecon Moments\neyecon.moments@gmail.com\nwww.eyeconmoments.co.uk`);
-      openMail(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
-    }
-  };
 
   const downloadInvoicePDF = async (job, inv) => {
     const { jsPDF } = await import('jspdf');
@@ -5192,6 +5138,95 @@ Notes: ${j.notes || 'none'}`;
           )}
         </div>
       </div>
+      {globalSearchOpen && (() => {
+        const q = globalSearchQuery.trim().toLowerCase();
+        const matches = (s) => s && String(s).toLowerCase().includes(q);
+        const jobHits = !q ? [] : editingJobs.filter(j =>
+          matches(j.jobName) || matches(j.customerName) || matches(j.notes)
+        ).slice(0, 20);
+        const inqHits = !q ? [] : inquiries.filter(i =>
+          matches(i.customerName) || matches(i.phone) || matches(i.email) || matches(i.notes)
+        ).slice(0, 20);
+        const empHits = !q ? [] : employees.filter(e =>
+          matches(e.name) || matches(e.phone)
+        ).slice(0, 10);
+        const fileHits = !q ? [] : editingJobs.flatMap(j =>
+          (j.fileLocations || []).filter(f =>
+            matches(f.drive) || matches(f.path) || matches(f.notes) || matches(f.filename) || matches(f.fileName)
+          ).map(f => ({ ...f, _jobName: j.jobName, _jobId: j.id }))
+        ).slice(0, 20);
+        const total = jobHits.length + inqHits.length + empHits.length + fileHits.length;
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-start justify-center p-4 pt-16">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col`}>
+              <div className={`p-4 border-b flex items-center gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                <span className="text-2xl">🔍</span>
+                <input autoFocus type="text" placeholder="Search jobs, clients, files, staff…"
+                  value={globalSearchQuery} onChange={e => setGlobalSearchQuery(e.target.value)}
+                  className={`flex-1 bg-transparent outline-none text-base ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`} />
+                <button onClick={() => setGlobalSearchOpen(false)}
+                  className={`text-2xl leading-none ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}>✕</button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3">
+                {!q && (
+                  <p className={`text-center text-sm py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Start typing to search everything in the system.</p>
+                )}
+                {q && total === 0 && (
+                  <p className={`text-center text-sm py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No matches for "{globalSearchQuery}"</p>
+                )}
+                {jobHits.length > 0 && (
+                  <div className="mb-3">
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Jobs ({jobHits.length})</p>
+                    {jobHits.map(j => (
+                      <button key={j.id} onClick={() => { setCurrentView('jobs'); setGlobalSearchOpen(false); }}
+                        className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                        <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {j.jobName}</div>
+                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.customerName}{j.shootDate ? ` · ${new Date(j.shootDate).toLocaleDateString('en-GB')}` : ''}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {inqHits.length > 0 && (
+                  <div className="mb-3">
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>CRM Contacts ({inqHits.length})</p>
+                    {inqHits.map(i => (
+                      <button key={i.id} onClick={() => { setCurrentView('crm'); setGlobalSearchOpen(false); }}
+                        className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                        <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>👤 {i.customerName}</div>
+                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{[i.phone, i.email].filter(Boolean).join(' · ') || '—'}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {fileHits.length > 0 && (
+                  <div className="mb-3">
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Files ({fileHits.length})</p>
+                    {fileHits.map((f, idx) => (
+                      <button key={idx} onClick={() => { setCurrentView('files'); setGlobalSearchOpen(false); }}
+                        className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                        <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📁 {f.fileName || f.filename || f.drive || 'File'}</div>
+                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{f._jobName}{f.path ? ` · ${f.path}` : ''}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {empHits.length > 0 && (
+                  <div className="mb-3">
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Staff ({empHits.length})</p>
+                    {empHits.map(e => (
+                      <button key={e.id} onClick={() => { setCurrentView('employees'); setGlobalSearchOpen(false); }}
+                        className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                        <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🧑 {e.name}</div>
+                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{e.role}{e.phone ? ` · ${e.phone}` : ''}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       </>
     );
   };
@@ -8470,97 +8505,6 @@ Capturing Your Special Day
           );
         })()}
 
-        {/* Global Search Modal */}
-        {globalSearchOpen && (() => {
-          const q = globalSearchQuery.trim().toLowerCase();
-          const matches = (s) => s && String(s).toLowerCase().includes(q);
-          const jobHits = !q ? [] : editingJobs.filter(j =>
-            matches(j.jobName) || matches(j.customerName) || matches(j.notes)
-          ).slice(0, 20);
-          const inqHits = !q ? [] : inquiries.filter(i =>
-            matches(i.customerName) || matches(i.phone) || matches(i.email) || matches(i.notes)
-          ).slice(0, 20);
-          const empHits = !q ? [] : employees.filter(e =>
-            matches(e.name) || matches(e.phone)
-          ).slice(0, 10);
-          const fileHits = !q ? [] : editingJobs.flatMap(j =>
-            (j.fileLocations || []).filter(f =>
-              matches(f.drive) || matches(f.path) || matches(f.notes) || matches(f.filename) || matches(f.fileName)
-            ).map(f => ({ ...f, _jobName: j.jobName, _jobId: j.id }))
-          ).slice(0, 20);
-          const total = jobHits.length + inqHits.length + empHits.length + fileHits.length;
-          return (
-            <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-start justify-center p-4 pt-16">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col`}>
-                <div className={`p-4 border-b flex items-center gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                  <span className="text-2xl">🔍</span>
-                  <input autoFocus type="text" placeholder="Search jobs, clients, files, staff…"
-                    value={globalSearchQuery} onChange={e => setGlobalSearchQuery(e.target.value)}
-                    className={`flex-1 bg-transparent outline-none text-base ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`} />
-                  <button onClick={() => setGlobalSearchOpen(false)}
-                    className={`text-2xl leading-none ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}>✕</button>
-                </div>
-                <div className="overflow-y-auto flex-1 p-3">
-                  {!q && (
-                    <p className={`text-center text-sm py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Start typing to search everything in the system.</p>
-                  )}
-                  {q && total === 0 && (
-                    <p className={`text-center text-sm py-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No matches for "{globalSearchQuery}"</p>
-                  )}
-                  {jobHits.length > 0 && (
-                    <div className="mb-3">
-                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Jobs ({jobHits.length})</p>
-                      {jobHits.map(j => (
-                        <button key={j.id} onClick={() => { setCurrentView('jobs'); setGlobalSearchOpen(false); }}
-                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
-                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {j.jobName}</div>
-                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.customerName}{j.shootDate ? ` · ${new Date(j.shootDate).toLocaleDateString('en-GB')}` : ''}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {inqHits.length > 0 && (
-                    <div className="mb-3">
-                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>CRM Contacts ({inqHits.length})</p>
-                      {inqHits.map(i => (
-                        <button key={i.id} onClick={() => { setCurrentView('crm'); setGlobalSearchOpen(false); }}
-                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
-                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>👤 {i.customerName}</div>
-                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{[i.phone, i.email].filter(Boolean).join(' · ') || '—'}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {fileHits.length > 0 && (
-                    <div className="mb-3">
-                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Files ({fileHits.length})</p>
-                      {fileHits.map((f, idx) => (
-                        <button key={idx} onClick={() => { setCurrentView('files'); setGlobalSearchOpen(false); }}
-                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
-                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📁 {f.fileName || f.filename || f.drive || 'File'}</div>
-                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{f._jobName}{f.path ? ` · ${f.path}` : ''}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {empHits.length > 0 && (
-                    <div className="mb-3">
-                      <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Staff ({empHits.length})</p>
-                      {empHits.map(e => (
-                        <button key={e.id} onClick={() => { setCurrentView('employees'); setGlobalSearchOpen(false); }}
-                          className={`w-full text-left p-2.5 rounded-lg mb-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
-                          <div className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🧑 {e.name}</div>
-                          <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{e.role}{e.phone ? ` · ${e.phone}` : ''}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* Project File Upload Modal — triggered when video editing reaches 100% */}
         {projectFileModal && (() => {
           const _pfJob = editingJobs.find(j => j.id === projectFileModal.jobId);
@@ -10422,98 +10366,6 @@ Capturing Your Special Day
           </div>
         )}
 
-        {finalPaymentModal && (() => {
-          const fpmJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
-          const isReminder = finalPaymentModal.fromReminder;
-          const isToday = fpmJob?.shootDate && (() => { const s = new Date(fpmJob.shootDate); s.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return s.getTime() === t.getTime(); })();
-          const extraHrs = parseFloat(finalPaymentModal.extraHours) || 0;
-          const extraRate = parseFloat(finalPaymentModal.extraHourRate) || (fpmJob?.hasPhotos && fpmJob?.hasVideo ? 250 : fpmJob?.hasPhotos ? 125 : 150);
-          const extraCost = extraHrs * extraRate;
-          const baseAmount = parseFloat(finalPaymentModal.amount) || 0;
-          const totalOwed = (baseAmount + extraCost).toFixed(2);
-          return (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto`}>
-                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {isToday ? '📅 Shoot Day — Collect Balance' : isReminder ? '💷 Outstanding Balance' : '💷 Mark Balance Paid'}
-                </h2>
-                <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {fpmJob?.customerName} · {fpmJob?.jobName}
-                  {fpmJob?.shootDate ? ` · ${new Date(fpmJob.shootDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : ''}
-                </p>
-                {isReminder && finalPaymentModal.totalRevenue > 0 && (
-                  <div className={`rounded-lg p-3 mb-3 text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                    <div className="flex justify-between"><span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job value</span><span className={`font-semibold ${darkMode ? 'text-white' : ''}`}>£{finalPaymentModal.totalRevenue.toFixed(2)}</span></div>
-                    {finalPaymentModal.depositPaid > 0 && <div className="flex justify-between"><span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid</span><span className="text-green-500">−£{parseFloat(finalPaymentModal.depositPaid).toFixed(2)}</span></div>}
-                    <div className={`flex justify-between pt-1 border-t mt-1 font-bold ${darkMode ? 'border-gray-600 text-white' : 'border-gray-200 text-gray-900'}`}><span>Outstanding</span><span>£{totalOwed}</span></div>
-                  </div>
-                )}
-                <div className="space-y-3">
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Balance amount (£)</label>
-                    <input type="number" value={finalPaymentModal.amount}
-                      onChange={e => setFinalPaymentModal(p => ({ ...p, amount: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Additional hours (pro-rata)</label>
-                    <div className="flex gap-2">
-                      <input type="number" min="0" step="0.5" placeholder="Hours" value={finalPaymentModal.extraHours}
-                        onChange={e => setFinalPaymentModal(p => ({ ...p, extraHours: e.target.value }))}
-                        className={`flex-1 px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                      <input type="number" min="0" placeholder={`£${extraRate}/hr`} value={finalPaymentModal.extraHourRate}
-                        onChange={e => setFinalPaymentModal(p => ({ ...p, extraHourRate: e.target.value }))}
-                        className={`w-24 px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                    </div>
-                    {extraHrs > 0 && <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>+£{extraCost.toFixed(2)} extra → Total: £{totalOwed}</p>}
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for receipt)</label>
-                    <input type="email" value={finalPaymentModal.email} placeholder="client@example.com"
-                      onChange={e => setFinalPaymentModal(p => ({ ...p, email: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                  </div>
-                </div>
-                <div className="space-y-2 mt-4">
-                  <button onClick={() => {
-                    setFinalPaymentModal(p => ({ ...p, amount: totalOwed }));
-                    markFinalPayment();
-                    logActivity('Balance paid', fpmJob?.jobName || '', `£${totalOwed}`);
-                  }}
-                    className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
-                    ✅ {finalPaymentModal.email ? 'Mark Paid & Email Receipt' : 'Mark as Paid'}
-                  </button>
-                  <button onClick={async () => {
-                    const now = new Date().toISOString();
-                    await db.from('jobs').update({ final_payment_received: true, final_payment_date: now, final_payment_by: currentUser.name }).eq('id', finalPaymentModal.jobId);
-                    setEditingJobs(prev => prev.map(j => j.id === finalPaymentModal.jobId ? { ...j, finalPaymentReceived: true, finalPaymentDate: now, finalPaymentBy: currentUser.name } : j));
-                    logActivity('Balance paid (already received)', fpmJob?.jobName || '', `£${totalOwed}`);
-                    setFinalPaymentModal(null);
-                    window.__toast?.('Payment marked as already received', 'success');
-                  }}
-                    className={`w-full py-2.5 rounded-lg text-sm font-semibold ${darkMode ? 'bg-gray-700 text-green-300 hover:bg-gray-600' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>
-                    💚 Already Paid — Just Log It
-                  </button>
-                  {isReminder && (
-                    <button onClick={() => {
-                      const d = new Date(); d.setDate(d.getDate() + 10);
-                      localStorage.setItem('eyecon_balance_defer_' + finalPaymentModal.jobId, d.toISOString().slice(0, 10));
-                      setFinalPaymentModal(null);
-                    }}
-                      className={`w-full py-2 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}>
-                      ⏰ Defer 10 Days
-                    </button>
-                  )}
-                  <button onClick={() => setFinalPaymentModal(null)}
-                    className={`w-full py-2 text-xs rounded ${darkMode ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* Invoice Modal */}
         {invoiceModal && (() => {
           const invJob = invoiceModal.jobId ? editingJobs.find(j => j.id === invoiceModal.jobId) : null;
@@ -11088,6 +10940,9 @@ Capturing Your Special Day
           
           {/* Filter tabs + Add button */}
           <div className="flex gap-2 items-center flex-wrap">
+            <button onClick={() => { setAddContactForm({ name: '', phone: '', email: '', eventType: 'wedding', eventDate: '', notes: '' }); setShowAddContactModal(true); }} className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1">
+              ➕ Add Contact
+            </button>
             <button onClick={() => setShowCRMAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1">
               📸 Add from Screenshot
             </button>
@@ -11819,6 +11674,73 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               </div>
             );
           })()}
+
+          {showAddContactModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+                <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>➕ Add Contact</h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Name *</label>
+                    <input type="text" value={addContactForm.name} onChange={e => setAddContactForm(p=>({...p,name:e.target.value}))}
+                      autoFocus className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} placeholder="e.g. Sarah & Ahmed" />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Phone</label>
+                    <input type="tel" value={addContactForm.phone} onChange={e => setAddContactForm(p=>({...p,phone:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} placeholder="07xxx xxxxxx" />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email</label>
+                    <input type="email" value={addContactForm.email} onChange={e => setAddContactForm(p=>({...p,email:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} placeholder="email@example.com" />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Event Type</label>
+                    <select value={addContactForm.eventType} onChange={e => setAddContactForm(p=>({...p,eventType:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      {['wedding','nikkah','mehndi','engagement','walima','event'].map(t => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Event Date</label>
+                    <input type="date" value={addContactForm.eventDate} onChange={e => setAddContactForm(p=>({...p,eventDate:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes</label>
+                    <textarea rows={2} value={addContactForm.notes} onChange={e => setAddContactForm(p=>({...p,notes:e.target.value}))}
+                      placeholder="Budget, requirements, source…" className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <button onClick={() => setShowAddContactModal(false)} className={`py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Cancel</button>
+                  <button onClick={async () => {
+                    if (!addContactForm.name.trim()) { alert('Name is required'); return; }
+                    const { data, error } = await db.from('inquiries').insert([{
+                      id: Date.now(),
+                      customer_name: addContactForm.name.trim(),
+                      phone: addContactForm.phone.trim(),
+                      email: addContactForm.email.trim(),
+                      event_type: addContactForm.eventType,
+                      event_date: addContactForm.eventDate || null,
+                      status: 'new',
+                      notes: addContactForm.notes.trim(),
+                      submitted_date: new Date().toISOString(),
+                    }]).select().single();
+                    if (!error && data) {
+                      setInquiries(prev => [rowToInquiry(data), ...prev]);
+                      setShowAddContactModal(false);
+                    } else {
+                      alert('Save failed: ' + (error?.message || 'unknown error'));
+                    }
+                  }} className="py-2 rounded-lg bg-blue-500 text-white font-semibold">✅ Add to CRM</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {showCRMAIModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -15266,7 +15188,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
             </div>
 
             {/* Client Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Client Name *</label>
                 <input type="text" value={quoteData.clientName} onChange={(e) => setQuoteData({...quoteData, clientName: e.target.value})}
@@ -15276,6 +15198,11 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Client Email *</label>
                 <input type="email" value={quoteData.clientEmail} onChange={(e) => setQuoteData({...quoteData, clientEmail: e.target.value})}
                   className="w-full px-3 py-2 border rounded-lg" placeholder="email@example.com" />
+              </div>
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Client Phone</label>
+                <input type="tel" value={quoteData.clientPhone} onChange={(e) => setQuoteData({...quoteData, clientPhone: e.target.value})}
+                  className="w-full px-3 py-2 border rounded-lg" placeholder="07xxx xxxxxx" />
               </div>
             </div>
 
