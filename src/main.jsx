@@ -5248,12 +5248,9 @@ Notes: ${j.notes || 'none'}`;
     ];
     const employeeTabs = [
       { key: 'employee-dashboard', label: 'My Jobs' },
-      { key: 'timeclock',          label: 'Clock' },
       { key: 'files',              label: 'Files' },
       { key: 'availability',       label: 'Avail.' },
       { key: 'time',               label: 'Time' },
-      { key: 'feedback',           label: 'Feedback' },
-      { key: 'post-ideas',         label: 'Posts' },
       { key: 'checklist',          label: 'Gear ✓' },
     ];
     const tabs = isNavAdmin ? adminTabs : employeeTabs;
@@ -5328,7 +5325,7 @@ Notes: ${j.notes || 'none'}`;
               <div className="grid grid-cols-7 gap-1">{adminTabs.slice(8).map(renderTabBtn)}</div>
             </div>
           ) : (
-            <div className="grid grid-cols-8 gap-1">{tabs.map(renderTabBtn)}</div>
+            <div className="grid grid-cols-5 gap-1">{tabs.map(renderTabBtn)}</div>
           )}
         </div>
       </div>
