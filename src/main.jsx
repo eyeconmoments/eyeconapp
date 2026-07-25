@@ -397,6 +397,8 @@ function EyeconMoments() {
   const [payScaleOpen, setPayScaleOpen] = useState({}); // { [employeeId]: bool }
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
   const [finalPaymentModal, setFinalPaymentModal] = useState(null); // { jobId, amount, email }
+  const [locationPrompt, setLocationPrompt] = useState(null); // { jobId, stageName } — shown after stage completion
+  const [locationPromptInput, setLocationPromptInput] = useState('');
   const [invoiceModal, setInvoiceModal] = useState(null); // { jobId, invoiceNum, invoiceDate, lines, depositPaid, notes }
   const [paymentRequests, setPaymentRequests] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_payment_requests') || '[]'); } catch { return []; } });
   const [wagesCollapsed, setWagesCollapsed] = useState({}); // { [empId]: bool } — true = collapsed
@@ -859,8 +861,10 @@ function EyeconMoments() {
   };
 
   const getDaysUntilDeadline = (deadline) => {
-    const diffTime = new Date(deadline) - new Date();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (!deadline) return Infinity;
+    const d = new Date(deadline);
+    if (isNaN(d.getTime()) || d.getFullYear() <= 1970) return Infinity;
+    return Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24));
   };
 
   const getStatusColor = (status) => {
@@ -1222,7 +1226,7 @@ function EyeconMoments() {
     const due = editingJobs.filter(job => {
       if (archivedJobIds.includes(job.id) || job.finalPaymentReceived || !job.shootDate) return false;
       const shoot = new Date(job.shootDate); shoot.setHours(0, 0, 0, 0);
-      if (shoot >= today) return false;
+      if (shoot > today) return false; // future shoots excluded; today and past included
       const deferUntil = localStorage.getItem('eyecon_balance_defer_' + job.id);
       if (deferUntil && today < new Date(deferUntil)) return false;
       return true;
@@ -1231,12 +1235,14 @@ function EyeconMoments() {
     due.sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
     const job = due[0];
     const total = calculateJobRevenue(job);
-    const remaining = total > 0 ? (total / 2).toFixed(2) : '';
+    const dep = (() => { try { return JSON.parse(localStorage.getItem('eyecon_deposit_' + job.id) || 'null'); } catch { return null; } })();
+    const depositPaid = dep?.paid ? (parseFloat(dep.amount) || 0) : 0;
+    const outstanding = total > 0 ? Math.max(0, total - depositPaid).toFixed(2) : '';
     const inquiry = inquiries.find(i =>
       (i.name || '').toLowerCase() === (job.customerName || '').toLowerCase() ||
       (job.jobName || '').toLowerCase().includes((i.name || '').toLowerCase())
     );
-    setFinalPaymentModal({ jobId: job.id, amount: remaining, email: inquiry?.email || '', fromReminder: true });
+    setFinalPaymentModal({ jobId: job.id, amount: outstanding, email: inquiry?.email || '', fromReminder: true, totalRevenue: total, depositPaid, extraHours: '', extraHourRate: '' });
   }, [editingJobs, archivedJobIds, currentUser, inquiries]);
 
   React.useEffect(() => {
@@ -1329,7 +1335,7 @@ function EyeconMoments() {
     return () => clearInterval(interval);
   }, [currentUser, timeEntries]);
 
-  const getOverdueJobs = () => editingJobs.filter(job => getDaysUntilDeadline(job.deadline) < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job));
+  const getOverdueJobs = () => editingJobs.filter(job => { const d = getDaysUntilDeadline(job.deadline); return isFinite(d) && d < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job); });
   const getDueSoonJobs = () => editingJobs.filter(job => {
     const days = getDaysUntilDeadline(job.deadline);
     return days >= 0 && days <= 7 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job);
@@ -1977,6 +1983,10 @@ function EyeconMoments() {
 
     setStageFileModal(null);
     setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' });
+    // Prompt for current location after stage completion
+    const stageName = isPhoto ? 'Photo Editing' : (job.stages.find(s => s.id === stageId)?.name || 'Stage');
+    setLocationPrompt({ jobId, jobName: job.jobName, stageName });
+    setLocationPromptInput('');
   };
 
   const saveEmployeeNote = async (text) => {
@@ -6448,7 +6458,7 @@ Notes: ${j.notes || 'none'}`;
                                     <p className={`font-bold ${isCurrent ? 'text-xl' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || item.label || 'Item'}</p>
                                     <p className={`${isCurrent ? 'text-sm' : 'text-xs'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                       {item.computedTime}{isCurrent ? ' — NOW' : isNext ? ' — up next' : ' — done'}
-                                      {isCurrent && item.duration ? ` · ${item.duration * 15}min` : ''}
+                                      {isCurrent && item.duration ? ` · ${Math.max(...itemsWithTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15}min` : ''}
                                     </p>
                                   </div>
                                   {isCurrent && <span className="text-2xl">▶️</span>}
@@ -9597,7 +9607,7 @@ Capturing Your Special Day
           <div className="space-y-3">
             {filteredJobs.map(job => {
               const daysUntil = getDaysUntilDeadline(job.deadline);
-              const isOverdue = daysUntil < 0;
+              const isOverdue = isFinite(daysUntil) && daysUntil < 0;
               const isArchived = archivedJobIds.includes(job.id);
               
               return (
@@ -9626,15 +9636,17 @@ Capturing Your Special Day
                         <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : ''}`}>{job.jobName}</h3>
                         <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job.customerName}</p>
                         <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                          Shoot: {formatDate(job.shootDate)} | Deadline: {formatDate(job.deadline)}
+                          Shoot: {formatDate(job.shootDate)}{job.deadline && isFinite(getDaysUntilDeadline(job.deadline)) ? ` | Deadline: ${formatDate(job.deadline)}` : ''}
                         </p>
                       </div>
                       <div className="text-right">
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          isOverdue ? 'bg-red-100 text-red-700' : daysUntil <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {isOverdue ? `${Math.abs(daysUntil)}d overdue` : `${daysUntil}d left`}
-                        </span>
+                        {isFinite(daysUntil) && (
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            isOverdue ? 'bg-red-100 text-red-700' : daysUntil <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {isOverdue ? `${Math.abs(daysUntil)}d overdue` : `${daysUntil}d left`}
+                          </span>
+                        )}
                         <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{getJobHours(job.id)}h logged</p>
                       </div>
                     </div>
@@ -10281,62 +10293,135 @@ Capturing Your Special Day
           );
         })()}
 
+        {/* Location prompt — shown after completing a stage */}
+        {locationPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl`}>
+              <div className="text-3xl text-center mb-2">📍</div>
+              <h2 className={`text-base font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Stage complete — where are you?
+              </h2>
+              <p className={`text-xs text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {locationPrompt.stageName} · {locationPrompt.jobName}
+              </p>
+              <input
+                type="text"
+                placeholder="e.g. Venue name, address, heading home…"
+                value={locationPromptInput}
+                onChange={e => setLocationPromptInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && locationPromptInput.trim()) {
+                    logActivity('Location logged', locationPrompt.jobName, locationPromptInput.trim());
+                    setLocationPrompt(null); setLocationPromptInput('');
+                  }
+                }}
+                autoFocus
+                className={`w-full px-3 py-2 rounded-lg border text-sm mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+              />
+              <div className="flex gap-2">
+                <button onClick={() => { setLocationPrompt(null); setLocationPromptInput(''); }}
+                  className={`flex-1 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  Skip
+                </button>
+                <button onClick={() => {
+                  if (locationPromptInput.trim()) logActivity('Location logged', locationPrompt.jobName, locationPromptInput.trim());
+                  setLocationPrompt(null); setLocationPromptInput('');
+                }}
+                  className="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600">
+                  Log Location
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {finalPaymentModal && (() => {
           const fpmJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
           const isReminder = finalPaymentModal.fromReminder;
+          const isToday = fpmJob?.shootDate && (() => { const s = new Date(fpmJob.shootDate); s.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return s.getTime() === t.getTime(); })();
+          const extraHrs = parseFloat(finalPaymentModal.extraHours) || 0;
+          const extraRate = parseFloat(finalPaymentModal.extraHourRate) || (fpmJob?.hasPhotos && fpmJob?.hasVideo ? 250 : fpmJob?.hasPhotos ? 125 : 150);
+          const extraCost = extraHrs * extraRate;
+          const baseAmount = parseFloat(finalPaymentModal.amount) || 0;
+          const totalOwed = (baseAmount + extraCost).toFixed(2);
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto`}>
                 <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {isReminder ? '💷 Remaining Balance Due' : '💷 Mark Balance Paid'}
+                  {isToday ? '📅 Shoot Day — Collect Balance' : isReminder ? '💷 Outstanding Balance' : '💷 Mark Balance Paid'}
                 </h2>
-                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {fpmJob?.customerName} · {fpmJob?.jobName}
-                  {isReminder && fpmJob?.shootDate ? ` · Shot ${new Date(fpmJob.shootDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : ''}
+                  {fpmJob?.shootDate ? ` · ${new Date(fpmJob.shootDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : ''}
                 </p>
+                {isReminder && finalPaymentModal.totalRevenue > 0 && (
+                  <div className={`rounded-lg p-3 mb-3 text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                    <div className="flex justify-between"><span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job value</span><span className={`font-semibold ${darkMode ? 'text-white' : ''}`}>£{finalPaymentModal.totalRevenue.toFixed(2)}</span></div>
+                    {finalPaymentModal.depositPaid > 0 && <div className="flex justify-between"><span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid</span><span className="text-green-500">−£{parseFloat(finalPaymentModal.depositPaid).toFixed(2)}</span></div>}
+                    <div className={`flex justify-between pt-1 border-t mt-1 font-bold ${darkMode ? 'border-gray-600 text-white' : 'border-gray-200 text-gray-900'}`}><span>Outstanding</span><span>£{totalOwed}</span></div>
+                  </div>
+                )}
                 <div className="space-y-3">
                   <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Balance amount (£)</label>
                     <input type="number" value={finalPaymentModal.amount}
                       onChange={e => setFinalPaymentModal(p => ({ ...p, amount: e.target.value }))}
                       className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                    {isReminder && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Pre-filled with the remaining 50% — adjust if different</p>}
                   </div>
                   <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for confirmation)</label>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Additional hours (pro-rata)</label>
+                    <div className="flex gap-2">
+                      <input type="number" min="0" step="0.5" placeholder="Hours" value={finalPaymentModal.extraHours}
+                        onChange={e => setFinalPaymentModal(p => ({ ...p, extraHours: e.target.value }))}
+                        className={`flex-1 px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                      <input type="number" min="0" placeholder={`£${extraRate}/hr`} value={finalPaymentModal.extraHourRate}
+                        onChange={e => setFinalPaymentModal(p => ({ ...p, extraHourRate: e.target.value }))}
+                        className={`w-24 px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                    </div>
+                    {extraHrs > 0 && <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>+£{extraCost.toFixed(2)} extra → Total: £{totalOwed}</p>}
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Client email (for receipt)</label>
                     <input type="email" value={finalPaymentModal.email} placeholder="client@example.com"
                       onChange={e => setFinalPaymentModal(p => ({ ...p, email: e.target.value }))}
                       className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Leave blank to skip email</p>
                   </div>
                 </div>
-                <div className="flex gap-3 mt-5">
-                  {isReminder ? (
+                <div className="space-y-2 mt-4">
+                  <button onClick={() => {
+                    setFinalPaymentModal(p => ({ ...p, amount: totalOwed }));
+                    markFinalPayment();
+                    logActivity('Balance paid', fpmJob?.jobName || '', `£${totalOwed}`);
+                  }}
+                    className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
+                    ✅ {finalPaymentModal.email ? 'Mark Paid & Email Receipt' : 'Mark as Paid'}
+                  </button>
+                  <button onClick={async () => {
+                    const now = new Date().toISOString();
+                    await db.from('jobs').update({ final_payment_received: true, final_payment_date: now, final_payment_by: currentUser.name }).eq('id', finalPaymentModal.jobId);
+                    setEditingJobs(prev => prev.map(j => j.id === finalPaymentModal.jobId ? { ...j, finalPaymentReceived: true, finalPaymentDate: now, finalPaymentBy: currentUser.name } : j));
+                    logActivity('Balance paid (already received)', fpmJob?.jobName || '', `£${totalOwed}`);
+                    setFinalPaymentModal(null);
+                    window.__toast?.('Payment marked as already received', 'success');
+                  }}
+                    className={`w-full py-2.5 rounded-lg text-sm font-semibold ${darkMode ? 'bg-gray-700 text-green-300 hover:bg-gray-600' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>
+                    💚 Already Paid — Just Log It
+                  </button>
+                  {isReminder && (
                     <button onClick={() => {
                       const d = new Date(); d.setDate(d.getDate() + 10);
                       localStorage.setItem('eyecon_balance_defer_' + finalPaymentModal.jobId, d.toISOString().slice(0, 10));
                       setFinalPaymentModal(null);
                     }}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}>
+                      className={`w-full py-2 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}>
                       ⏰ Defer 10 Days
                     </button>
-                  ) : (
-                    <button onClick={() => setFinalPaymentModal(null)}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                      Cancel
-                    </button>
                   )}
-                  <button onClick={markFinalPayment}
-                    className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-600">
-                    ✅ {finalPaymentModal.email ? 'Mark & Email' : 'Mark Paid'}
+                  <button onClick={() => setFinalPaymentModal(null)}
+                    className={`w-full py-2 text-xs rounded ${darkMode ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>
+                    Dismiss
                   </button>
                 </div>
-                {isReminder && (
-                  <button onClick={() => setFinalPaymentModal(null)}
-                    className={`w-full mt-2 py-1.5 text-xs rounded ${darkMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>
-                    Dismiss for now
-                  </button>
-                )}
               </div>
             </div>
           );
@@ -11002,15 +11087,17 @@ If you have any questions or would like to discuss anything further, please don'
 Kind regards,
 Eyecon Moments`;
                       openMail(`mailto:${encodeURIComponent(followUpInquiry.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                      logActivity('Follow-up sent', followUpInquiry.customerName, 'Email');
                     }}
                     className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600"
                   >
                     📧 Send Follow-Up Email
                   </button>
-                  
-                  <button 
+
+                  <button
                     onClick={() => {
                       window.open(`tel:${followUpInquiry.phone}`, '_blank');
+                      logActivity('Follow-up sent', followUpInquiry.customerName, 'Phone call');
                     }}
                     className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600"
                   >
@@ -16769,6 +16856,11 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       'Gallery email sent': '📧',
       'Deposit recorded': '💰',
       'Deposit paid': '💚',
+      'Follow-up sent': '📞',
+      'Balance paid': '💷',
+      'Balance paid (already received)': '💚',
+      'Location logged': '📍',
+      'Job permanently deleted': '🗑️',
     };
     const [logSearch, setLogSearch] = React.useState('');
     const filtered = activityLog.filter(e =>
