@@ -3698,6 +3698,254 @@ Notes: ${j.notes || 'none'}`;
           </div>
         </div>
       )}
+
+      {/* ── Global: Wage Submit Modal (accessible from any view) ─────────────── */}
+      {wageSubmitModal && (() => {
+        const modal = wageSubmitModal;
+        const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
+        const today2 = new Date(); today2.setHours(23,59,59,999);
+        const twoWeeksAgo2 = new Date(); twoWeeksAgo2.setDate(twoWeeksAgo2.getDate() - 14); twoWeeksAgo2.setHours(0,0,0,0);
+        const myShootJobs2 = editingJobs.filter(j => !j.archived && j.shootDate && j.shootDate >= twoWeeksAgo2 && j.shootDate <= today2).sort((a, b) => b.shootDate - a.shootDate);
+        const selectedJob2 = modal.selectedJobId ? editingJobs.find(j => j.id === modal.selectedJobId) : null;
+        const getScheduled2 = (job) => {
+          if (!job) return { start: '', end: '' };
+          if (job.itinerary?.startTime) return { start: job.itinerary.startTime, end: job.itinerary.endTime || '22:00' };
+          return { start: '10:00', end: '22:00' };
+        };
+        const scheduled2 = getScheduled2(selectedJob2);
+        const calcHours2 = (start, end) => { if (!start || !end) return 0; const s = new Date(`2000-01-01T${start}`), e = new Date(`2000-01-01T${end}`); return Math.max(0, (e - s) / 3600000); };
+        const actualStart2 = modal.actualStart || scheduled2.start;
+        const actualEnd2 = modal.actualEnd || scheduled2.end;
+        const hours2 = calcHours2(actualStart2, actualEnd2);
+        const amount2 = modal.overrideAmount > 0 ? modal.overrideAmount : hours2 * SHOOT_HOURLY_RATE;
+        const isOverride2 = modal.isOverride || modal.overrideAmount > 0;
+        const submitShootWage2 = async () => {
+          if (!modal.selectedJobId && !modal.customJobName) { alert('Please select a job or enter a job name.'); return; }
+          if (hours2 <= 0 && !modal.overrideAmount) { alert('Please enter valid start and end times.'); return; }
+          const emp2 = employees.find(e => e.id === currentUser.id) || currentUser;
+          const entry2 = {
+            id: Date.now(), employeeId: currentUser.id, employeeName: emp2?.name || currentUser.name,
+            type: 'shoot', stageName: 'Shoot',
+            amount: parseFloat(amount2.toFixed(2)), defaultAmount: parseFloat((hours2 * SHOOT_HOURLY_RATE).toFixed(2)),
+            scheduledStart: scheduled2.start, scheduledEnd: scheduled2.end,
+            actualStart: actualStart2, actualEnd: actualEnd2, hoursWorked: parseFloat(hours2.toFixed(2)),
+            status: isOverride2 ? 'pending_approval' : 'approved',
+            isOverride: isOverride2, overrideReason: modal.overrideReason || '',
+            customJobName: modal.customJobName || '',
+            notes: modal.notes || '',
+            submittedAt: new Date().toISOString(),
+            approvedAt: isOverride2 ? '' : new Date().toISOString(),
+            approvedBy: isOverride2 ? '' : 'auto',
+          };
+          if (modal.selectedJobId) {
+            const job2 = editingJobs.find(j => j.id === modal.selectedJobId);
+            if (job2) await logWageEntry(job2, entry2);
+          } else {
+            const adhoc2 = JSON.parse(localStorage.getItem('eyecon_adhoc_wages') || '[]');
+            adhoc2.push(entry2);
+            localStorage.setItem('eyecon_adhoc_wages', JSON.stringify(adhoc2));
+          }
+          setWageSubmitModal(null);
+          alert(isOverride2 ? 'Submitted — waiting for admin approval.' : 'Shoot wage logged successfully.');
+        };
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-[9999]">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+              <div className={`flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : ''}`}>📷 Log Shoot Wage</h2>
+                <button onClick={() => setWageSubmitModal(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Select Job</label>
+                  <select value={modal.selectedJobId || ''} onChange={e => {
+                    const val = e.target.value;
+                    const job2 = editingJobs.find(j => String(j.id) === String(val));
+                    const sched2 = getScheduled2(job2);
+                    setWageSubmitModal({ ...modal, selectedJobId: val || null, actualStart: sched2.start || '10:00', actualEnd: sched2.end || '22:00', isOverride: false, customJobName: '' });
+                  }} className={inp}>
+                    <option value="">— Choose a job —</option>
+                    {myShootJobs2.map(j => <option key={j.id} value={j.id}>{j.jobName} — {j.customerName}</option>)}
+                  </select>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Don't see your job? Enter it below.</p>
+                </div>
+                {!modal.selectedJobId && (
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name (not listed)</label>
+                    <input type="text" value={modal.customJobName || ''} onChange={e => setWageSubmitModal({ ...modal, customJobName: e.target.value })} placeholder="e.g. Smith Wedding — 15 Mar" className={inp} />
+                  </div>
+                )}
+                {selectedJob2 && (
+                  <div className={`p-3 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                    <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Scheduled Times (from calendar)</p>
+                    <p className={`font-semibold ${darkMode ? 'text-white' : ''}`}>{scheduled2.start} – {scheduled2.end} ({calcHours2(scheduled2.start, scheduled2.end).toFixed(1)}h{(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? ` = £${(calcHours2(scheduled2.start, scheduled2.end) * SHOOT_HOURLY_RATE).toFixed(2)}` : ''})</p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Actual Start</label>
+                    <input type="time" value={actualStart2} onChange={e => { const isOvr2 = selectedJob2 && (e.target.value !== scheduled2.start || actualEnd2 !== scheduled2.end); setWageSubmitModal({ ...modal, actualStart: e.target.value, isOverride: isOvr2 }); }} className={inp} />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Actual End</label>
+                    <input type="time" value={actualEnd2} onChange={e => { const isOvr2 = selectedJob2 && (actualStart2 !== scheduled2.start || e.target.value !== scheduled2.end); setWageSubmitModal({ ...modal, actualEnd: e.target.value, isOverride: isOvr2 }); }} className={inp} />
+                  </div>
+                </div>
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Override Amount (£) — optional</label>
+                  <input type="number" value={modal.overrideAmount || ''} placeholder={`Calculated: £${amount2.toFixed(2)}`} onChange={e => setWageSubmitModal({ ...modal, overrideAmount: parseFloat(e.target.value) || 0 })} className={inp} />
+                </div>
+                {isOverride2 && (
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-orange-500">Reason for override *</label>
+                    <textarea value={modal.overrideReason || ''} rows={2} onChange={e => setWageSubmitModal({ ...modal, overrideReason: e.target.value })} placeholder="e.g. Shoot ran over by 2 hours" className={inp} />
+                    <p className="text-xs text-orange-500 mt-1">This will be sent to admin for approval.</p>
+                  </div>
+                )}
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes <span className={`font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>(optional)</span></label>
+                  <textarea value={modal.notes || ''} rows={2} onChange={e => setWageSubmitModal({ ...modal, notes: e.target.value })} placeholder="e.g. 2nd camera, ceremony + reception, travel notes…" className={inp} />
+                </div>
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-900' : 'bg-green-50'}`}>
+                  <div className="flex justify-between">
+                    <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Hours: {hours2.toFixed(1)}h{(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? ` @ £${SHOOT_HOURLY_RATE}/hr` : ''}
+                    </span>
+                    <span className="font-bold text-green-600">£{amount2.toFixed(2)}</span>
+                  </div>
+                  {isOverride2 && <p className="text-xs text-orange-500 mt-1">⚠ Requires admin approval</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setWageSubmitModal(null)} className={`py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button onClick={submitShootWage2} className="py-2 rounded-lg bg-green-500 text-white font-semibold">Submit</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Global: Final Payment Modal (accessible from any view) ─────────── */}
+      {finalPaymentModal && (() => {
+        const fpJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
+
+        // Success step — offer email confirmation
+        if (finalPaymentModal.saved) {
+          const grandTotal2 = finalPaymentModal.grandTotal || 0;
+          const custEmail = (() => { const inq2 = inquiries.find(i => i.customerName?.toLowerCase() === fpJob?.customerName?.toLowerCase()); return inq2?.email || ''; })();
+          const firstName2 = fpJob?.customerName?.split(' ')[0] || 'there';
+          const emailSubject2 = encodeURIComponent(`Payment Confirmation — ${fpJob?.jobName || 'Your Booking'}`);
+          const emailBody2 = encodeURIComponent(`Hello ${firstName2},\n\nThank you for your payment of £${grandTotal2.toFixed(2)}.\n\nYour payment is now complete and your booking with Eyecon Moments is fully settled. It was a pleasure working with you, and we hope you enjoy your memories for years to come.\n\nKind regards,\nEyecon Moments`);
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center">
+              <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl shadow-2xl w-full max-w-lg p-6 text-center`}>
+                <div className="text-5xl mb-3">✅</div>
+                <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Payment Recorded</h2>
+                <p className={`text-sm mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£{grandTotal2.toFixed(2)} received for {fpJob?.jobName}</p>
+                <div className="space-y-3">
+                  <a href={`mailto:${custEmail}?subject=${emailSubject2}&body=${emailBody2}`}
+                    onClick={() => setFinalPaymentModal(null)}
+                    className="block w-full py-3.5 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600">
+                    📧 Send Payment Confirmation Email
+                  </a>
+                  <button onClick={() => setFinalPaymentModal(null)}
+                    className={`w-full py-3 rounded-xl font-semibold text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Input step
+        const total2 = finalPaymentModal.totalPrice || 0;
+        const dep2 = finalPaymentModal.depositPaid || 0;
+        const overtime2 = parseFloat(finalPaymentModal.overtime || 0) || 0;
+        const finalAmt2 = parseFloat(finalPaymentModal.finalAmount || 0) || 0;
+        const grandTotal2 = finalAmt2 + overtime2;
+        const remaining2 = Math.max(0, total2 - dep2);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center">
+            <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl shadow-2xl w-full max-w-lg`} style={{maxHeight:'90vh', display:'flex', flexDirection:'column'}}>
+              <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+                <div>
+                  <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>💷 Record Final Payment</h2>
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fpJob?.jobName}{fpJob?.customerName ? ` — ${fpJob.customerName}` : ''}</p>
+                </div>
+                <button onClick={() => setFinalPaymentModal(null)} className={`p-2 rounded-lg text-lg ${darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}>✕</button>
+              </div>
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <div className={`rounded-xl p-4 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                  <div className="flex justify-between text-sm">
+                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
+                    <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{total2 > 0 ? `£${total2.toFixed(2)}` : 'Not set'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid (50%)</span>
+                    <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
+                  </div>
+                  {total2 > 0 && (
+                    <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
+                      <span>Balance due</span>
+                      <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Final payment amount (£)</label>
+                  <input type="number" value={finalPaymentModal.finalAmount}
+                    onChange={e => setFinalPaymentModal(p => ({...p, finalAmount: e.target.value}))}
+                    className={`w-full px-4 py-3 rounded-xl border text-xl font-bold ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    placeholder="0.00" step="0.01" min="0" />
+                </div>
+                <div>
+                  <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Overtime / extras (£) — optional</label>
+                  <input type="number" value={finalPaymentModal.overtime}
+                    onChange={e => setFinalPaymentModal(p => ({...p, overtime: e.target.value}))}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    placeholder="0.00" step="0.01" min="0" />
+                  {overtime2 > 0 && (
+                    <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total received: <strong>£{grandTotal2.toFixed(2)}</strong></p>
+                  )}
+                </div>
+                <div>
+                  <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes (optional)</label>
+                  <input type="text" value={finalPaymentModal.notes}
+                    onChange={e => setFinalPaymentModal(p => ({...p, notes: e.target.value}))}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    placeholder="e.g. Bank transfer, cash, etc." />
+                </div>
+              </div>
+              <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} grid grid-cols-2 gap-3`}>
+                <button onClick={() => setFinalPaymentModal(null)}
+                  className={`py-3 rounded-xl font-semibold text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  Cancel
+                </button>
+                <button
+                  disabled={finalAmt2 <= 0}
+                  onClick={async () => {
+                    await db.from('jobs').update({
+                      final_payment_received: true,
+                      final_payment_date: new Date().toISOString(),
+                      final_payment_by: currentUser.name,
+                    }).eq('id', finalPaymentModal.jobId);
+                    setEditingJobs(prev => prev.map(j => j.id === finalPaymentModal.jobId
+                      ? { ...j, finalPaymentReceived: true, finalPaymentDate: new Date().toISOString(), finalPaymentBy: currentUser.name }
+                      : j
+                    ));
+                    logActivity('Final payment received', fpJob?.jobName || '', `£${grandTotal2.toFixed(2)}${finalPaymentModal.notes ? ' · ' + finalPaymentModal.notes : ''}`);
+                    setFinalPaymentModal(p => ({...p, saved: true, grandTotal: grandTotal2}));
+                  }}
+                  className="py-3 rounded-xl font-bold text-sm text-white disabled:opacity-40"
+                  style={{background:'linear-gradient(135deg,#22c55e,#16a34a)'}}>
+                  ✅ Mark Paid — £{grandTotal2.toFixed(2)}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
   // Gear items — shared between the Gear Checklist view and the live-view inline modal
@@ -10887,101 +11135,6 @@ Capturing Your Special Day
           );
         })()}
 
-        {/* Final Payment Modal */}
-        {finalPaymentModal && (() => {
-          const fpJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
-          const total = finalPaymentModal.totalPrice || 0;
-          const dep = finalPaymentModal.depositPaid || 0;
-          const overtime = parseFloat(finalPaymentModal.overtime || 0) || 0;
-          const finalAmt = parseFloat(finalPaymentModal.finalAmount || 0) || 0;
-          const grandTotal = finalAmt + overtime;
-          const remaining = Math.max(0, total - dep);
-          return (
-            <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center">
-              <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl shadow-2xl w-full max-w-lg`} style={{maxHeight:'90vh', display:'flex', flexDirection:'column'}}>
-                <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
-                  <div>
-                    <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>💷 Record Final Payment</h2>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fpJob?.jobName}{fpJob?.customerName ? ` — ${fpJob.customerName}` : ''}</p>
-                  </div>
-                  <button onClick={() => setFinalPaymentModal(null)} className={`p-2 rounded-lg text-lg ${darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}>✕</button>
-                </div>
-                <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                  {/* Price summary */}
-                  <div className={`rounded-xl p-4 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                    <div className="flex justify-between text-sm">
-                      <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
-                      <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{total > 0 ? `£${total.toFixed(2)}` : 'Not set'}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid (50%)</span>
-                      <span className="font-semibold text-green-500">- £{dep.toFixed(2)}</span>
-                    </div>
-                    {total > 0 && (
-                      <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
-                        <span>Balance due</span>
-                        <span style={{color:'var(--gold)'}}>£{remaining.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* Final amount */}
-                  <div>
-                    <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Final payment amount (£)</label>
-                    <input type="number" value={finalPaymentModal.finalAmount}
-                      onChange={e => setFinalPaymentModal(p => ({...p, finalAmount: e.target.value}))}
-                      className={`w-full px-4 py-3 rounded-xl border text-xl font-bold ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                      placeholder="0.00" step="0.01" min="0" />
-                  </div>
-                  {/* Overtime */}
-                  <div>
-                    <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Overtime / extras (£) — optional</label>
-                    <input type="number" value={finalPaymentModal.overtime}
-                      onChange={e => setFinalPaymentModal(p => ({...p, overtime: e.target.value}))}
-                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                      placeholder="0.00" step="0.01" min="0" />
-                    {overtime > 0 && (
-                      <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total received: <strong>£{grandTotal.toFixed(2)}</strong></p>
-                    )}
-                  </div>
-                  {/* Notes */}
-                  <div>
-                    <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes (optional)</label>
-                    <input type="text" value={finalPaymentModal.notes}
-                      onChange={e => setFinalPaymentModal(p => ({...p, notes: e.target.value}))}
-                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                      placeholder="e.g. Bank transfer, cash, etc." />
-                  </div>
-                </div>
-                <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} grid grid-cols-2 gap-3`}>
-                  <button onClick={() => setFinalPaymentModal(null)}
-                    className={`py-3 rounded-xl font-semibold text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                    Cancel
-                  </button>
-                  <button
-                    disabled={finalAmt <= 0}
-                    onClick={async () => {
-                      await db.from('jobs').update({
-                        final_payment_received: true,
-                        final_payment_date: new Date().toISOString(),
-                        final_payment_by: currentUser.name,
-                      }).eq('id', finalPaymentModal.jobId);
-                      setEditingJobs(prev => prev.map(j => j.id === finalPaymentModal.jobId
-                        ? { ...j, finalPaymentReceived: true, finalPaymentDate: new Date().toISOString(), finalPaymentBy: currentUser.name }
-                        : j
-                      ));
-                      logActivity('Final payment received', fpJob?.jobName || '', `£${grandTotal.toFixed(2)}${finalPaymentModal.notes ? ' · ' + finalPaymentModal.notes : ''}`);
-                      setFinalPaymentModal(null);
-                    }}
-                    className="py-3 rounded-xl font-bold text-sm text-white disabled:opacity-40"
-                    style={{background:'linear-gradient(135deg,#22c55e,#16a34a)'}}>
-                    ✅ Mark Paid — £{grandTotal.toFixed(2)}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
         {galleryEmailModal && (() => {
           const gemJob = editingJobs.find(j => j.id === galleryEmailModal.jobId);
           const firstName = gemJob?.customerName?.split(' ')[0] || 'there';
@@ -14669,8 +14822,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
         </div>
         <div className="p-4 space-y-4">
 
-          {/* Shoot Wage Modal */}
-          {wageSubmitModal && (() => {
+          {/* Shoot Wage Modal — rendered globally in helpModalJSX */}
+          {false && (() => {
             const modal = wageSubmitModal;
             const inp = `w-full mt-1 px-3 py-2 border rounded-lg text-sm ${dm ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
             const today = new Date(); today.setHours(23,59,59,999);
