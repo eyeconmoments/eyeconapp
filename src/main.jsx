@@ -368,6 +368,7 @@ function EyeconMoments() {
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [availForm, setAvailForm] = useState({ startDate: '', endDate: '', reason: '' });
   const [liveItineraryJob, setLiveItineraryJob] = useState(null); // jobId for live itinerary view
+  const [liveExpandedItems, setLiveExpandedItems] = useState(new Set()); // 'jobId-idx' keys
   const [isDriveSignedIn, setIsDriveSignedIn] = useState(false);
   const [driveUploadModal, setDriveUploadModal] = useState(null); // { jobId }
   const [projectFileModal, setProjectFileModal] = useState(null); // { jobId, jobName } — upload project file after video complete
@@ -6524,6 +6525,9 @@ Notes: ${j.notes || 'none'}`;
                                   const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
                                   const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
                                   const groupDurMins = Math.max(...itemsWithTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15;
+                                  const expandKey = `${job.id}-${idx}`;
+                                  const isExpanded = liveExpandedItems.has(expandKey);
+                                  const hasDetails = item.notes || item.location || item.duration;
                                   return (
                                     <div key={idx} className={`rounded-xl transition-all ${
                                       isCurrent ? 'p-4 border-2' :
@@ -6531,26 +6535,42 @@ Notes: ${j.notes || 'none'}`;
                                       isNext    ? 'p-3 border' :
                                                  'p-2.5'
                                     } ${darkMode
-                                      ? isCurrent ? 'bg-gray-700' : 'bg-gray-750'
+                                      ? isCurrent ? 'bg-gray-700' : 'bg-gray-800'
                                       : isCurrent ? 'bg-yellow-50' : isPast ? 'bg-gray-50' : isNext ? 'bg-blue-50' : 'bg-gray-50'
                                     }`}
                                     style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : isNext ? {border:'1px solid #93c5fd'} : {}}>
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className={`font-bold truncate ${isCurrent ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || item.label || 'Item'}</p>
-                                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                            {item.computedTime}
-                                            {isCurrent ? <span className="text-orange-500 font-semibold"> — NOW · {groupDurMins}min</span>
-                                             : isNext   ? <span className="text-blue-500 font-semibold"> — up next</span>
-                                             : isPast   ? ' — done'
-                                             : ''}
-                                          </p>
+                                      <button className="w-full text-left" onClick={() => setLiveExpandedItems(prev => { const next = new Set(prev); next.has(expandKey) ? next.delete(expandKey) : next.add(expandKey); return next; })}>
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className={`font-bold ${isCurrent ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || item.label || 'Item'}</p>
+                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                              {item.computedTime}
+                                              {isCurrent ? <span className="text-orange-500 font-semibold"> — NOW · {groupDurMins}min</span>
+                                               : isNext   ? <span className="text-blue-500 font-semibold"> — up next</span>
+                                               : isPast   ? ' — done'
+                                               : item.duration ? ` · ${item.duration * 15}min` : ''}
+                                            </p>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            {isCurrent && <span className="text-xl">▶️</span>}
+                                            {isPast    && <span className="text-base">✅</span>}
+                                            {isNext    && <span className="text-base">⏭️</span>}
+                                            {hasDetails && <span className={`text-xs ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isExpanded ? '▲' : '▼'}</span>}
+                                          </div>
                                         </div>
-                                        {isCurrent && <span className="text-xl flex-shrink-0">▶️</span>}
-                                        {isPast    && <span className="text-base flex-shrink-0">✅</span>}
-                                        {isNext    && <span className="text-base flex-shrink-0">⏭️</span>}
-                                      </div>
+                                      </button>
+                                      {isExpanded && (
+                                        <div className={`mt-2 pt-2 border-t space-y-1 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                          <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            <span>⏱ {item.computedTime}</span>
+                                            <span>⏳ {groupDurMins}min</span>
+                                          </div>
+                                          {item.location && <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 {item.location}</p>}
+                                          {item.notes && <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {item.notes}</p>}
+                                          {item.groupId && <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>🔀 Concurrent with other items</p>}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -8214,6 +8234,9 @@ Capturing Your Special Day
                                 const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
                                 const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
                                 const groupDurMins = Math.max(..._withTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15;
+                                const expandKey = `admin-${job.id}-${idx}`;
+                                const isExpanded = liveExpandedItems.has(expandKey);
+                                const hasDetails = item.notes || item.location || item.duration;
                                 return (
                                   <div key={idx} className={`rounded-xl transition-all ${
                                     isCurrent ? 'p-4 border-2' :
@@ -8221,27 +8244,42 @@ Capturing Your Special Day
                                     isNext    ? 'p-3 border'  :
                                                'p-2.5'
                                   } ${darkMode
-                                    ? isCurrent ? 'bg-gray-700' : 'bg-gray-750'
+                                    ? isCurrent ? 'bg-gray-700' : 'bg-gray-800'
                                     : isCurrent ? 'bg-yellow-50' : isPast ? 'bg-gray-50' : isNext ? 'bg-blue-50' : 'bg-gray-50'
                                   }`}
                                   style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : isNext ? {border:'1px solid #93c5fd'} : {}}>
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className={`font-bold truncate ${isCurrent ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || 'Item'}</p>
-                                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                          {item.computedTime}
-                                          {isCurrent ? <span className="text-orange-500 font-semibold"> — NOW · {groupDurMins}min</span>
-                                           : isNext   ? <span className="text-blue-500 font-semibold"> — up next</span>
-                                           : isPast   ? ' — done'
-                                           : ''}
-                                        </p>
-                                        {item.notes && isCurrent && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.notes}</p>}
+                                    <button className="w-full text-left" onClick={() => setLiveExpandedItems(prev => { const next = new Set(prev); next.has(expandKey) ? next.delete(expandKey) : next.add(expandKey); return next; })}>
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className={`font-bold ${isCurrent ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || 'Item'}</p>
+                                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            {item.computedTime}
+                                            {isCurrent ? <span className="text-orange-500 font-semibold"> — NOW · {groupDurMins}min</span>
+                                             : isNext   ? <span className="text-blue-500 font-semibold"> — up next</span>
+                                             : isPast   ? ' — done'
+                                             : item.duration ? ` · ${item.duration * 15}min` : ''}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                          {isCurrent && <span className="text-xl">▶️</span>}
+                                          {isPast    && <span className="text-base">✅</span>}
+                                          {isNext    && <span className="text-base">⏭️</span>}
+                                          {hasDetails && <span className={`text-xs ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isExpanded ? '▲' : '▼'}</span>}
+                                        </div>
                                       </div>
-                                      {isCurrent && <span className="text-xl flex-shrink-0">▶️</span>}
-                                      {isPast    && <span className="text-base flex-shrink-0">✅</span>}
-                                      {isNext    && <span className="text-base flex-shrink-0">⏭️</span>}
-                                    </div>
+                                    </button>
+                                    {isExpanded && (
+                                      <div className={`mt-2 pt-2 border-t space-y-1 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                        <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          <span>⏱ {item.computedTime}</span>
+                                          <span>⏳ {groupDurMins}min</span>
+                                        </div>
+                                        {item.location && <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 {item.location}</p>}
+                                        {item.notes && <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {item.notes}</p>}
+                                        {item.groupId && <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>🔀 Concurrent with other items</p>}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
