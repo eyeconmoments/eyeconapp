@@ -490,6 +490,7 @@ function EyeconMoments() {
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
   const [activityLog, setActivityLog] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_activity_log') || '[]'); } catch { return []; } });
+  const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
     const entry = { id: Date.now(), ts: new Date().toISOString(), action, jobName, details };
     const prev = (() => { try { return JSON.parse(localStorage.getItem('eyecon_activity_log') || '[]'); } catch { return []; } })();
@@ -5183,8 +5184,8 @@ Notes: ${j.notes || 'none'}`;
           </div>
           {isNavAdmin ? (
             <div className="space-y-1">
-              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(0, 7).map(renderTabBtn)}</div>
-              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(7).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-8 gap-1">{adminTabs.slice(0, 8).map(renderTabBtn)}</div>
+              <div className="grid grid-cols-7 gap-1">{adminTabs.slice(8).map(renderTabBtn)}</div>
             </div>
           ) : (
             <div className="grid grid-cols-8 gap-1">{tabs.map(renderTabBtn)}</div>
@@ -8038,6 +8039,12 @@ Capturing Your Special Day
                                   <span className="bg-yellow-400 text-yellow-900 rounded-full px-1 font-bold" style={{fontSize:'9px'}}>{job.itinerary.sharedWith.length}</span>
                                 )}
                               </button>
+                              {isToday && (
+                                <button onClick={() => setLiveItineraryJob(liveItineraryJob === job.id ? null : job.id)}
+                                  className={`text-xs px-2 py-1 rounded font-semibold ${liveItineraryJob === job.id ? 'bg-red-600 text-white animate-pulse' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
+                                  {liveItineraryJob === job.id ? '🔴 LIVE' : '▶ Go Live'}
+                                </button>
+                              )}
                               {currentUser.isAdmin && (
                                 <button onClick={async () => {
                                   if (window.confirm(`Archive "${job.jobName}"? It will be hidden from Upcoming.`)) {
@@ -8054,7 +8061,79 @@ Capturing Your Special Day
                         </div>
                       </div>
 
-                      {!isMinimized && (<>
+                      {liveItineraryJob === job.id && (() => {
+                        // ── Live view ──────────────────────────────────────────
+                        const _items = itinerary.scheduleItems || [];
+                        const _toMins = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
+                        let _cum = _toMins(itinerary.startTime || '10:00');
+                        const _withTime = [];
+                        let _si = 0;
+                        while (_si < _items.length) {
+                          const _it = _items[_si];
+                          if (_it.groupId) {
+                            const _grp = [];
+                            let _gj = _si;
+                            while (_gj < _items.length && _items[_gj].groupId === _it.groupId) { _grp.push(_items[_gj]); _gj++; }
+                            const _maxD = Math.max(..._grp.map(g => g.duration || 2));
+                            const _ct = `${String(Math.floor(_cum/60)%24).padStart(2,'0')}:${String(_cum%60).padStart(2,'0')}`;
+                            _grp.forEach(g => _withTime.push({ ...g, computedTime: _ct, computedMins: _cum }));
+                            _cum += _maxD * 15; _si = _gj;
+                          } else {
+                            const _im = _it.time ? _toMins(_it.time) : _cum;
+                            if (!_it.time) _cum += (_it.duration || 2) * 15; else _cum = _im + (_it.duration || 2) * 15;
+                            _withTime.push({ ..._it, computedTime: `${String(Math.floor(_im/60)%24).padStart(2,'0')}:${String(_im%60).padStart(2,'0')}`, computedMins: _im });
+                            _si++;
+                          }
+                        }
+                        const _now = new Date();
+                        const _nowMins = _now.getHours() * 60 + _now.getMinutes();
+                        let _curIdx = -1;
+                        for (let i = 0; i < _withTime.length; i++) {
+                          const _m = _withTime[i].computedMins;
+                          let ni = i + 1;
+                          while (ni < _withTime.length && _withTime[ni].computedMins === _m) ni++;
+                          const _nxt = ni < _withTime.length ? _withTime[ni].computedMins : 24*60;
+                          if (_nowMins >= _m && _nowMins < _nxt) { _curIdx = i; break; }
+                        }
+                        const _curMins = _curIdx >= 0 ? _withTime[_curIdx].computedMins : -1;
+                        const _nextMins = _withTime.find(it => it.computedMins > _curMins)?.computedMins ?? Infinity;
+                        return (
+                          <div className={`px-4 pb-4 pt-2 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            <div className={`flex justify-between text-xs px-1 pb-1 border-b ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                              <span>⏱ {itinerary.startTime || '?'} → {itinerary.endTime || '?'}</span>
+                              <span>{_withTime.length} items</span>
+                            </div>
+                            {_curIdx === -1 && <div className={`text-center py-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}><p className={`text-xl font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started</p><p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First: {_withTime[0]?.computedTime} — {_withTime[0]?.name}</p></div>}
+                            {_withTime.map((item, idx) => {
+                              const isCurrent = _curMins >= 0 && item.computedMins === _curMins;
+                              const isPast = !isCurrent && _curMins >= 0 && item.computedMins < _curMins;
+                              const isNext = !isCurrent && !isPast && item.computedMins === _nextMins;
+                              if (!isCurrent && !isNext && !isPast) return null;
+                              const groupDurMins = Math.max(..._withTime.filter(it => it.computedMins === item.computedMins).map(it => (it.duration||2))) * 15;
+                              return (
+                                <div key={idx} className={`rounded-xl transition-all ${isCurrent ? 'p-4 border-2' : isPast ? 'p-2 opacity-40' : 'p-3 border'} ${darkMode ? 'bg-gray-700' : isCurrent ? 'bg-yellow-50' : 'bg-gray-50'}`}
+                                  style={isCurrent ? {borderColor: item.color || 'var(--gold)'} : {}}>
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}></div>
+                                    <div className="flex-1">
+                                      <p className={`font-bold ${isCurrent ? 'text-xl' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item.name || 'Item'}</p>
+                                      <p className={`${isCurrent ? 'text-sm' : 'text-xs'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        {item.computedTime}{isCurrent ? ' — NOW' : isNext ? ' — up next' : ' — done'}
+                                        {isCurrent ? ` · ${groupDurMins}min` : ''}
+                                      </p>
+                                      {item.notes && isCurrent && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.notes}</p>}
+                                    </div>
+                                    {isCurrent && <span className="text-2xl">▶️</span>}
+                                    {isPast && <span className="text-lg">✅</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      {liveItineraryJob !== job.id && !isMinimized && (<>
                       {/* Time Range & Next of Kin */}
                       <div className={`p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                         <div className="flex flex-wrap gap-4 items-center mb-3">
@@ -10293,25 +10372,33 @@ Capturing Your Special Day
           );
         })()}
 
-        {/* Location prompt — shown after completing a stage */}
+        {/* File location prompt — shown after completing a stage */}
         {locationPrompt && (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl`}>
-              <div className="text-3xl text-center mb-2">📍</div>
+              <div className="text-3xl text-center mb-2">💻</div>
               <h2 className={`text-base font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Stage complete — where are you?
+                Which computer did you work on?
               </h2>
               <p className={`text-xs text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 {locationPrompt.stageName} · {locationPrompt.jobName}
               </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {['Rupon PC', 'Edit PC', 'Laptop', 'MacBook'].map(pc => (
+                  <button key={pc} onClick={() => setLocationPromptInput(pc)}
+                    className={`px-3 py-1.5 rounded-lg text-sm border ${locationPromptInput === pc ? 'bg-blue-500 text-white border-blue-500' : (darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50')}`}>
+                    {pc}
+                  </button>
+                ))}
+              </div>
               <input
                 type="text"
-                placeholder="e.g. Venue name, address, heading home…"
+                placeholder="Or type PC / machine name…"
                 value={locationPromptInput}
                 onChange={e => setLocationPromptInput(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && locationPromptInput.trim()) {
-                    logActivity('Location logged', locationPrompt.jobName, locationPromptInput.trim());
+                    logActivity('Completed on', locationPrompt.jobName, locationPromptInput.trim());
                     setLocationPrompt(null); setLocationPromptInput('');
                   }
                 }}
@@ -10324,11 +10411,11 @@ Capturing Your Special Day
                   Skip
                 </button>
                 <button onClick={() => {
-                  if (locationPromptInput.trim()) logActivity('Location logged', locationPrompt.jobName, locationPromptInput.trim());
+                  if (locationPromptInput.trim()) logActivity('Completed on', locationPrompt.jobName, locationPromptInput.trim());
                   setLocationPrompt(null); setLocationPromptInput('');
                 }}
                   className="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600">
-                  Log Location
+                  Log PC
                 </button>
               </div>
             </div>
@@ -16862,7 +16949,6 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       'Location logged': '📍',
       'Job permanently deleted': '🗑️',
     };
-    const [logSearch, setLogSearch] = React.useState('');
     const filtered = activityLog.filter(e =>
       !logSearch || e.jobName?.toLowerCase().includes(logSearch.toLowerCase()) || e.action?.toLowerCase().includes(logSearch.toLowerCase()) || e.details?.toLowerCase().includes(logSearch.toLowerCase())
     );
