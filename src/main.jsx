@@ -4463,7 +4463,14 @@ Notes: ${j.notes || 'none'}`;
             return (
               <div className="space-y-2">
                 {todayJobs.map(job => {
-                  const itin = initItinerary(job);
+                  const itin = {
+                    scheduleItems: job.itinerary?.scheduleItems || [],
+                    startTime: job.itinerary?.startTime || '10:00',
+                    endTime: job.itinerary?.endTime || '22:00',
+                    nextOfKin: job.itinerary?.nextOfKin || { name: '', phone: '' },
+                    venue: job.itinerary?.venue || '',
+                    notes: job.itinerary?.notes || '',
+                  };
                   const isLive = liveItineraryJob === job.id;
                   const toMins2 = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
                   const schedItems = itin.scheduleItems || [];
