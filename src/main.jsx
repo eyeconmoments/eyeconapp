@@ -3700,6 +3700,65 @@ Notes: ${j.notes || 'none'}`;
       )}
     </>
   );
+  // Gear items — shared between the Gear Checklist view and the live-view inline modal
+  const GEAR_ITEMS_LIST = [
+    '3 light stands', 'Neewer light', 'Neewer bag', 'Gimbal 1',
+    'Video tripod', 'Photo tripod', 'Axe light 1', 'Axe light 2',
+    'Battery suitcase 1', 'Battery suitcase 2', 'Drone',
+    '10 camera batteries', '9 gimbal batteries', '7 light batteries',
+    'Extension', 'Jackery', 'Syncos', 'Grey big light', 'Mics',
+  ];
+  const openLiveGearModal = (job) => {
+    setLiveGearModal({
+      jobId: job.id,
+      jobName: job.jobName || '',
+      items: GEAR_ITEMS_LIST.map(name => ({ name, checked: null })),
+      notes: '',
+    });
+  };
+  const saveLiveGearCheck = async () => {
+    if (!liveGearModal) return;
+    setLiveGearSaving(true);
+    try {
+      const row = {
+        checked_by: currentUser.name,
+        checked_by_id: currentUser.id,
+        job_name: liveGearModal.jobName,
+        items: liveGearModal.items.map(it => ({ ...it, checked: it.checked === 'yes' })),
+        notes: liveGearModal.notes.trim(),
+      };
+      const { data, error } = await db.from('gear_checklists').insert([row]).select();
+      if (error) throw error;
+      if (data) setGearChecklists(prev => [data[0], ...prev]);
+      setLiveGearModal(null);
+    } catch(e) { alert('Could not save: ' + e.message); }
+    finally { setLiveGearSaving(false); }
+  };
+  const jobGearCheckedToday = (job) => {
+    const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+    return gearChecklists.some(gc => {
+      const gcDate = new Date(gc.created_at); gcDate.setHours(0,0,0,0);
+      return gc.job_name === job.jobName && gcDate.getTime() === todayMidnight.getTime();
+    });
+  };
+  const openLiveLogModal = (job) => {
+    if (!jobGearCheckedToday(job)) {
+      if (!window.confirm('⚠️ Gear has not been checked before proceeding.\n\nEnsure one of the team has checked gear.\n\nProceed to log shoot anyway?')) return;
+    }
+    const startTime = job.itinerary?.startTime || '10:00';
+    const endTime = job.itinerary?.endTime || '22:00';
+    setWageSubmitModal({
+      selectedJobId: job.id,
+      actualStart: startTime,
+      actualEnd: endTime,
+      isOverride: false,
+      overrideAmount: 0,
+      overrideReason: '',
+      customJobName: '',
+      notes: '',
+    });
+  };
+
   const isSamUser = currentUser?.username?.toLowerCase() === 'sam';
   if ((currentView === 'employee-dashboard' || currentView === 'availability' || (currentView === 'files' && (currentUser?.role === 'employee' || currentUser?.role === 'manager'))) && !isSamUser && !(currentUser?.role === 'admin')) {
     const myJobs = getUserAssignedJobs(currentUser.id);
@@ -5262,65 +5321,6 @@ Notes: ${j.notes || 'none'}`;
   const activeJobs = editingJobs.filter(job => !archivedJobIds.includes(job.id));
   const activeTimeEntries = timeEntries.filter(e => !e.clockOut);
   const newInquiries = inquiries.filter(i => i.status === 'new');
-
-  // Gear items — shared between the Gear Checklist view and the live-view inline modal
-  const GEAR_ITEMS_LIST = [
-    '3 light stands', 'Neewer light', 'Neewer bag', 'Gimbal 1',
-    'Video tripod', 'Photo tripod', 'Axe light 1', 'Axe light 2',
-    'Battery suitcase 1', 'Battery suitcase 2', 'Drone',
-    '10 camera batteries', '9 gimbal batteries', '7 light batteries',
-    'Extension', 'Jackery', 'Syncos', 'Grey big light', 'Mics',
-  ];
-  const openLiveGearModal = (job) => {
-    setLiveGearModal({
-      jobId: job.id,
-      jobName: job.jobName || '',
-      items: GEAR_ITEMS_LIST.map(name => ({ name, checked: null })),
-      notes: '',
-    });
-  };
-  const saveLiveGearCheck = async () => {
-    if (!liveGearModal) return;
-    setLiveGearSaving(true);
-    try {
-      const row = {
-        checked_by: currentUser.name,
-        checked_by_id: currentUser.id,
-        job_name: liveGearModal.jobName,
-        items: liveGearModal.items.map(it => ({ ...it, checked: it.checked === 'yes' })),
-        notes: liveGearModal.notes.trim(),
-      };
-      const { data, error } = await db.from('gear_checklists').insert([row]).select();
-      if (error) throw error;
-      if (data) setGearChecklists(prev => [data[0], ...prev]);
-      setLiveGearModal(null);
-    } catch(e) { alert('Could not save: ' + e.message); }
-    finally { setLiveGearSaving(false); }
-  };
-  const jobGearCheckedToday = (job) => {
-    const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
-    return gearChecklists.some(gc => {
-      const gcDate = new Date(gc.created_at); gcDate.setHours(0,0,0,0);
-      return gc.job_name === job.jobName && gcDate.getTime() === todayMidnight.getTime();
-    });
-  };
-  const openLiveLogModal = (job) => {
-    if (!jobGearCheckedToday(job)) {
-      if (!window.confirm('⚠️ Gear has not been checked before proceeding.\n\nEnsure one of the team has checked gear.\n\nProceed to log shoot anyway?')) return;
-    }
-    const startTime = job.itinerary?.startTime || '10:00';
-    const endTime = job.itinerary?.endTime || '22:00';
-    setWageSubmitModal({
-      selectedJobId: job.id,
-      actualStart: startTime,
-      actualEnd: endTime,
-      isOverride: false,
-      overrideAmount: 0,
-      overrideReason: '',
-      customJobName: '',
-      notes: '',
-    });
-  };
 
   const NavBar = () => {
     const isNavAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
