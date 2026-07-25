@@ -4449,6 +4449,181 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
+          {/* Today's Event — Go Live banner (pinned near top) */}
+          {currentView === 'employee-dashboard' && (() => {
+            const todayMidnight2 = new Date(); todayMidnight2.setHours(0,0,0,0);
+            const todayJobs = editingJobs.filter(j => {
+              if (archivedJobIds.includes(j.id) || !j.itinerary) return false;
+              if (!j.shootDate) return false;
+              const s = new Date(j.shootDate); s.setHours(0,0,0,0);
+              if (s.getTime() !== todayMidnight2.getTime()) return false;
+              return j.itinerary.scheduleItems?.length > 0 || j.itinerary.slots;
+            });
+            if (todayJobs.length === 0) return null;
+            return (
+              <div className="space-y-2">
+                {todayJobs.map(job => {
+                  const itin = initItinerary(job);
+                  const isLive = liveItineraryJob === job.id;
+                  const toMins2 = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
+                  const schedItems = itin.scheduleItems || [];
+                  let cum2 = toMins2(itin.startTime || '10:00');
+                  const itemsT2 = [];
+                  let si2 = 0;
+                  while (si2 < schedItems.length) {
+                    const it2 = schedItems[si2];
+                    if (it2.groupId) {
+                      const grp2 = [];
+                      let gj2 = si2;
+                      while (gj2 < schedItems.length && schedItems[gj2].groupId === it2.groupId) { grp2.push(schedItems[gj2]); gj2++; }
+                      const maxD2 = Math.max(...grp2.map(g => g.duration || 2));
+                      const ct2 = `${String(Math.floor(cum2/60)%24).padStart(2,'0')}:${String(cum2%60).padStart(2,'0')}`;
+                      grp2.forEach(g => itemsT2.push({ ...g, computedTime: ct2, computedMins: cum2 }));
+                      cum2 += maxD2 * 15; si2 = gj2;
+                    } else {
+                      const im2 = it2.time ? toMins2(it2.time) : cum2;
+                      if (!it2.time) cum2 += (it2.duration || 2) * 15; else cum2 = im2 + (it2.duration || 2) * 15;
+                      itemsT2.push({ ...it2, computedTime: `${String(Math.floor(im2/60)%24).padStart(2,'0')}:${String(im2%60).padStart(2,'0')}`, computedMins: im2 });
+                      si2++;
+                    }
+                  }
+                  const now2 = new Date();
+                  const nowM2 = now2.getHours() * 60 + now2.getMinutes();
+                  let curIdx2 = -1;
+                  for (let i = 0; i < itemsT2.length; i++) {
+                    const m2 = itemsT2[i].computedMins;
+                    let ni2 = i + 1;
+                    while (ni2 < itemsT2.length && itemsT2[ni2].computedMins === m2) ni2++;
+                    const nxt2 = ni2 < itemsT2.length ? itemsT2[ni2].computedMins : 24*60;
+                    if (nowM2 >= m2 && nowM2 < nxt2) { curIdx2 = i; break; }
+                  }
+                  const curM2 = curIdx2 >= 0 ? itemsT2[curIdx2].computedMins : -1;
+                  const nxtM2 = itemsT2.find(it => it.computedMins > curM2)?.computedMins ?? Infinity;
+                  return (
+                    <div key={job.id} className={`rounded-xl shadow-lg overflow-hidden border-2 ${isLive ? 'border-red-400' : darkMode ? 'border-yellow-600' : 'border-yellow-400'}`}>
+                      {/* Banner header */}
+                      <div className={`px-4 py-3 flex items-center justify-between ${isLive ? (darkMode ? 'bg-red-900' : 'bg-red-500') : (darkMode ? 'bg-yellow-900' : 'bg-yellow-400')}`}>
+                        <div>
+                          <p className={`font-bold text-sm ${isLive ? 'text-white' : darkMode ? 'text-yellow-100' : 'text-yellow-900'}`}>
+                            {isLive ? '🔴 LIVE NOW' : '📅 TODAY'} — {job.jobName}
+                          </p>
+                          <p className={`text-xs ${isLive ? 'text-red-100' : darkMode ? 'text-yellow-300' : 'text-yellow-800'}`}>
+                            {itin.startTime || '?'} → {itin.endTime || '?'} · {itemsT2.length} items
+                          </p>
+                        </div>
+                        <button onClick={() => setLiveItineraryJob(isLive ? null : job.id)}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold shadow ${isLive ? 'bg-white text-red-600 animate-pulse' : 'bg-white text-yellow-800 hover:bg-yellow-50'}`}>
+                          {isLive ? '⏹ End Live' : '▶ Go Live'}
+                        </button>
+                      </div>
+                      {/* Live view inline */}
+                      {isLive && (
+                        <div className={`pb-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                          {/* Next of Kin */}
+                          {itin.nextOfKin?.name && (
+                            <div className={`mx-4 mt-3 mb-2 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itin.nextOfKin.name}</p>
+                              {(() => {
+                                const raw2 = itin.nextOfKin.phone || '';
+                                const nums2 = raw2.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw2.trim() ? [raw2.trim()] : []);
+                                if (nums2.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
+                                return (
+                                  <div className="space-y-1.5">
+                                    {nums2.map((num2, ni2) => (
+                                      <div key={ni2} className="flex items-center justify-between gap-2">
+                                        <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num2.trim()}</span>
+                                        <a href={`tel:${num2.replace(/[^\d+]/g,'')}`} className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500">📞 Call</a>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          {/* Open on Maps */}
+                          {(() => {
+                            const venue2 = itin.venue || job.notes?.split('.')[0] || '';
+                            if (!venue2) return null;
+                            return (
+                              <div className="px-4 mb-2">
+                                <button onClick={() => {
+                                  if (window.confirm(`⚠️ Please check this is the correct venue before proceeding:\n\n"${venue2}"\n\nOpen in Google Maps?`)) {
+                                    window.open(`https://maps.google.com/?q=${encodeURIComponent(venue2)}`, '_blank');
+                                  }
+                                }} className="w-full py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+                                  📍 Open on Maps — {venue2}
+                                </button>
+                              </div>
+                            );
+                          })()}
+                          {curIdx2 === -1 && (
+                            <div className={`mx-4 mb-2 text-center py-2 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                              <p className={`text-sm font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started yet</p>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>First: {itemsT2[0]?.computedTime} — {itemsT2[0]?.name}</p>
+                            </div>
+                          )}
+                          <div className="overflow-y-auto max-h-[60vh] px-4 space-y-1.5 pt-1">
+                            {itemsT2.map((item2, idx2) => {
+                              const isCur2 = curM2 >= 0 && item2.computedMins === curM2;
+                              const isPst2 = !isCur2 && curM2 >= 0 && item2.computedMins < curM2;
+                              const isNxt2 = !isCur2 && !isPst2 && item2.computedMins === nxtM2;
+                              const grpDur2 = Math.max(...itemsT2.filter(it => it.computedMins === item2.computedMins).map(it => (it.duration||2))) * 15;
+                              const expKey2 = `top-${job.id}-${idx2}`;
+                              const isExp2 = liveExpandedItems.has(expKey2);
+                              const hasDet2 = item2.notes || item2.location || item2.duration;
+                              return (
+                                <div key={idx2} className={`rounded-xl transition-all ${
+                                  isCur2 ? 'p-4 border-2' : isPst2 ? 'p-2 opacity-40' : isNxt2 ? 'p-3 border' : 'p-2.5'
+                                } ${darkMode
+                                  ? isCur2 ? 'bg-gray-700' : 'bg-gray-800'
+                                  : isCur2 ? 'bg-yellow-50' : isPst2 ? 'bg-gray-50' : isNxt2 ? 'bg-blue-50' : 'bg-gray-50'
+                                }`}
+                                style={isCur2 ? {borderColor: item2.color || 'var(--gold)'} : isNxt2 ? {border:'1px solid #93c5fd'} : {}}>
+                                  <button className="w-full text-left" onClick={() => setLiveExpandedItems(prev => { const nxt = new Set(prev); nxt.has(expKey2) ? nxt.delete(expKey2) : nxt.add(expKey2); return nxt; })}>
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background: item2.color || '#888'}}></div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`font-bold ${isCur2 ? 'text-lg' : 'text-sm'} ${darkMode ? 'text-white' : ''}`}>{item2.name || 'Item'}</p>
+                                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                          {item2.computedTime}
+                                          {isCur2 ? <span className="text-orange-500 font-semibold"> — NOW · {grpDur2}min</span>
+                                           : isNxt2 ? <span className="text-blue-500 font-semibold"> — up next</span>
+                                           : isPst2 ? ' — done'
+                                           : item2.duration ? ` · ${item2.duration * 15}min` : ''}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        {isCur2 && <span className="text-xl">▶️</span>}
+                                        {isPst2 && <span className="text-base">✅</span>}
+                                        {isNxt2 && <span className="text-base">⏭️</span>}
+                                        {hasDet2 && <span className={`text-xs ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{isExp2 ? '▲' : '▼'}</span>}
+                                      </div>
+                                    </div>
+                                  </button>
+                                  {isExp2 && (
+                                    <div className={`mt-2 pt-2 border-t space-y-1 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                                      <div className={`flex gap-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        <span>⏱ {item2.computedTime}</span>
+                                        <span>⏳ {grpDur2}min</span>
+                                      </div>
+                                      {item2.location && <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 {item2.location}</p>}
+                                      {item2.notes && <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {item2.notes}</p>}
+                                      {item2.groupId && <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>🔀 Concurrent with other items</p>}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {/* Note to Self */}
           {currentView === 'employee-dashboard' && (
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
@@ -6509,6 +6684,21 @@ Notes: ${j.notes || 'none'}`;
                             <span>⏱ {itin.startTime || '?'} → {itin.endTime || '?'}</span>
                             <span>{itemsWithTime.length} items</span>
                           </div>
+                          {(() => {
+                            const venue = itin.venue || job.notes?.split('.')[0] || '';
+                            if (!venue) return null;
+                            return (
+                              <div className="px-4 mb-3">
+                                <button onClick={() => {
+                                  if (window.confirm(`⚠️ Please check this is the correct venue before proceeding:\n\n"${venue}"\n\nOpen in Google Maps?`)) {
+                                    window.open(`https://maps.google.com/?q=${encodeURIComponent(venue)}`, '_blank');
+                                  }
+                                }} className={`w-full py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 ${darkMode ? 'bg-blue-700 hover:bg-blue-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
+                                  📍 Open on Maps — {venue}
+                                </button>
+                              </div>
+                            );
+                          })()}
                           {currentIdx === -1 && (
                             <div className={`mx-4 mb-2 text-center py-3 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                               <p className={`text-base font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started yet</p>
@@ -7184,7 +7374,7 @@ Notes: ${j.notes || 'none'}`;
         let endTime = '22:00';
         if (job.calendarStartTime) startTime = job.calendarStartTime;
         if (job.calendarEndTime) endTime = job.calendarEndTime;
-        return { startTime, endTime, scheduleItems: [], customItems: [], notes: '', nextOfKin: { name: '', phone: '' } };
+        return { startTime, endTime, scheduleItems: [], customItems: [], notes: '', venue: '', nextOfKin: { name: '', phone: '' } };
       }
       // Convert old slots format to scheduleItems if needed
       let scheduleItems = job.itinerary.scheduleItems || [];
@@ -7200,13 +7390,14 @@ Notes: ${j.notes || 'none'}`;
           items.forEach(item => scheduleItems.push(item));
         });
       }
-      return { 
-        startTime: job.itinerary.startTime || '10:00', 
-        endTime: job.itinerary.endTime || '22:00', 
+      return {
+        startTime: job.itinerary.startTime || '10:00',
+        endTime: job.itinerary.endTime || '22:00',
         scheduleItems,
-        customItems: job.itinerary.customItems || [], 
-        notes: job.itinerary.notes || '', 
-        nextOfKin: job.itinerary.nextOfKin || { name: '', phone: '' } 
+        customItems: job.itinerary.customItems || [],
+        notes: job.itinerary.notes || '',
+        venue: job.itinerary.venue || '',
+        nextOfKin: job.itinerary.nextOfKin || { name: '', phone: '' }
       };
     };
     
@@ -7383,7 +7574,22 @@ Notes: ${j.notes || 'none'}`;
         return updated;
       });
     };
-    
+
+    const updateItineraryVenue = (jobId, venue) => {
+      setEditingJobs(jobs => {
+        const updated = jobs.map(j => {
+          if (j.id === jobId) {
+            const itinerary = initItinerary(j);
+            const newItinerary = { ...itinerary, venue };
+            persistItinerary(jobId, newItinerary);
+            return { ...j, itinerary: newItinerary };
+          }
+          return j;
+        });
+        return updated;
+      });
+    };
+
     // Company details
     const COMPANY = {
       name: 'Eyecon Moments',
@@ -8222,6 +8428,21 @@ Capturing Your Special Day
                               <span>⏱ {itinerary.startTime || '?'} → {itinerary.endTime || '?'}</span>
                               <span>{_withTime.length} items</span>
                             </div>
+                            {(() => {
+                              const venue = itinerary.venue || job.notes?.split('.')[0] || '';
+                              if (!venue) return null;
+                              return (
+                                <div className="px-4 mb-3">
+                                  <button onClick={() => {
+                                    if (window.confirm(`⚠️ Please check this is the correct venue before proceeding:\n\n"${venue}"\n\nOpen in Google Maps?`)) {
+                                      window.open(`https://maps.google.com/?q=${encodeURIComponent(venue)}`, '_blank');
+                                    }
+                                  }} className="w-full py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+                                    📍 Open on Maps — {venue}
+                                  </button>
+                                </div>
+                              );
+                            })()}
                             {_curIdx === -1 && (
                               <div className={`mx-4 mb-2 text-center py-3 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                                 <p className={`text-base font-bold ${darkMode ? 'text-white' : ''}`}>⏳ Not started</p>
@@ -8458,6 +8679,14 @@ Capturing Your Special Day
                           </div>
                         </div>
                         
+                        {/* Venue */}
+                        <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                          <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 Venue / Location</p>
+                          <input type="text" value={itinerary.venue || ''} placeholder="e.g. The Grand Hotel, Blackburn"
+                            onChange={(e) => updateItineraryVenue(job.id, e.target.value)}
+                            className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : ''}`} />
+                        </div>
+
                         {/* General Notes */}
                         <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                           <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 Notes (e.g. entrance details, special requests)</p>
