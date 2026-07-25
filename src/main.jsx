@@ -6376,7 +6376,7 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
-          {/* My Itineraries — shows assigned + shared */}
+          {/* My Itineraries — shows assigned + shared + all today's jobs */}
           {(() => {
             const assignedIds = new Set(getUserAssignedJobs(currentUser.id).map(j => j.id));
             const itinHasEnded = (j) => {
@@ -6386,16 +6386,24 @@ Notes: ${j.notes || 'none'}`;
               end.setHours(eh, em, 0, 0);
               return end < new Date();
             };
+            const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+            const isToday = (j) => {
+              if (!j.shootDate) return false;
+              const s = new Date(j.shootDate); s.setHours(0,0,0,0);
+              return s.getTime() === todayMidnight.getTime();
+            };
             const myItineraryJobs = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || !j.itinerary) return false;
               if (itinHasEnded(j)) return false;
-              const isAssigned = assignedIds.has(j.id);
               const myId = String(currentUser.id);
+              const isAssigned = assignedIds.has(j.id);
               const isSharedWithMe = j.itinerary?.sharedWith?.some(id => String(id) === myId);
+              const hasSchedule = j.itinerary.scheduleItems?.length > 0 || j.itinerary.slots;
+              // Today's jobs with a schedule visible to ALL staff
+              if (isToday(j) && hasSchedule) return true;
               if (!isAssigned && !isSharedWithMe) return false;
-              // Assigned jobs: require scheduleItems or slots; shared jobs: always show
               if (isSharedWithMe) return true;
-              return j.itinerary.scheduleItems?.length > 0 || j.itinerary.slots;
+              return hasSchedule;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
             if (myItineraryJobs.length === 0) return null;
             return (
@@ -6472,6 +6480,30 @@ Notes: ${j.notes || 'none'}`;
                       {isLive ? (
                         // LIVE VIEW — full scrollable itinerary
                         <div className="pb-4">
+                          {/* Next of Kin — parsed multi-number display */}
+                          {itin.nextOfKin?.name && (
+                            <div className={`mx-4 mb-3 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itin.nextOfKin.name}</p>
+                              {(() => {
+                                const raw = itin.nextOfKin.phone || '';
+                                const nums = raw.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw.trim() ? [raw.trim()] : []);
+                                if (nums.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
+                                return (
+                                  <div className="space-y-1.5">
+                                    {nums.map((num, ni) => (
+                                      <div key={ni} className="flex items-center justify-between gap-2">
+                                        <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num.trim()}</span>
+                                        <a href={`tel:${num.replace(/[^\d+]/g,'')}`}
+                                          className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">
+                                          📞 Call
+                                        </a>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
                           <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
                             <span>⏱ {itin.startTime || '?'} → {itin.endTime || '?'}</span>
                             <span>{itemsWithTime.length} items</span>
@@ -8142,6 +8174,30 @@ Capturing Your Special Day
                         const _nextMins = _withTime.find(it => it.computedMins > _curMins)?.computedMins ?? Infinity;
                         return (
                           <div className={`pb-4 pt-2 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            {/* Next of Kin */}
+                            {itinerary.nextOfKin?.name && (
+                              <div className={`mx-4 mb-3 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                                <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itinerary.nextOfKin.name}</p>
+                                {(() => {
+                                  const raw = itinerary.nextOfKin.phone || '';
+                                  const nums = raw.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw.trim() ? [raw.trim()] : []);
+                                  if (nums.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
+                                  return (
+                                    <div className="space-y-1.5">
+                                      {nums.map((num, ni) => (
+                                        <div key={ni} className="flex items-center justify-between gap-2">
+                                          <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num.trim()}</span>
+                                          <a href={`tel:${num.replace(/[^\d+]/g,'')}`}
+                                            className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">
+                                            📞 Call
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            )}
                             <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
                               <span>⏱ {itinerary.startTime || '?'} → {itinerary.endTime || '?'}</span>
                               <span>{_withTime.length} items</span>
