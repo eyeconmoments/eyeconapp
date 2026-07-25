@@ -398,6 +398,8 @@ function EyeconMoments() {
   const [itineraryJob, setItineraryJob] = useState(null);
   const [wageSubmitModal, setWageSubmitModal] = useState(null);
   const [wageOverrideModal, setWageOverrideModal] = useState(null); // { jobId, entryId, currentAmount }
+  const [liveGearModal, setLiveGearModal] = useState(null); // { jobId, jobName, items, notes }
+  const [liveGearSaving, setLiveGearSaving] = useState(false);
   const [wageFilter, setWageFilter] = useState({ employee: 'all', status: 'all', type: 'all' });
   const [payScaleOpen, setPayScaleOpen] = useState({}); // { [employeeId]: bool }
   const [paymentRequestModal, setPaymentRequestModal] = useState(null);
@@ -4646,6 +4648,17 @@ Notes: ${j.notes || 'none'}`;
                               );
                             })}
                           </div>
+                          {/* Gear + Log buttons at bottom of top banner live view */}
+                          <div className="px-4 pt-2 pb-3 grid grid-cols-2 gap-2">
+                            <button onClick={() => openLiveGearModal(job)}
+                              className={`py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 ${jobGearCheckedToday(job) ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-yellow-300 border border-yellow-600' : 'bg-yellow-50 text-yellow-700 border border-yellow-300'}`}>
+                              🎒 {jobGearCheckedToday(job) ? 'Gear ✓' : 'Check Gear'}
+                            </button>
+                            <button onClick={() => openLiveLogModal(job)}
+                              className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 bg-blue-500 text-white hover:bg-blue-600">
+                              📝 Log Shoot
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -5250,6 +5263,64 @@ Notes: ${j.notes || 'none'}`;
   const activeTimeEntries = timeEntries.filter(e => !e.clockOut);
   const newInquiries = inquiries.filter(i => i.status === 'new');
 
+  // Gear items — shared between the Gear Checklist view and the live-view inline modal
+  const GEAR_ITEMS_LIST = [
+    '3 light stands', 'Neewer light', 'Neewer bag', 'Gimbal 1',
+    'Video tripod', 'Photo tripod', 'Axe light 1', 'Axe light 2',
+    'Battery suitcase 1', 'Battery suitcase 2', 'Drone',
+    '10 camera batteries', '9 gimbal batteries', '7 light batteries',
+    'Extension', 'Jackery', 'Syncos', 'Grey big light', 'Mics',
+  ];
+  const openLiveGearModal = (job) => {
+    setLiveGearModal({
+      jobId: job.id,
+      jobName: job.jobName || '',
+      items: GEAR_ITEMS_LIST.map(name => ({ name, checked: null })),
+      notes: '',
+    });
+  };
+  const saveLiveGearCheck = async () => {
+    if (!liveGearModal) return;
+    setLiveGearSaving(true);
+    try {
+      const row = {
+        checked_by: currentUser.name,
+        checked_by_id: currentUser.id,
+        job_name: liveGearModal.jobName,
+        items: liveGearModal.items.map(it => ({ ...it, checked: it.checked === 'yes' })),
+        notes: liveGearModal.notes.trim(),
+      };
+      const { data, error } = await db.from('gear_checklists').insert([row]).select();
+      if (error) throw error;
+      if (data) setGearChecklists(prev => [data[0], ...prev]);
+      setLiveGearModal(null);
+    } catch(e) { alert('Could not save: ' + e.message); }
+    finally { setLiveGearSaving(false); }
+  };
+  const jobGearCheckedToday = (job) => {
+    const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+    return gearChecklists.some(gc => {
+      const gcDate = new Date(gc.created_at); gcDate.setHours(0,0,0,0);
+      return gc.job_name === job.jobName && gcDate.getTime() === todayMidnight.getTime();
+    });
+  };
+  const openLiveLogModal = (job) => {
+    if (!jobGearCheckedToday(job)) {
+      if (!window.confirm('⚠️ Gear has not been checked before proceeding.\n\nEnsure one of the team has checked gear.\n\nProceed to log shoot anyway?')) return;
+    }
+    const startTime = job.itinerary?.startTime || '10:00';
+    const endTime = job.itinerary?.endTime || '22:00';
+    setWageSubmitModal({
+      selectedJobId: job.id,
+      actualStart: startTime,
+      actualEnd: endTime,
+      isOverride: false,
+      overrideAmount: 0,
+      overrideReason: '',
+      customJobName: '',
+      notes: '',
+    });
+  };
 
   const NavBar = () => {
     const isNavAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
@@ -5440,6 +5511,72 @@ Notes: ${j.notes || 'none'}`;
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* Inline gear check modal — opened from any live view */}
+      {liveGearModal && (() => {
+        const allAnswered = liveGearModal.items.every(it => it.checked !== null);
+        const yesCount = liveGearModal.items.filter(it => it.checked === 'yes').length;
+        const noCount  = liveGearModal.items.filter(it => it.checked === 'no').length;
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-t-2xl w-full max-w-lg max-h-[90vh] flex flex-col`}>
+              <div className={`flex items-center justify-between px-4 py-3 border-b flex-shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <div>
+                  <h2 className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>🎒 Gear Check</h2>
+                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{liveGearModal.jobName}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{yesCount}✓{noCount > 0 ? ` ${noCount}✗` : ''} / {liveGearModal.items.length}</span>
+                  <button onClick={() => setLiveGearModal(null)} className={`text-xl ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-700'}`}>✕</button>
+                </div>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {liveGearModal.items.map((item, idx) => (
+                  <div key={idx} className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'} ${
+                    item.checked === 'yes' ? darkMode ? 'bg-green-900 bg-opacity-20' : 'bg-green-50' :
+                    item.checked === 'no'  ? darkMode ? 'bg-red-900 bg-opacity-20'   : 'bg-red-50'   : ''
+                  }`}>
+                    <span className={`text-sm font-medium flex-1 mr-3 ${
+                      item.checked === 'yes' ? darkMode ? 'text-green-300' : 'text-green-700' :
+                      item.checked === 'no'  ? darkMode ? 'text-red-300 line-through' : 'text-red-600 line-through' :
+                      darkMode ? 'text-gray-200' : 'text-gray-800'
+                    }`}>{item.name}</span>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button onClick={() => setLiveGearModal(p => ({ ...p, items: p.items.map((it, i) => i === idx ? { ...it, checked: it.checked === 'yes' ? null : 'yes' } : it) }))}
+                        className={`w-11 h-9 rounded-xl text-sm font-bold transition-all ${item.checked === 'yes' ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-green-800 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-green-100 hover:text-green-600'}`}>
+                        ✓
+                      </button>
+                      <button onClick={() => setLiveGearModal(p => ({ ...p, items: p.items.map((it, i) => i === idx ? { ...it, checked: it.checked === 'no' ? null : 'no' } : it) }))}
+                        className={`w-11 h-9 rounded-xl text-sm font-bold transition-all ${item.checked === 'no' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-red-800 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-500'}`}>
+                        ✗
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <div className="p-4">
+                  <textarea value={liveGearModal.notes}
+                    onChange={e => setLiveGearModal(p => ({ ...p, notes: e.target.value }))}
+                    placeholder="Notes — anything missing or damaged?"
+                    rows={2}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-800'}`} />
+                </div>
+              </div>
+              <div className={`p-4 border-t flex-shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                {noCount > 0 && (
+                  <p className="text-xs text-red-500 font-semibold mb-2">⚠️ {noCount} item{noCount > 1 ? 's' : ''} missing — note what's absent above</p>
+                )}
+                <button onClick={saveLiveGearCheck} disabled={liveGearSaving || !allAnswered}
+                  className={`w-full py-3 rounded-xl font-bold text-sm text-white transition-all ${
+                    liveGearSaving ? 'bg-gray-400 cursor-not-allowed' :
+                    !allAnswered ? 'bg-gray-300 cursor-not-allowed text-gray-500' :
+                    noCount === 0 ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'
+                  }`}>
+                  {liveGearSaving ? 'Saving…' : !allAnswered ? `${liveGearModal.items.length - yesCount - noCount} unanswered` : noCount === 0 ? '✅ All Clear — Save Check' : `⚠️ Save (${noCount} missing)`}
+                </button>
               </div>
             </div>
           </div>
@@ -6800,6 +6937,17 @@ Notes: ${j.notes || 'none'}`;
                               </div>
                             );
                           })()}
+                          {/* Gear + Log buttons */}
+                          <div className="px-4 pt-2 pb-3 grid grid-cols-2 gap-2">
+                            <button onClick={() => openLiveGearModal(job)}
+                              className={`py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 ${jobGearCheckedToday(job) ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-yellow-300 border border-yellow-600' : 'bg-yellow-50 text-yellow-700 border border-yellow-300'}`}>
+                              🎒 {jobGearCheckedToday(job) ? 'Gear ✓' : 'Check Gear'}
+                            </button>
+                            <button onClick={() => openLiveLogModal(job)}
+                              className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 bg-blue-500 text-white hover:bg-blue-600">
+                              📝 Log Shoot
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         // Compact list view
@@ -8535,6 +8683,17 @@ Capturing Your Special Day
                                   </div>
                                 );
                               })}
+                            </div>
+                            {/* Gear + Log Shoot buttons — admin live view */}
+                            <div className="px-4 pt-2 pb-3 grid grid-cols-2 gap-2">
+                              <button onClick={() => openLiveGearModal(job)}
+                                className={`py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 ${jobGearCheckedToday(job) ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white hover:bg-yellow-600'}`}>
+                                🎒 {jobGearCheckedToday(job) ? 'Gear ✓' : 'Check Gear'}
+                              </button>
+                              <button onClick={() => openLiveLogModal(job)}
+                                className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 bg-blue-500 text-white hover:bg-blue-600">
+                                📝 Log Shoot
+                              </button>
                             </div>
                           </div>
                         );
@@ -17012,14 +17171,14 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     const startNewCheck = () => {
       setActiveGearCheck({
         jobName: '',
-        items: GEAR_ITEMS.map(name => ({ name, checked: false })),
+        items: GEAR_ITEMS.map(name => ({ name, checked: null })),
         notes: '',
       });
     };
 
-    const toggleItem = (idx) => {
+    const setGearItemState = (idx, state) => {
       setActiveGearCheck(prev => {
-        const items = prev.items.map((it, i) => i === idx ? { ...it, checked: !it.checked } : it);
+        const items = prev.items.map((it, i) => i === idx ? { ...it, checked: it.checked === state ? null : state } : it);
         return { ...prev, items };
       });
     };
@@ -17032,7 +17191,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
           checked_by: currentUser.name,
           checked_by_id: currentUser.id,
           job_name: activeGearCheck.jobName.trim(),
-          items: activeGearCheck.items,
+          items: activeGearCheck.items.map(it => ({ ...it, checked: it.checked === 'yes' })),
           notes: activeGearCheck.notes.trim(),
         };
         const { data, error } = await db.from('gear_checklists').insert([row]).select();
@@ -17047,7 +17206,9 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
       }
     };
 
-    const checkedCount = activeGearCheck ? activeGearCheck.items.filter(i => i.checked).length : 0;
+    const checkedCount = activeGearCheck ? activeGearCheck.items.filter(i => i.checked === 'yes').length : 0;
+    const missingCount = activeGearCheck ? activeGearCheck.items.filter(i => i.checked === 'no').length : 0;
+    const answeredCount = checkedCount + missingCount;
 
     // Group history by date
     const historyByDate = gearChecklists.reduce((acc, entry) => {
@@ -17092,15 +17253,15 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   <div className="px-4 pt-4 pb-2">
                     <div className="flex justify-between items-center mb-1.5">
                       <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                        {checkedCount} / {GEAR_ITEMS.length} items
+                        {answeredCount} / {GEAR_ITEMS.length} answered {missingCount > 0 ? `· ${missingCount} missing` : ''}
                       </span>
-                      <span className={`text-sm font-bold ${checkedCount === GEAR_ITEMS.length ? 'text-green-500' : darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
-                        {Math.round((checkedCount / GEAR_ITEMS.length) * 100)}%
+                      <span className={`text-sm font-bold ${answeredCount === GEAR_ITEMS.length && missingCount === 0 ? 'text-green-500' : missingCount > 0 ? 'text-red-500' : darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                        {Math.round((answeredCount / GEAR_ITEMS.length) * 100)}%
                       </span>
                     </div>
                     <div className={`h-2 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                      <div className="h-2 rounded-full bg-blue-500 transition-all duration-300"
-                        style={{ width: `${(checkedCount / GEAR_ITEMS.length) * 100}%`, background: checkedCount === GEAR_ITEMS.length ? '#22c55e' : '#3b82f6' }} />
+                      <div className="h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(answeredCount / GEAR_ITEMS.length) * 100}%`, background: answeredCount === GEAR_ITEMS.length && missingCount === 0 ? '#22c55e' : missingCount > 0 ? '#ef4444' : '#3b82f6' }} />
                     </div>
                   </div>
 
@@ -17115,25 +17276,30 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                     />
                   </div>
 
-                  {/* Checklist items */}
+                  {/* Checklist items — ✓/✗ buttons on the right */}
                   <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
                     {activeGearCheck.items.map((item, idx) => (
-                      <button key={idx} onClick={() => toggleItem(idx)}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
-                          item.checked
-                            ? darkMode ? 'bg-green-900 bg-opacity-30' : 'bg-green-50'
-                            : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                        }`}>
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                          item.checked ? 'bg-green-500 border-green-500' : darkMode ? 'border-gray-500' : 'border-gray-300'
-                        }`}>
-                          {item.checked && <span className="text-white text-xs font-bold">✓</span>}
-                        </div>
-                        <span className={`text-sm font-medium ${item.checked ? 'line-through' : ''} ${
-                          item.checked ? darkMode ? 'text-green-400' : 'text-green-700'
-                            : darkMode ? 'text-gray-200' : 'text-gray-800'
+                      <div key={idx} className={`flex items-center justify-between px-4 py-3 transition-colors ${
+                        item.checked === 'yes' ? darkMode ? 'bg-green-900 bg-opacity-20' : 'bg-green-50' :
+                        item.checked === 'no'  ? darkMode ? 'bg-red-900 bg-opacity-20'   : 'bg-red-50'   :
+                        darkMode ? '' : ''
+                      }`}>
+                        <span className={`text-sm font-medium flex-1 mr-3 ${
+                          item.checked === 'yes' ? darkMode ? 'text-green-300' : 'text-green-700' :
+                          item.checked === 'no'  ? darkMode ? 'text-red-300 line-through' : 'text-red-600 line-through' :
+                          darkMode ? 'text-gray-200' : 'text-gray-800'
                         }`}>{item.name}</span>
-                      </button>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button onClick={() => setGearItemState(idx, 'yes')}
+                            className={`w-11 h-9 rounded-xl text-sm font-bold transition-all ${item.checked === 'yes' ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-green-800 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-green-100 hover:text-green-600'}`}>
+                            ✓
+                          </button>
+                          <button onClick={() => setGearItemState(idx, 'no')}
+                            className={`w-11 h-9 rounded-xl text-sm font-bold transition-all ${item.checked === 'no' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-red-800 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-500'}`}>
+                            ✗
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
 
@@ -17156,11 +17322,13 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
                         Cancel
                       </button>
-                      <button onClick={submitCheck} disabled={gearCheckSaving}
+                      <button onClick={submitCheck} disabled={gearCheckSaving || answeredCount < GEAR_ITEMS.length}
                         className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${
-                          gearCheckSaving ? 'bg-blue-300 cursor-not-allowed' : checkedCount === GEAR_ITEMS.length ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'
+                          gearCheckSaving ? 'bg-gray-300 cursor-not-allowed' :
+                          answeredCount < GEAR_ITEMS.length ? 'bg-gray-300 cursor-not-allowed text-gray-500' :
+                          missingCount === 0 ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600'
                         }`}>
-                        {gearCheckSaving ? 'Saving…' : checkedCount === GEAR_ITEMS.length ? '✅ Submit — All Clear' : `Submit (${GEAR_ITEMS.length - checkedCount} unchecked)`}
+                        {gearCheckSaving ? 'Saving…' : answeredCount < GEAR_ITEMS.length ? `${GEAR_ITEMS.length - answeredCount} unanswered` : missingCount === 0 ? '✅ Submit — All Clear' : `⚠️ Submit (${missingCount} missing)`}
                       </button>
                     </div>
                   </div>
