@@ -3899,7 +3899,7 @@ Notes: ${j.notes || 'none'}`;
                   <div className="flex items-center justify-between mb-1.5">
                     <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Final payment amount (£)</label>
                     {total2 > 0 && (
-                      <button onClick={() => setFinalPaymentModal(p => ({...p, finalAmount: (dep2 > 0 ? remaining2 : total2).toFixed(2)}))}
+                      <button onClick={() => setFinalPaymentModal(p => ({...p, finalAmount: (dep2 > 0 ? remaining2 : total2 / 2).toFixed(2)}))}
                         className="text-xs px-2.5 py-1 rounded-lg font-semibold text-white bg-blue-500 hover:bg-blue-600">
                         Paid in Full
                       </button>
