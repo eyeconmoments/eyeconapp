@@ -3882,10 +3882,13 @@ Notes: ${j.notes || 'none'}`;
                     <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{total2 > 0 ? `£${total2.toFixed(2)}` : 'Not set'}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid (50%)</span>
-                    <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
+                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>{dep2 > 0 ? 'Deposit paid' : 'Deposit'}</span>
+                    {dep2 > 0
+                      ? <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
+                      : <span className={`text-sm italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>not recorded</span>
+                    }
                   </div>
-                  {total2 > 0 && (
+                  {total2 > 0 && dep2 > 0 && (
                     <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
                       <span>Balance due</span>
                       <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
@@ -3893,11 +3896,19 @@ Notes: ${j.notes || 'none'}`;
                   )}
                 </div>
                 <div>
-                  <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Final payment amount (£)</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Final payment amount (£)</label>
+                    {total2 > 0 && (
+                      <button onClick={() => setFinalPaymentModal(p => ({...p, finalAmount: (dep2 > 0 ? remaining2 : total2).toFixed(2)}))}
+                        className="text-xs px-2.5 py-1 rounded-lg font-semibold text-white bg-blue-500 hover:bg-blue-600">
+                        Paid in Full
+                      </button>
+                    )}
+                  </div>
                   <input type="number" value={finalPaymentModal.finalAmount}
                     onChange={e => setFinalPaymentModal(p => ({...p, finalAmount: e.target.value}))}
                     className={`w-full px-4 py-3 rounded-xl border text-xl font-bold ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                    placeholder="0.00" step="0.01" min="0" />
+                    placeholder="Enter amount…" step="0.01" min="0" />
                 </div>
                 <div>
                   <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Overtime / extras (£) — optional</label>
