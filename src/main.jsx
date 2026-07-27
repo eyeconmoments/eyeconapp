@@ -198,13 +198,45 @@ function ClientPortalView({ token }) {
     };
 
     if (itinSaved) return (
-      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-        <div style={{textAlign:'center',maxWidth:360}}>
-          <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-          <h2 style={{color:gold,fontSize:24,margin:'0 0 10px'}}>Thank you!</h2>
-          <p style={{color:'#cbd5e1',fontSize:15,lineHeight:1.6}}>Your event outline has been saved. We'll go through it together at your consultation and finalise everything.</p>
-          <p style={{color:'rgba(193,167,106,0.5)',fontSize:13,marginTop:20}}>Eyecon Moments</p>
+      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:520,margin:'0 auto'}}>
+        <div style={{textAlign:'center',marginBottom:28,paddingTop:12}}>
+          <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
+          <div style={{fontSize:48,margin:'16px 0 8px'}}>🎉</div>
+          <h2 style={{color:gold,fontSize:22,margin:'0 0 8px'}}>Outline saved!</h2>
+          <p style={{color:'#cbd5e1',fontSize:14,lineHeight:1.6,margin:0}}>We'll go through this together at your consultation and finalise everything.</p>
         </div>
+        {/* Summary of what they saved */}
+        {(itin.venue || itin.startTime) && (
+          <div style={{...card,marginBottom:16}}>
+            <span style={label}>Your timings</span>
+            {itin.venue && <p style={{color:'#e2e8f0',fontSize:14,margin:'0 0 6px'}}>📍 {itin.venue}</p>}
+            <p style={{color:'#e2e8f0',fontSize:14,margin:0}}>🕐 {itin.startTime} — {itin.endTime}</p>
+          </div>
+        )}
+        {itin.scheduleItems.length > 0 && (
+          <div style={card}>
+            <span style={label}>Your schedule ({itin.scheduleItems.length} moments)</span>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {itin.scheduleItems.map((it, idx) => (
+                <div key={it.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:8,background:'rgba(255,255,255,0.04)'}}>
+                  <span style={{color:'rgba(193,167,106,0.6)',fontSize:12,minWidth:20,textAlign:'right'}}>{idx + 1}.</span>
+                  <span style={{color:'#e2e8f0',fontSize:14}}>{it.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {itin.notes && (
+          <div style={card}>
+            <span style={label}>Your notes</span>
+            <p style={{color:'#cbd5e1',fontSize:14,margin:0,lineHeight:1.6}}>{itin.notes}</p>
+          </div>
+        )}
+        <button onClick={() => setItinSaved(false)}
+          style={{width:'100%',padding:'14px',borderRadius:12,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',color:'#cbd5e1',fontSize:14,cursor:'pointer',marginBottom:12}}>
+          ✏️ Edit my outline
+        </button>
+        <p style={{textAlign:'center',color:'rgba(255,255,255,0.2)',fontSize:12,paddingBottom:24}}>Eyecon Moments · Visit this link anytime to update your outline</p>
       </div>
     );
 
