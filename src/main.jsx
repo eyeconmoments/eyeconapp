@@ -3841,7 +3841,8 @@ Notes: ${j.notes || 'none'}`;
               <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl shadow-2xl w-full max-w-lg p-6 text-center`}>
                 <div className="text-5xl mb-3">✅</div>
                 <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Payment Recorded</h2>
-                <p className={`text-sm mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£{grandTotal2.toFixed(2)} received for {fpJob?.jobName}</p>
+                <p className={`text-sm ${finalPaymentModal.linkedCount > 0 ? 'mb-1' : 'mb-5'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£{grandTotal2.toFixed(2)} received for {fpJob?.jobName}</p>
+                {finalPaymentModal.linkedCount > 0 && <p className={`text-xs mb-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {finalPaymentModal.linkedCount} other job{finalPaymentModal.linkedCount > 1 ? 's' : ''} marked as paid</p>}
                 <div className="space-y-3">
                   <a href={`mailto:${custEmail}?subject=${emailSubject2}&body=${emailBody2}`}
                     onClick={() => setFinalPaymentModal(null)}
@@ -3865,6 +3866,17 @@ Notes: ${j.notes || 'none'}`;
         const finalAmt2 = parseFloat(finalPaymentModal.finalAmount || 0) || 0;
         const grandTotal2 = finalAmt2 + overtime2;
         const remaining2 = Math.max(0, total2 - dep2);
+        const otherUnpaidSameCustomer = fpJob ? editingJobs.filter(j =>
+          j.id !== finalPaymentModal.jobId &&
+          !j.finalPaymentReceived &&
+          !(archivedJobIds || []).includes(j.id) &&
+          j.customerName?.toLowerCase().trim() === fpJob.customerName?.toLowerCase().trim()
+        ) : [];
+        const linkedIds = finalPaymentModal.linkedJobIds ?? otherUnpaidSameCustomer.map(j => j.id);
+        const toggleLinkedJob = (id, checked) => {
+          const cur = finalPaymentModal.linkedJobIds ?? otherUnpaidSameCustomer.map(j => j.id);
+          setFinalPaymentModal(p => ({ ...p, linkedJobIds: checked ? [...cur, id] : cur.filter(x => x !== id) }));
+        };
         return (
           <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center">
             <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl shadow-2xl w-full max-w-lg`} style={{maxHeight:'90vh', display:'flex', flexDirection:'column'}}>
@@ -3928,6 +3940,25 @@ Notes: ${j.notes || 'none'}`;
                     className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                     placeholder="e.g. Bank transfer, cash, etc." />
                 </div>
+                {otherUnpaidSameCustomer.length > 0 && (
+                  <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-blue-50 border border-blue-200'}`}>
+                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>📦 This payment also covers:</p>
+                    <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Other jobs for {fpJob?.customerName} — tick to mark as paid too</p>
+                    <div className="space-y-2">
+                      {otherUnpaidSameCustomer.map(j => (
+                        <label key={j.id} className="flex items-center gap-3 cursor-pointer">
+                          <input type="checkbox" checked={linkedIds.includes(j.id)}
+                            onChange={e => toggleLinkedJob(j.id, e.target.checked)}
+                            className="w-4 h-4 rounded accent-blue-500" />
+                          <div>
+                            <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{j.jobName}</p>
+                            {j.shootDate && <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</p>}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} grid grid-cols-2 gap-3`}>
                 <button onClick={() => setFinalPaymentModal(null)}
@@ -3937,17 +3968,22 @@ Notes: ${j.notes || 'none'}`;
                 <button
                   disabled={finalAmt2 <= 0}
                   onClick={async () => {
+                    const now2 = new Date().toISOString();
                     await db.from('jobs').update({
                       final_payment_received: true,
-                      final_payment_date: new Date().toISOString(),
+                      final_payment_date: now2,
                       final_payment_by: currentUser.name,
                     }).eq('id', finalPaymentModal.jobId);
-                    setEditingJobs(prev => prev.map(j => j.id === finalPaymentModal.jobId
-                      ? { ...j, finalPaymentReceived: true, finalPaymentDate: new Date().toISOString(), finalPaymentBy: currentUser.name }
-                      : j
-                    ));
-                    logActivity('Final payment received', fpJob?.jobName || '', `£${grandTotal2.toFixed(2)}${finalPaymentModal.notes ? ' · ' + finalPaymentModal.notes : ''}`);
-                    setFinalPaymentModal(p => ({...p, saved: true, grandTotal: grandTotal2}));
+                    for (const lj of otherUnpaidSameCustomer.filter(j => linkedIds.includes(j.id))) {
+                      await db.from('jobs').update({ final_payment_received: true, final_payment_date: now2, final_payment_by: currentUser.name }).eq('id', lj.id);
+                    }
+                    setEditingJobs(prev => prev.map(j => {
+                      if (j.id === finalPaymentModal.jobId || (linkedIds.includes(j.id) && otherUnpaidSameCustomer.some(oj => oj.id === j.id)))
+                        return { ...j, finalPaymentReceived: true, finalPaymentDate: now2, finalPaymentBy: currentUser.name };
+                      return j;
+                    }));
+                    logActivity('Final payment received', fpJob?.jobName || '', `£${grandTotal2.toFixed(2)}${linkedIds.length > 0 ? ` (covers ${linkedIds.length + 1} jobs)` : ''}${finalPaymentModal.notes ? ' · ' + finalPaymentModal.notes : ''}`);
+                    setFinalPaymentModal(p => ({...p, saved: true, grandTotal: grandTotal2, linkedCount: linkedIds.filter(id => otherUnpaidSameCustomer.some(j => j.id === id)).length}));
                   }}
                   className="py-3 rounded-xl font-bold text-sm text-white disabled:opacity-40"
                   style={{background:'linear-gradient(135deg,#22c55e,#16a34a)'}}>
