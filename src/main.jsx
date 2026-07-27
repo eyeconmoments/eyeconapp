@@ -128,13 +128,18 @@ const Eye = () => <span>👁️</span>;
 
 function ClientPortalView({ token }) {
   const [job, setJob] = React.useState(null);
+  const [jobId, setJobId] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [notFound, setNotFound] = React.useState(false);
   const [itin, setItin] = React.useState(null);
   const [customInput, setCustomInput] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
+  const [saveStatus, setSaveStatus] = React.useState('idle'); // 'idle'|'saving'|'saved'
   const [itinSaved, setItinSaved] = React.useState(false);
+  const debounceRef = React.useRef(null);
+  const loadedRef = React.useRef(false);   // true after first itin load — prevents saving on mount
+  const savingRef = React.useRef(false);   // true while our own save is in flight — prevents echo loop
 
+  // Load job once
   React.useEffect(() => {
     db.from('jobs').select('*').eq('client_token', token).single()
       .then(({ data, error }) => {
@@ -142,14 +147,44 @@ function ClientPortalView({ token }) {
         else {
           const j = rowToJob(data);
           setJob(j);
-          setItin(j.itinerary
-            ? { startTime: j.itinerary.startTime || '10:00', endTime: j.itinerary.endTime || '22:00', venue: j.itinerary.venue || '', scheduleItems: j.itinerary.scheduleItems || [], notes: j.itinerary.notes || '', nextOfKin: j.itinerary.nextOfKin || { name:'', phone:'' } }
-            : { startTime: '10:00', endTime: '22:00', venue: '', scheduleItems: [], notes: '', nextOfKin: { name:'', phone:'' } }
-          );
+          setJobId(j.id);
+          const src = j.itinerary || {};
+          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' } });
+          // mark loaded on next tick so initial set doesn't trigger auto-save
+          setTimeout(() => { loadedRef.current = true; }, 50);
         }
         setLoading(false);
       });
   }, [token]);
+
+  // Real-time: pick up admin edits on the same job
+  React.useEffect(() => {
+    if (!jobId) return;
+    const ch = db.channel(`client-itin-${jobId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${jobId}` }, ({ new: row }) => {
+        if (savingRef.current) return; // ignore echo of our own save
+        const src = row.itinerary || {};
+        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' } });
+      })
+      .subscribe();
+    return () => db.removeChannel(ch);
+  }, [jobId]);
+
+  // Auto-save whenever itin changes (debounced 800ms)
+  React.useEffect(() => {
+    if (!loadedRef.current || !itin || !jobId) return;
+    setSaveStatus('saving');
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      savingRef.current = true;
+      await db.from('jobs').update({
+        itinerary: { clientDraft: true, clientLastEdit: new Date().toISOString(), ...itin }
+      }).eq('client_token', token);
+      savingRef.current = false;
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }, 800);
+  }, [itin]);
 
   const gold = '#C1A76A';
   const navy = '#1a2535';
@@ -191,9 +226,11 @@ function ClientPortalView({ token }) {
       return { ...p, scheduleItems: arr };
     });
     const saveItin = async () => {
-      setSaving(true);
-      await db.from('jobs').update({ itinerary: { ...(job.itinerary || {}), ...itin, clientDraft: true } }).eq('client_token', token);
-      setSaving(false);
+      savingRef.current = true;
+      setSaveStatus('saving');
+      await db.from('jobs').update({ itinerary: { clientDraft: true, clientLastEdit: new Date().toISOString(), ...itin } }).eq('client_token', token);
+      savingRef.current = false;
+      setSaveStatus('saved');
       setItinSaved(true);
     };
 
@@ -246,7 +283,10 @@ function ClientPortalView({ token }) {
           <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
           <h1 style={{color:gold,fontFamily:'Cormorant Garamond,serif',fontSize:26,margin:'12px 0 4px',letterSpacing:1}}>Your Event Outline</h1>
           <p style={{color:'#cbd5e1',fontSize:15,margin:'0 0 4px'}}>{job.jobName}</p>
-          {job.shootDate && <p style={{color:'rgba(193,167,106,0.55)',fontSize:13,margin:0}}>{new Date(job.shootDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>}
+          {job.shootDate && <p style={{color:'rgba(193,167,106,0.55)',fontSize:13,margin:'0 0 8px'}}>{new Date(job.shootDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>}
+          <p style={{fontSize:12,margin:0,color: saveStatus==='saving'?'rgba(234,179,8,0.8)':saveStatus==='saved'?'rgba(34,197,94,0.8)':'rgba(255,255,255,0.2)'}}>
+            {saveStatus==='saving'?'● Saving…':saveStatus==='saved'?'✓ Saved':'● Changes save automatically'}
+          </p>
         </div>
 
         <div style={{...card,borderLeft:'3px solid rgba(193,167,106,0.4)'}}>
@@ -326,9 +366,9 @@ function ClientPortalView({ token }) {
             style={{...inp,resize:'vertical',lineHeight:1.5}} />
         </div>
 
-        <button onClick={saveItin} disabled={saving}
-          style={{width:'100%',padding:'16px',borderRadius:14,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer',marginBottom:32,opacity:saving?0.7:1}}>
-          {saving ? 'Saving…' : '✅ Save My Event Outline'}
+        <button onClick={saveItin}
+          style={{width:'100%',padding:'16px',borderRadius:14,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer',marginBottom:32}}>
+          ✅ Finish &amp; View My Outline
         </button>
         <div style={{textAlign:'center',paddingBottom:24}}>
           <p style={{color:'rgba(255,255,255,0.2)',fontSize:12}}>Eyecon Moments · Your outline will be reviewed at consultation</p>
@@ -9043,6 +9083,14 @@ Capturing Your Special Day
                             <h3 className="text-lg font-bold">{job.jobName}</h3>
                             <p className="text-sm opacity-90">{job.customerName}</p>
                             <p className="text-xs opacity-75">{shootDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                            {(() => {
+                              const lastEdit = job.itinerary?.clientLastEdit;
+                              if (!lastEdit) return null;
+                              const secAgo = Math.floor((Date.now() - new Date(lastEdit).getTime()) / 1000);
+                              if (secAgo > 300) return null; // only show within 5 min
+                              const label2 = secAgo < 10 ? 'just now' : secAgo < 60 ? `${secAgo}s ago` : `${Math.floor(secAgo/60)}m ago`;
+                              return <span className="inline-flex items-center gap-1 text-xs bg-white bg-opacity-25 rounded-full px-2 py-0.5 mt-1 font-semibold animate-pulse">📱 Client edited {label2}</span>;
+                            })()}
                           </div>
                           <div className="flex flex-col items-end gap-2">
                             <span className="text-2xl font-bold">{isToday ? '🔴 TODAY' : isTomorrow ? '🟠 TOMORROW' : `${daysUntil}d`}</span>
