@@ -3866,15 +3866,16 @@ Notes: ${j.notes || 'none'}`;
         const finalAmt2 = parseFloat(finalPaymentModal.finalAmount || 0) || 0;
         const grandTotal2 = finalAmt2 + overtime2;
         const remaining2 = Math.max(0, total2 - dep2);
-        const otherUnpaidSameCustomer = fpJob ? editingJobs.filter(j =>
+        const sixtyDaysAgoFP = new Date(); sixtyDaysAgoFP.setDate(sixtyDaysAgoFP.getDate() - 60); sixtyDaysAgoFP.setHours(0,0,0,0);
+        const otherUnpaidSameCustomer = editingJobs.filter(j =>
           j.id !== finalPaymentModal.jobId &&
           !j.finalPaymentReceived &&
           !(archivedJobIds || []).includes(j.id) &&
-          j.customerName?.toLowerCase().trim() === fpJob.customerName?.toLowerCase().trim()
-        ) : [];
-        const linkedIds = finalPaymentModal.linkedJobIds ?? otherUnpaidSameCustomer.map(j => j.id);
+          (!j.shootDate || new Date(j.shootDate) >= sixtyDaysAgoFP)
+        ).sort((a, b) => new Date(b.shootDate || 0) - new Date(a.shootDate || 0));
+        const linkedIds = finalPaymentModal.linkedJobIds ?? [];
         const toggleLinkedJob = (id, checked) => {
-          const cur = finalPaymentModal.linkedJobIds ?? otherUnpaidSameCustomer.map(j => j.id);
+          const cur = finalPaymentModal.linkedJobIds ?? [];
           setFinalPaymentModal(p => ({ ...p, linkedJobIds: checked ? [...cur, id] : cur.filter(x => x !== id) }));
         };
         return (
@@ -3942,8 +3943,8 @@ Notes: ${j.notes || 'none'}`;
                 </div>
                 {otherUnpaidSameCustomer.length > 0 && (
                   <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-blue-50 border border-blue-200'}`}>
-                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>📦 This payment also covers:</p>
-                    <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Other jobs for {fpJob?.customerName} — tick to mark as paid too</p>
+                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>📦 Also mark as paid:</p>
+                    <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tick any other jobs this payment covers</p>
                     <div className="space-y-2">
                       {otherUnpaidSameCustomer.map(j => (
                         <label key={j.id} className="flex items-center gap-3 cursor-pointer">
