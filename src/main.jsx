@@ -3996,6 +3996,21 @@ Notes: ${j.notes || 'none'}`;
                     className="block w-full py-3.5 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600">
                     📧 Send Payment Confirmation Email
                   </a>
+                  <button onClick={async () => {
+                    let token = fpJob?.clientToken;
+                    if (!token && fpJob) {
+                      token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                      await db.from('jobs').update({ client_token: token }).eq('id', fpJob.id);
+                      setEditingJobs(prev => prev.map(j => j.id === fpJob.id ? { ...j, clientToken: token } : j));
+                    }
+                    const trackingUrl = `${window.location.origin}/client/${token}`;
+                    const trackSubject = encodeURIComponent(`Your memories are being worked on — ${fpJob?.jobName || 'Your Booking'}`);
+                    const trackBody = encodeURIComponent(`Hi ${firstName2},\n\nThank you again for choosing Eyecon Moments. Now that everything is settled, we wanted to let you know that we're working on your photos and video.\n\nYou can track our progress using the link below — we'll keep it updated as we move through each stage:\n\n${trackingUrl}\n\nWe're so excited to share the final results with you. If you have any questions in the meantime, don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments`);
+                    window.open(`mailto:${custEmail}?subject=${trackSubject}&body=${trackBody}`, '_blank');
+                    setFinalPaymentModal(null);
+                  }} className={`w-full py-3.5 rounded-xl font-bold text-sm ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-800 text-white hover:bg-gray-700'}`}>
+                    🔗 Send Work Tracking Link
+                  </button>
                   <button onClick={() => setFinalPaymentModal(null)}
                     className={`w-full py-3 rounded-xl font-semibold text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
                     Done
