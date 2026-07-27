@@ -130,18 +130,32 @@ function ClientPortalView({ token }) {
   const [job, setJob] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [notFound, setNotFound] = React.useState(false);
+  const [itin, setItin] = React.useState(null);
+  const [customInput, setCustomInput] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [itinSaved, setItinSaved] = React.useState(false);
 
   React.useEffect(() => {
     db.from('jobs').select('*').eq('client_token', token).single()
       .then(({ data, error }) => {
         if (error || !data) { setNotFound(true); }
-        else { setJob(rowToJob(data)); }
+        else {
+          const j = rowToJob(data);
+          setJob(j);
+          setItin(j.itinerary
+            ? { startTime: j.itinerary.startTime || '10:00', endTime: j.itinerary.endTime || '22:00', venue: j.itinerary.venue || '', scheduleItems: j.itinerary.scheduleItems || [], notes: j.itinerary.notes || '', nextOfKin: j.itinerary.nextOfKin || { name:'', phone:'' } }
+            : { startTime: '10:00', endTime: '22:00', venue: '', scheduleItems: [], notes: '', nextOfKin: { name:'', phone:'' } }
+          );
+        }
         setLoading(false);
       });
   }, [token]);
 
   const gold = '#C1A76A';
   const navy = '#1a2535';
+  const card = {background:'rgba(255,255,255,0.05)',borderRadius:16,padding:'20px',marginBottom:20};
+  const label = {color:'rgba(193,167,106,0.8)',fontSize:11,letterSpacing:2,textTransform:'uppercase',margin:'0 0 10px',display:'block'};
+  const inp = {width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.07)',color:'#fff',fontSize:15,boxSizing:'border-box',fontFamily:'system-ui'};
 
   if (loading) return (
     <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -154,21 +168,157 @@ function ClientPortalView({ token }) {
     </div>
   );
 
+  const todayMid = new Date(); todayMid.setHours(0,0,0,0);
+  const isUpcoming = job.shootDate ? new Date(job.shootDate) >= todayMid : false;
+
+  // ── Pre-shoot: itinerary builder ──────────────────────────────────────────
+  if (isUpcoming && itin) {
+    const presetGroups = [
+      { label: 'Arrival & Prep', items: ['Home Shots','Bride Prep','Groom Prep','Getting Ready','Venue Shots','Guest Arrival'] },
+      { label: 'Ceremony', items: ['Bride Arrival','Groom Arrival','Gate Ceremony','Bride Entrance','Groom Entrance','Nikaah','Ceremony','Exchange of Vows','Ring Exchange'] },
+      { label: 'Celebrations', items: ['Cake & Rings','Couple Shots','Stage Shots','First Dance','Speeches','Rukhsati','Reception'] },
+      { label: 'Other', items: ['Family Photos','Group Photos','Food','Fireworks','Send-Off','End'] },
+    ];
+    const addItem = (name) => {
+      setItin(p => ({ ...p, scheduleItems: [...p.scheduleItems, { id: Date.now() + Math.random(), name, color: '#C1A76A' }] }));
+    };
+    const removeItem = (id) => setItin(p => ({ ...p, scheduleItems: p.scheduleItems.filter(it => it.id !== id) }));
+    const moveItem = (idx, dir) => setItin(p => {
+      const arr = [...p.scheduleItems];
+      const swap = idx + dir;
+      if (swap < 0 || swap >= arr.length) return p;
+      [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
+      return { ...p, scheduleItems: arr };
+    });
+    const saveItin = async () => {
+      setSaving(true);
+      await db.from('jobs').update({ itinerary: { ...(job.itinerary || {}), ...itin, clientDraft: true } }).eq('client_token', token);
+      setSaving(false);
+      setItinSaved(true);
+    };
+
+    if (itinSaved) return (
+      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div style={{textAlign:'center',maxWidth:360}}>
+          <div style={{fontSize:56,marginBottom:16}}>🎉</div>
+          <h2 style={{color:gold,fontSize:24,margin:'0 0 10px'}}>Thank you!</h2>
+          <p style={{color:'#cbd5e1',fontSize:15,lineHeight:1.6}}>Your event outline has been saved. We'll go through it together at your consultation and finalise everything.</p>
+          <p style={{color:'rgba(193,167,106,0.5)',fontSize:13,marginTop:20}}>Eyecon Moments</p>
+        </div>
+      </div>
+    );
+
+    return (
+      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:520,margin:'0 auto'}}>
+        <div style={{textAlign:'center',marginBottom:28,paddingTop:12}}>
+          <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
+          <h1 style={{color:gold,fontFamily:'Cormorant Garamond,serif',fontSize:26,margin:'12px 0 4px',letterSpacing:1}}>Your Event Outline</h1>
+          <p style={{color:'#cbd5e1',fontSize:15,margin:'0 0 4px'}}>{job.jobName}</p>
+          {job.shootDate && <p style={{color:'rgba(193,167,106,0.55)',fontSize:13,margin:0}}>{new Date(job.shootDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>}
+        </div>
+
+        <div style={{...card,borderLeft:'3px solid rgba(193,167,106,0.4)'}}>
+          <p style={{color:'#cbd5e1',fontSize:14,margin:0,lineHeight:1.6}}>
+            Before your consultation, tell us what moments matter most. Tap items below to add them to your schedule — we'll go through it together and finalise everything.
+          </p>
+        </div>
+
+        {/* Timings & Venue */}
+        <div style={card}>
+          <span style={label}>Event Timings & Venue</span>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+            <div>
+              <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>Start time</div>
+              <input type="time" value={itin.startTime} onChange={e => setItin(p=>({...p,startTime:e.target.value}))} style={inp} />
+            </div>
+            <div>
+              <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>End time</div>
+              <input type="time" value={itin.endTime} onChange={e => setItin(p=>({...p,endTime:e.target.value}))} style={inp} />
+            </div>
+          </div>
+          <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>Venue / location</div>
+          <input type="text" value={itin.venue} onChange={e => setItin(p=>({...p,venue:e.target.value}))} placeholder="e.g. The Grand Ballroom, Manchester" style={inp} />
+        </div>
+
+        {/* Pre-set moments */}
+        <div style={card}>
+          <span style={label}>Tap to add moments</span>
+          {presetGroups.map(g => (
+            <div key={g.label} style={{marginBottom:16}}>
+              <div style={{color:'rgba(255,255,255,0.35)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>{g.label}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {g.items.map(name => {
+                  const added = itin.scheduleItems.some(it => it.name === name);
+                  return (
+                    <button key={name} onClick={() => added ? removeItem(itin.scheduleItems.find(it=>it.name===name)?.id) : addItem(name)}
+                      style={{padding:'6px 14px',borderRadius:20,border:`1px solid ${added?gold:'rgba(255,255,255,0.15)'}`,background:added?'rgba(193,167,106,0.2)':'transparent',color:added?gold:'rgba(255,255,255,0.6)',fontSize:13,cursor:'pointer',transition:'all 0.15s'}}>
+                      {added ? '✓ ' : ''}{name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {/* Custom item */}
+          <div style={{marginTop:8,display:'flex',gap:8}}>
+            <input type="text" value={customInput} onChange={e=>setCustomInput(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter'&&customInput.trim()){addItem(customInput.trim());setCustomInput('');} }}
+              placeholder="Add your own moment…" style={{...inp,flex:1}} />
+            <button onClick={()=>{if(customInput.trim()){addItem(customInput.trim());setCustomInput('');}}}
+              style={{padding:'10px 16px',borderRadius:10,background:gold,color:navy,fontWeight:700,border:'none',cursor:'pointer',fontSize:14}}>+</button>
+          </div>
+        </div>
+
+        {/* Current schedule */}
+        {itin.scheduleItems.length > 0 && (
+          <div style={card}>
+            <span style={label}>Your schedule ({itin.scheduleItems.length} moments)</span>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {itin.scheduleItems.map((it, idx) => (
+                <div key={it.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                  <span style={{flex:1,color:'#e2e8f0',fontSize:14}}>{it.name}</span>
+                  <button onClick={()=>moveItem(idx,-1)} disabled={idx===0} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:16,padding:'0 4px',opacity:idx===0?0.2:1}}>↑</button>
+                  <button onClick={()=>moveItem(idx,1)} disabled={idx===itin.scheduleItems.length-1} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:16,padding:'0 4px',opacity:idx===itin.scheduleItems.length-1?0.2:1}}>↓</button>
+                  <button onClick={()=>removeItem(it.id)} style={{background:'none',border:'none',color:'rgba(239,68,68,0.6)',cursor:'pointer',fontSize:16,padding:'0 4px'}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        <div style={card}>
+          <span style={label}>Anything else we should know?</span>
+          <textarea value={itin.notes} onChange={e=>setItin(p=>({...p,notes:e.target.value}))}
+            rows={3} placeholder="Special requests, important people to capture, things to avoid…"
+            style={{...inp,resize:'vertical',lineHeight:1.5}} />
+        </div>
+
+        <button onClick={saveItin} disabled={saving}
+          style={{width:'100%',padding:'16px',borderRadius:14,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer',marginBottom:32,opacity:saving?0.7:1}}>
+          {saving ? 'Saving…' : '✅ Save My Event Outline'}
+        </button>
+        <div style={{textAlign:'center',paddingBottom:24}}>
+          <p style={{color:'rgba(255,255,255,0.2)',fontSize:12}}>Eyecon Moments · Your outline will be reviewed at consultation</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Post-shoot: progress tracker (original) ───────────────────────────────
   const photoDone = !job.hasPhotos || job.photoStatus === 'completed';
   const photoProgress = !job.hasPhotos ? null : job.photoStatus === 'completed' ? 100 : job.photoStatus === 'in-progress' ? 50 : 0;
   const videoStages = job.hasVideo ? job.stages : [];
-  const videoProgress = videoStages.length === 0 ? null : Math.round((videoStages.filter(s => s.status === 'completed').length / videoStages.length) * 100);
   const videoDone = !job.hasVideo || (videoStages.length > 0 && videoStages.every(s => s.status === 'completed'));
   const allDone = photoDone && videoDone;
 
   const steps = [
     { label: 'Shoot Day', icon: '📷', done: true, active: false },
     ...(job.hasPhotos ? [{ label: 'Photo Editing', icon: '🖼️', done: photoDone, active: !photoDone, progress: photoProgress }] : []),
-    ...(job.hasVideo ? videoStages.map((s, i) => ({ label: s.name.split(',')[0], icon: '🎬', done: s.status === 'completed', active: s.status === 'in-progress', progress: s.status === 'completed' ? 100 : s.status === 'in-progress' ? 50 : 0 })) : []),
+    ...(job.hasVideo ? videoStages.map((s) => ({ label: s.name.split(',')[0], icon: '🎬', done: s.status === 'completed', active: s.status === 'in-progress', progress: s.status === 'completed' ? 100 : s.status === 'in-progress' ? 50 : 0 })) : []),
     { label: 'Delivered', icon: '✅', done: allDone, active: false }
   ];
 
-  const currentStep = steps.findIndex(s => !s.done);
   const daysLeft = job.deadline ? Math.ceil((new Date(job.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
@@ -179,7 +329,6 @@ function ClientPortalView({ token }) {
         <p style={{color:'#cbd5e1',fontSize:16,margin:0}}>{job.jobName}</p>
         {job.shootDate && <p style={{color:'rgba(193,167,106,0.6)',fontSize:13,marginTop:4}}>Shot {new Date(job.shootDate).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</p>}
       </div>
-
       {allDone ? (
         <div style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.3)',borderRadius:16,padding:'20px',textAlign:'center',marginBottom:24}}>
           <div style={{fontSize:40,marginBottom:8}}>🎉</div>
@@ -193,7 +342,6 @@ function ClientPortalView({ token }) {
           </p>
         </div>
       ) : null}
-
       <div style={{background:'rgba(255,255,255,0.04)',borderRadius:16,padding:'20px',marginBottom:24}}>
         <h3 style={{color:'rgba(193,167,106,0.8)',fontSize:12,letterSpacing:2,textTransform:'uppercase',margin:'0 0 20px'}}>Progress</h3>
         <div style={{position:'relative'}}>
@@ -218,7 +366,6 @@ function ClientPortalView({ token }) {
           ))}
         </div>
       </div>
-
       <div style={{textAlign:'center',paddingBottom:24}}>
         <p style={{color:'rgba(255,255,255,0.3)',fontSize:12}}>Questions? Contact Eyecon Moments</p>
       </div>
@@ -8859,6 +9006,24 @@ Capturing Your Special Day
                                   {isMinimized ? '▼ Expand' : '▲ Minimise'}
                                 </button>
                               )}
+                              {/* Client draft badge */}
+                              {job.itinerary?.clientDraft && (
+                                <span className="text-xs bg-green-500 text-white px-2 py-1 rounded font-semibold" title="Client has submitted their event outline">✓ Client outline</span>
+                              )}
+                              {/* Client consultation link */}
+                              <button onClick={async () => {
+                                let token = job.clientToken;
+                                if (!token) {
+                                  token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                                  await db.from('jobs').update({ client_token: token }).eq('id', job.id);
+                                  setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
+                                }
+                                const url = `${window.location.origin}/client/${token}`;
+                                try { await navigator.clipboard.writeText(url); alert(`✅ Consultation link copied!\n\nSend this to your client — they can fill in their event outline before the consultation.\n\n${url}`); }
+                                catch { alert(`Send this link to your client:\n\n${url}`); }
+                              }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1" title="Send consultation link to client">
+                                📋 Client Link
+                              </button>
                               {/* Share itinerary with staff */}
                               <button onClick={() => {
                                 setItineraryShareModal(job.id);
