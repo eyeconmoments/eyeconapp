@@ -6348,16 +6348,17 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
-          {/* Final Payment Due — jobs with shoot date ≥ 1 day ago and no final payment */}
+          {/* Final Payment Due — jobs shot 1–60 days ago with no final payment */}
           {(() => {
             const today = new Date(); today.setHours(0,0,0,0);
+            const sixtyDaysAgo = new Date(today); sixtyDaysAgo.setDate(today.getDate() - 60);
             const needsPayment = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || j.finalPaymentReceived) return false;
               if (!j.shootDate) return false;
               const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
               const dayAfter = new Date(shoot); dayAfter.setDate(shoot.getDate() + 1);
-              return dayAfter <= today;
-            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
+              return dayAfter <= today && shoot >= sixtyDaysAgo;
+            }).sort((a, b) => new Date(b.shootDate) - new Date(a.shootDate));
             if (needsPayment.length === 0) return null;
             return (
               <div className="rounded-lg border-l-4 border-green-500 bg-green-900/20 p-3">
