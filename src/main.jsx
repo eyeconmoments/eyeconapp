@@ -3877,22 +3877,23 @@ Notes: ${j.notes || 'none'}`;
               </div>
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
                 <div className={`rounded-xl p-4 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                  <div className="flex justify-between text-sm">
-                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
-                    <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{total2 > 0 ? `£${total2.toFixed(2)}` : 'Not set'}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>{dep2 > 0 ? 'Deposit paid' : 'Deposit'}</span>
-                    {dep2 > 0
-                      ? <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
-                      : <span className={`text-sm italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>not recorded</span>
-                    }
-                  </div>
-                  {total2 > 0 && dep2 > 0 && (
-                    <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
-                      <span>Balance due</span>
-                      <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
-                    </div>
+                  {dep2 > 0 ? (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
+                        <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>£{total2.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid</span>
+                        <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
+                      </div>
+                      <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
+                        <span>Balance due</span>
+                        <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className={`text-sm text-center py-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No deposit on record — enter the amount below</p>
                   )}
                 </div>
                 <div>
@@ -6378,7 +6379,7 @@ Notes: ${j.notes || 'none'}`;
                           <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
-                            {remaining > 0 ? ` · £${remaining.toFixed(0)} remaining` : total > 0 ? ` · £${total.toFixed(0)} total` : ''}
+                            {depositPaid > 0 && remaining > 0 ? ` · £${remaining.toFixed(0)} remaining` : ''}
                           </p>
                         </div>
                         <button onClick={() => setFinalPaymentModal({
