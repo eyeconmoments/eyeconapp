@@ -31,9 +31,10 @@ const rowToJob = (r) => ({
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
   wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
-  finalPaymentReceived: r.final_payment_received || false,
-  finalPaymentDate: r.final_payment_date || null,
-  finalPaymentBy: r.final_payment_by || null,
+  // final payment stored in wage_entries as type:'final_payment' (columns may not exist yet)
+  finalPaymentReceived: r.final_payment_received || (r.wage_entries || []).some(e => e.type === 'final_payment' && e.received) || false,
+  finalPaymentDate: r.final_payment_date || (r.wage_entries || []).find(e => e.type === 'final_payment')?.date || null,
+  finalPaymentBy: r.final_payment_by || (r.wage_entries || []).find(e => e.type === 'final_payment')?.by || null,
 });
 
 const rowToEmployee = (r) => ({
@@ -1431,6 +1432,24 @@ function EyeconMoments() {
 
   const archiveWageEntry = async (jobId, entryId) => { await updateWageEntry(jobId, entryId, { archived: true }); };
   const unarchiveWageEntry = async (jobId, entryId) => { await updateWageEntry(jobId, entryId, { archived: false }); };
+
+  // Store final payment status inside wage_entries (no schema migration required)
+  const saveFinalPayment = async (jobId, received, date, by) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const base = (job.wageEntries || []).filter(e => e.type !== 'final_payment');
+    const newWageEntries = received
+      ? [...base, { type: 'final_payment', received: true, date, by }]
+      : base;
+    await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? {
+      ...j,
+      wageEntries: newWageEntries,
+      finalPaymentReceived: received,
+      finalPaymentDate: received ? date : null,
+      finalPaymentBy: received ? by : null,
+    } : j));
+  };
 
   const isJobFullyComplete = (job) => {
     const photoDone = !job.hasPhotos || job.photoStatus === 'completed';
@@ -4204,19 +4223,10 @@ Notes: ${j.notes || 'none'}`;
                   disabled={finalAmt2 <= 0}
                   onClick={async () => {
                     const now2 = new Date().toISOString();
-                    await db.from('jobs').update({
-                      final_payment_received: true,
-                      final_payment_date: now2,
-                      final_payment_by: currentUser.name,
-                    }).eq('id', finalPaymentModal.jobId);
+                    await saveFinalPayment(finalPaymentModal.jobId, true, now2, currentUser.name);
                     for (const lj of otherUnpaidSameCustomer.filter(j => linkedIds.includes(j.id))) {
-                      await db.from('jobs').update({ final_payment_received: true, final_payment_date: now2, final_payment_by: currentUser.name }).eq('id', lj.id);
+                      await saveFinalPayment(lj.id, true, now2, currentUser.name);
                     }
-                    setEditingJobs(prev => prev.map(j => {
-                      if (j.id === finalPaymentModal.jobId || (linkedIds.includes(j.id) && otherUnpaidSameCustomer.some(oj => oj.id === j.id)))
-                        return { ...j, finalPaymentReceived: true, finalPaymentDate: now2, finalPaymentBy: currentUser.name };
-                      return j;
-                    }));
                     logActivity('Final payment received', fpJob?.jobName || '', `£${grandTotal2.toFixed(2)}${linkedIds.length > 0 ? ` (covers ${linkedIds.length + 1} jobs)` : ''}${finalPaymentModal.notes ? ' · ' + finalPaymentModal.notes : ''}`);
                     setFinalPaymentModal(p => ({...p, saved: true, grandTotal: grandTotal2, linkedCount: linkedIds.filter(id => otherUnpaidSameCustomer.some(j => j.id === id)).length}));
                   }}
@@ -11087,10 +11097,8 @@ Capturing Your Special Day
                               <span className="text-green-500 text-sm font-semibold">
                                 ✅ Received{job.finalPaymentDate ? ` · ${new Date(job.finalPaymentDate).toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : ''}{job.finalPaymentBy ? ` by ${job.finalPaymentBy}` : ''}
                               </span>
-                              <button onClick={async () => {
-                                await db.from('jobs').update({ final_payment_received: false, final_payment_date: null, final_payment_by: null }).eq('id', job.id);
-                                setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, finalPaymentReceived: false, finalPaymentDate: null, finalPaymentBy: null } : j));
-                              }} className="text-xs text-gray-400 underline ml-2">undo</button>
+                              <button onClick={() => saveFinalPayment(job.id, false, null, null)}
+                                className="text-xs text-gray-400 underline ml-2">undo</button>
                             </div>
                           ) : (
                             <button onClick={() => setFinalPaymentModal({
