@@ -1433,6 +1433,24 @@ function EyeconMoments() {
   const archiveWageEntry = async (jobId, entryId) => { await updateWageEntry(jobId, entryId, { archived: true }); };
   const unarchiveWageEntry = async (jobId, entryId) => { await updateWageEntry(jobId, entryId, { archived: false }); };
 
+  // Read deposit — wage_entries first (Supabase), fall back to localStorage for legacy data
+  const getJobDeposit = (job) => {
+    const entry = (job?.wageEntries || []).find(e => e.type === 'deposit');
+    if (entry) return entry;
+    try { return JSON.parse(localStorage.getItem(`eyecon_deposit_${job?.id}`) || 'null'); } catch { return null; }
+  };
+
+  // Save deposit into wage_entries (Supabase-backed, works across devices)
+  const saveDeposit = async (jobId, amount, date, paid) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const base = (job.wageEntries || []).filter(e => e.type !== 'deposit');
+    const newWageEntries = amount ? [...base, { type: 'deposit', amount, date, paid }] : base;
+    await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, wageEntries: newWageEntries } : j));
+    localStorage.removeItem(`eyecon_deposit_${jobId}`); // clear legacy entry
+  };
+
   // Store final payment status inside wage_entries (no schema migration required)
   const saveFinalPayment = async (jobId, received, date, by) => {
     const job = editingJobs.find(j => j.id === jobId);
@@ -6650,7 +6668,7 @@ Notes: ${j.notes || 'none'}`;
                 </div>
                 <div className="space-y-2">
                   {needsPayment.map(j => {
-                    const dep = (() => { try { return JSON.parse(localStorage.getItem(`eyecon_deposit_${j.id}`) || 'null'); } catch { return null; } })();
+                    const dep = getJobDeposit(j);
                     const total = calculateJobRevenue(j);
                     const depositPaid = parseFloat(dep?.amount || 0);
                     const remaining = total > 0 ? Math.max(0, total - depositPaid) : 0;
@@ -11058,21 +11076,20 @@ Capturing Your Special Day
 
                     {/* Deposit Tracking */}
                     {(() => {
-                      const depKey = `eyecon_deposit_${job.id}`;
-                      const dep = (() => { try { return JSON.parse(localStorage.getItem(depKey) || 'null'); } catch { return null; } })();
+                      const dep = getJobDeposit(job);
                       return (
                         <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                           <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💰 Deposit</p>
                           {dep?.paid ? (
                             <div className="flex items-center justify-between">
                               <span className="text-green-500 text-sm font-semibold">✅ £{dep.amount || '—'} received{dep.date ? ` · ${new Date(dep.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : ''}</span>
-                              <button onClick={() => { localStorage.setItem(depKey, JSON.stringify({...dep, paid: false})); refreshLocal(); }} className="text-xs text-gray-400 underline ml-2">undo</button>
+                              <button onClick={() => saveDeposit(job.id, dep.amount, dep.date, false)} className="text-xs text-gray-400 underline ml-2">undo</button>
                             </div>
                           ) : dep?.amount ? (
                             <div className="flex items-center justify-between flex-wrap gap-1">
                               <span className={`text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>⏳ £{dep.amount} recorded{dep.date ? ` · ${new Date(dep.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : ''}</span>
                               <div className="flex gap-1">
-                                <button onClick={() => { localStorage.setItem(depKey, JSON.stringify({...dep, paid: true})); refreshLocal(); }} className="px-2 py-0.5 bg-green-500 text-white rounded text-xs font-semibold">Mark Paid</button>
+                                <button onClick={() => saveDeposit(job.id, dep.amount, dep.date, true)} className="px-2 py-0.5 bg-green-500 text-white rounded text-xs font-semibold">Mark Paid</button>
                                 <button onClick={() => { setDepositFormJobId(job.id); setDepositFormAmt(dep.amount||''); setDepositFormDate(dep.date||new Date().toISOString().slice(0,10)); }} className="px-2 py-0.5 bg-gray-400 text-white rounded text-xs">Edit</button>
                               </div>
                             </div>
@@ -11085,7 +11102,7 @@ Capturing Your Special Day
 
                     {/* Final Payment Tracking */}
                     {(() => {
-                      const dep2 = (() => { try { return JSON.parse(localStorage.getItem(`eyecon_deposit_${job.id}`) || 'null'); } catch { return null; } })();
+                      const dep2 = getJobDeposit(job);
                       const total2 = calculateJobRevenue(job);
                       const depositPaid2 = parseFloat(dep2?.amount || 0);
                       const remaining2 = total2 > 0 ? Math.max(0, total2 - depositPaid2) : 0;
@@ -11412,7 +11429,6 @@ Capturing Your Special Day
         {/* Deposit Form Modal */}
         {depositFormJobId && (() => {
           const depJob = editingJobs.find(j => j.id === depositFormJobId);
-          const depKey = `eyecon_deposit_${depositFormJobId}`;
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
@@ -11433,19 +11449,15 @@ Capturing Your Special Day
                 </div>
                 <div className="flex gap-3 mt-5">
                   <button onClick={() => setDepositFormJobId(null)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
-                  <button onClick={() => {
-                    const dep = { amount: depositFormAmt, date: depositFormDate, paid: false };
-                    localStorage.setItem(depKey, JSON.stringify(dep));
+                  <button onClick={async () => {
+                    await saveDeposit(depositFormJobId, depositFormAmt, depositFormDate, false);
                     logActivity('Deposit recorded', depJob?.jobName || '', `£${depositFormAmt}`);
                     setDepositFormJobId(null);
-                    refreshLocal();
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Save Deposit</button>
-                  <button onClick={() => {
-                    const dep = { amount: depositFormAmt, date: depositFormDate, paid: true };
-                    localStorage.setItem(depKey, JSON.stringify(dep));
+                  <button onClick={async () => {
+                    await saveDeposit(depositFormJobId, depositFormAmt, depositFormDate, true);
                     logActivity('Deposit paid', depJob?.jobName || '', `£${depositFormAmt}`);
                     setDepositFormJobId(null);
-                    refreshLocal();
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white">✅ Save + Paid</button>
                 </div>
               </div>
