@@ -705,6 +705,17 @@ function EyeconMoments() {
   const [depositFormJobId, setDepositFormJobId] = useState(null);
   const [depositFormAmt, setDepositFormAmt] = useState('');
   const [depositFormDate, setDepositFormDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [depositImportOpen, setDepositImportOpen] = useState(false);
+  const [depositImportMatches, setDepositImportMatches] = useState({});
+  const DEPOSIT_IMPORTS = [
+    { customer: 'Rania', event: 'Nikkah', amount: '475.00', date: '2026-07-28', paid: true, note: 'Deposit' },
+    { customer: 'Sadiyah', event: 'Wedding', amount: '412.15', date: '2026-07-24', paid: true, note: 'Deposit' },
+    { customer: 'Hayyaan & Sarah', event: 'Wedding', amount: '680.00', date: '2026-07-09', paid: true, note: 'Deposit' },
+    { customer: 'Majid Bani', event: 'Maariya & Abu Bakar Wedding', amount: '450.00', date: '2026-06-29', paid: true, note: 'Remaining balance' },
+    { customer: 'Ameera Imran', event: 'Event', amount: '250.00', date: '2026-05-12', paid: true, note: 'Deposit' },
+    { customer: 'Julie & Rocky', event: 'Photography & Cinematography', amount: '700.00', date: '2026-05-11', paid: true, note: 'Deposit' },
+    { customer: 'Insha Ali', event: 'Wedding', amount: '500.00', date: '2026-07-10', paid: true, note: 'Deposit' },
+  ];
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarSelectedDay, setCalendarSelectedDay] = useState(null);
@@ -9084,7 +9095,22 @@ Capturing Your Special Day
                 <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📅 Upcoming Shoots - Itinerary Builder</h2>
                 {gcalDragActive && <p className="text-xs text-orange-500 font-semibold mt-0.5 animate-pulse">⬇ Drop here to create job from Google Calendar event</p>}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap justify-end">
+                <button onClick={() => {
+                  const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+                  const autoMatch = (imp) => {
+                    const needle = imp.customer.toLowerCase();
+                    const parts = needle.split(/[\s&]+/).filter(p => p.length > 2);
+                    return allJ.find(j => {
+                      const cn = (j.customerName || '').toLowerCase();
+                      return cn.includes(needle) || parts.some(p => cn.includes(p));
+                    })?.id || '';
+                  };
+                  const init = {};
+                  DEPOSIT_IMPORTS.forEach((imp, i) => { init[i] = autoMatch(imp); });
+                  setDepositImportMatches(init);
+                  setDepositImportOpen(true);
+                }} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold">📥 Import Deposits</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
               </div>
@@ -11474,6 +11500,67 @@ Capturing Your Special Day
                     logActivity('Deposit paid', depJob?.jobName || '', `£${depositFormAmt}`);
                     setDepositFormJobId(null);
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white">✅ Save + Paid</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {depositImportOpen && (() => {
+          const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
+                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📥 Import Deposits from Gmail</h2>
+                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Match each payment to a job. Jobs already with a deposit are marked done.</p>
+                <div className="space-y-3">
+                  {DEPOSIT_IMPORTS.map((imp, i) => {
+                    const selectedJobId = depositImportMatches[i] ?? '';
+                    const selectedJob = selectedJobId ? allJ.find(j => j.id === selectedJobId) : null;
+                    const alreadyDone = selectedJob && (selectedJob.wageEntries || []).some(e => e.type === 'deposit');
+                    return (
+                      <div key={i} className={`p-3 rounded-lg border ${alreadyDone ? 'opacity-50' : ''} ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{imp.customer} – {imp.event}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£{imp.amount} · {new Date(imp.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})} · {imp.note}</p>
+                          </div>
+                          {alreadyDone && <span className="text-xs text-green-500 font-bold whitespace-nowrap">✓ Already done</span>}
+                        </div>
+                        <select
+                          value={selectedJobId}
+                          onChange={e => setDepositImportMatches(prev => ({...prev, [i]: e.target.value}))}
+                          disabled={alreadyDone}
+                          className={`w-full px-2 py-1.5 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`}
+                        >
+                          <option value="">— Skip / no match —</option>
+                          {allJ.map(j => (
+                            <option key={j.id} value={j.id}>{j.customerName ? `${j.customerName} · ` : ''}{j.jobName}{j.shootDate ? ` (${new Date(j.shootDate + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})})` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => setDepositImportOpen(false)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button onClick={async () => {
+                    let saved = 0;
+                    for (let i = 0; i < DEPOSIT_IMPORTS.length; i++) {
+                      const imp = DEPOSIT_IMPORTS[i];
+                      const jobId = depositImportMatches[i];
+                      if (!jobId) continue;
+                      const job = allJ.find(j => j.id === jobId);
+                      if (!job) continue;
+                      if ((job.wageEntries || []).some(e => e.type === 'deposit')) continue;
+                      await saveDeposit(jobId, imp.amount, imp.date, imp.paid);
+                      logActivity('Deposit imported', job.jobName || '', `£${imp.amount} from ${imp.customer}`);
+                      saved++;
+                    }
+                    alert(`✅ ${saved} deposit${saved !== 1 ? 's' : ''} imported.`);
+                    setDepositImportOpen(false);
+                    setDepositImportMatches({});
+                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Import Selected</button>
                 </div>
               </div>
             </div>
