@@ -944,6 +944,21 @@ function EyeconMoments() {
         if (jobRes.data) {
           setEditingJobs(jobRes.data.filter(r => !r.archived).map(rowToJob));
           setArchivedJobIds(jobRes.data.filter(r => r.archived).map(r => r.id));
+          // One-time migration: move any localStorage deposits into wage_entries in Supabase
+          for (const row of jobRes.data) {
+            const lsKey = `eyecon_deposit_${row.id}`;
+            const lsRaw = localStorage.getItem(lsKey);
+            if (!lsRaw) continue;
+            const alreadyMigrated = (row.wage_entries || []).some(e => e.type === 'deposit');
+            if (alreadyMigrated) { localStorage.removeItem(lsKey); continue; }
+            try {
+              const dep = JSON.parse(lsRaw);
+              if (!dep?.amount) { localStorage.removeItem(lsKey); continue; }
+              const newWageEntries = [...(row.wage_entries || []), { type: 'deposit', amount: dep.amount, date: dep.date, paid: dep.paid }];
+              await db.from('jobs').update({ wage_entries: newWageEntries }).eq('id', row.id);
+              localStorage.removeItem(lsKey);
+            } catch {}
+          }
         }
         if (entryRes.data) setTimeEntries(entryRes.data.map(rowToEntry));
         if (inqRes.data) setInquiries(inqRes.data.map(rowToInquiry));
