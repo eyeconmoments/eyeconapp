@@ -139,6 +139,11 @@ function ClientPortalView({ token }) {
   const debounceRef = React.useRef(null);
   const loadedRef = React.useRef(false);   // true after first itin load — prevents saving on mount
   const savingRef = React.useRef(false);   // true while our own save is in flight — prevents echo loop
+  const [dragFrom, setDragFrom] = React.useState(null);
+  const [dragOver, setDragOver] = React.useState(null);
+  const dragFromRef = React.useRef(null);
+  const dragOverRef = React.useRef(null);
+  const listRef = React.useRef(null);
 
   // Load job once
   React.useEffect(() => {
@@ -150,7 +155,9 @@ function ClientPortalView({ token }) {
           setJob(j);
           setJobId(j.id);
           const src = j.itinerary || {};
-          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' } });
+          // Pre-fill venue from itinerary if set, otherwise pull first line of job notes
+          const venueDefault = ('venue' in src && src.venue) ? src.venue : ((j.notes || '').split(/[.\n]/)[0].trim());
+          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' } });
           // mark loaded on next tick so initial set doesn't trigger auto-save
           setTimeout(() => { loadedRef.current = true; }, 50);
         }
@@ -187,6 +194,42 @@ function ClientPortalView({ token }) {
     }, 800);
   }, [itin]);
 
+  // Non-passive touch listener for mobile timeline drag-and-drop
+  React.useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const onMove = (e) => {
+      if (dragFromRef.current === null) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rows = el.querySelectorAll('[data-drag-idx]');
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (touch.clientY >= rect.top && touch.clientY < rect.bottom) {
+          const idx = +row.dataset.dragIdx;
+          if (dragOverRef.current !== idx) { dragOverRef.current = idx; setDragOver(idx); }
+          break;
+        }
+      }
+    };
+    const onEnd = () => {
+      const from = dragFromRef.current, to = dragOverRef.current;
+      if (from !== null && to !== null && from !== to) {
+        setItin(p => {
+          const a = [...p.scheduleItems];
+          const [it] = a.splice(from, 1);
+          a.splice(to, 0, it);
+          return { ...p, scheduleItems: a };
+        });
+      }
+      dragFromRef.current = null; dragOverRef.current = null;
+      setDragFrom(null); setDragOver(null);
+    };
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    return () => { el.removeEventListener('touchmove', onMove); el.removeEventListener('touchend', onEnd); };
+  }, [!!itin]);
+
   const gold = '#C1A76A';
   const navy = '#1a2535';
   const card = {background:'rgba(255,255,255,0.05)',borderRadius:16,padding:'20px',marginBottom:20};
@@ -215,17 +258,25 @@ function ClientPortalView({ token }) {
       { label: 'Celebrations', items: ['Cake & Rings','Couple Shots','Stage Shots','First Dance','Speeches','Rukhsati','Reception'] },
       { label: 'Other', items: ['Family Photos','Group Photos','Food','Fireworks','Send-Off','End'] },
     ];
+    const addMins2 = (t, m) => {
+      const [h, mn] = t.split(':').map(Number);
+      const tot = h * 60 + mn + m;
+      return `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`;
+    };
+    const itemDurMins = (item) => (item.duration || 2) * 15;
+    const itemTimes = (() => {
+      const times = []; let cur = itin.startTime || '10:00';
+      (itin.scheduleItems || []).forEach(it => { times.push(cur); cur = addMins2(cur, itemDurMins(it)); });
+      return times;
+    })();
     const addItem = (name) => {
-      setItin(p => ({ ...p, scheduleItems: [...p.scheduleItems, { id: Date.now() + Math.random(), name, color: '#C1A76A' }] }));
+      setItin(p => ({ ...p, scheduleItems: [...p.scheduleItems, { id: Date.now() + Math.random(), name, color: '#C1A76A', duration: 2 }] }));
     };
     const removeItem = (id) => setItin(p => ({ ...p, scheduleItems: p.scheduleItems.filter(it => it.id !== id) }));
-    const moveItem = (idx, dir) => setItin(p => {
-      const arr = [...p.scheduleItems];
-      const swap = idx + dir;
-      if (swap < 0 || swap >= arr.length) return p;
-      [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
-      return { ...p, scheduleItems: arr };
-    });
+    const doDrop = (from, to) => {
+      if (from === null || to === null || from === to) return;
+      setItin(p => { const a = [...p.scheduleItems]; const [it] = a.splice(from, 1); a.splice(to, 0, it); return { ...p, scheduleItems: a }; });
+    };
     const saveItin = async () => {
       savingRef.current = true;
       setSaveStatus('saving');
@@ -251,19 +302,24 @@ function ClientPortalView({ token }) {
             <p style={{color:'#e2e8f0',fontSize:14,margin:0}}>🕐 {itin.startTime} — {itin.endTime}</p>
           </div>
         )}
-        {itin.scheduleItems.length > 0 && (
-          <div style={card}>
-            <span style={label}>Your schedule ({itin.scheduleItems.length} moments)</span>
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {itin.scheduleItems.map((it, idx) => (
-                <div key={it.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:8,background:'rgba(255,255,255,0.04)'}}>
-                  <span style={{color:'rgba(193,167,106,0.6)',fontSize:12,minWidth:20,textAlign:'right'}}>{idx + 1}.</span>
-                  <span style={{color:'#e2e8f0',fontSize:14}}>{it.name}</span>
-                </div>
-              ))}
+        {itin.scheduleItems.length > 0 && (() => {
+          const addM2 = (t, m) => { const [h,mn] = t.split(':').map(Number); const tot = h*60+mn+m; return `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`; };
+          const times2 = []; let cur2 = itin.startTime || '10:00';
+          itin.scheduleItems.forEach(it => { times2.push(cur2); cur2 = addM2(cur2, (it.duration||2)*15); });
+          return (
+            <div style={card}>
+              <span style={label}>Your schedule ({itin.scheduleItems.length} moments)</span>
+              <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                {itin.scheduleItems.map((it, idx) => (
+                  <div key={it.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:8,background:'rgba(255,255,255,0.04)'}}>
+                    <span style={{color:gold,fontSize:12,fontWeight:600,minWidth:38,fontVariantNumeric:'tabular-nums'}}>{times2[idx]}</span>
+                    <span style={{color:'#e2e8f0',fontSize:14}}>{it.name}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {itin.notes && (
           <div style={card}>
             <span style={label}>Your notes</span>
@@ -299,18 +355,22 @@ function ClientPortalView({ token }) {
         {/* Timings & Venue */}
         <div style={card}>
           <span style={label}>Event Timings & Venue</span>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+          {itin.venue && (
+            <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(193,167,106,0.08)',border:'1px solid rgba(193,167,106,0.2)',marginBottom:12}}>
+              <span style={{fontSize:18}}>📍</span>
+              <span style={{color:'#e2e8f0',fontSize:14,flex:1}}>{itin.venue}</span>
+            </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
             <div>
-              <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>Start time</div>
+              <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>Coverage start</div>
               <input type="time" value={itin.startTime} onChange={e => setItin(p=>({...p,startTime:e.target.value}))} style={inp} />
             </div>
             <div>
-              <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>End time</div>
+              <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>Coverage end</div>
               <input type="time" value={itin.endTime} onChange={e => setItin(p=>({...p,endTime:e.target.value}))} style={inp} />
             </div>
           </div>
-          <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginBottom:6}}>Venue / location</div>
-          <input type="text" value={itin.venue} onChange={e => setItin(p=>({...p,venue:e.target.value}))} placeholder="e.g. The Grand Ballroom, Manchester" style={inp} />
         </div>
 
         {/* Pre-set moments */}
@@ -342,19 +402,46 @@ function ClientPortalView({ token }) {
           </div>
         </div>
 
-        {/* Current schedule */}
+        {/* Timeline schedule with drag-and-drop */}
         {itin.scheduleItems.length > 0 && (
           <div style={card}>
-            <span style={label}>Your schedule ({itin.scheduleItems.length} moments)</span>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {itin.scheduleItems.map((it, idx) => (
-                <div key={it.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                  <span style={{flex:1,color:'#e2e8f0',fontSize:14}}>{it.name}</span>
-                  <button onClick={()=>moveItem(idx,-1)} disabled={idx===0} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:16,padding:'0 4px',opacity:idx===0?0.2:1}}>↑</button>
-                  <button onClick={()=>moveItem(idx,1)} disabled={idx===itin.scheduleItems.length-1} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:16,padding:'0 4px',opacity:idx===itin.scheduleItems.length-1?0.2:1}}>↓</button>
-                  <button onClick={()=>removeItem(it.id)} style={{background:'none',border:'none',color:'rgba(239,68,68,0.6)',cursor:'pointer',fontSize:16,padding:'0 4px'}}>✕</button>
-                </div>
-              ))}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <span style={label}>Your schedule</span>
+              <span style={{color:'rgba(255,255,255,0.25)',fontSize:11}}>≡ drag to reorder</span>
+            </div>
+            <div ref={listRef}>
+              {itin.scheduleItems.map((it, idx) => {
+                const isDragging = dragFrom === idx;
+                const isOver = dragOver === idx && dragFrom !== null && dragFrom !== idx;
+                return (
+                  <div
+                    key={it.id}
+                    data-drag-idx={idx}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; dragFromRef.current = idx; dragOverRef.current = idx; setDragFrom(idx); }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; dragOverRef.current = idx; setDragOver(idx); }}
+                    onDrop={(e) => { e.preventDefault(); doDrop(dragFromRef.current, idx); dragFromRef.current = null; dragOverRef.current = null; setDragFrom(null); setDragOver(null); }}
+                    onDragEnd={() => { dragFromRef.current = null; dragOverRef.current = null; setDragFrom(null); setDragOver(null); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '11px 12px', borderRadius: 10, marginBottom: 4,
+                      background: isDragging ? 'rgba(193,167,106,0.1)' : isOver ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${isOver ? gold : isDragging ? 'rgba(193,167,106,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                      opacity: isDragging ? 0.45 : 1,
+                      transition: 'background 0.1s, border-color 0.1s',
+                    }}
+                  >
+                    <span style={{color: gold, fontSize: 12, fontWeight: 600, minWidth: 38, fontVariantNumeric: 'tabular-nums', flexShrink: 0}}>{itemTimes[idx]}</span>
+                    <span
+                      onTouchStart={() => { dragFromRef.current = idx; dragOverRef.current = idx; setDragFrom(idx); }}
+                      style={{color: 'rgba(255,255,255,0.25)', fontSize: 20, cursor: 'grab', userSelect: 'none', touchAction: 'none', padding: '0 2px', flexShrink: 0}}
+                    >≡</span>
+                    <span style={{flex: 1, color: '#e2e8f0', fontSize: 14}}>{it.name}</span>
+                    <span style={{color: 'rgba(255,255,255,0.2)', fontSize: 11, flexShrink: 0}}>{itemDurMins(it)}m</span>
+                    <button onClick={() => removeItem(it.id)} style={{background: 'none', border: 'none', color: 'rgba(239,68,68,0.5)', cursor: 'pointer', fontSize: 16, padding: '0 2px', lineHeight: 1, flexShrink: 0}}>✕</button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
