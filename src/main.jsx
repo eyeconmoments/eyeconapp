@@ -595,6 +595,7 @@ function EyeconMoments() {
   const [archivePromptJob, setArchivePromptJob] = useState(null); // { id, name } — ask to archive after job fully complete
   const [gotoFilePrompt, setGotoFilePrompt] = useState(null); // { driveLink, fileName, nextStageName } — open prev stage file when next stage starts
   const [projectFileSelected, setProjectFileSelected] = useState(null);
+  const [projectDriveLinkInput, setProjectDriveLinkInput] = useState('');
   const [driveUploading, setDriveUploading] = useState(false);
   const [gearChecklists, setGearChecklists] = useState([]);
   const [activeGearCheck, setActiveGearCheck] = useState(null); // { jobName, items: [{name,checked}], notes }
@@ -8483,16 +8484,17 @@ Notes: ${j.notes || 'none'}`;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       
-      // Left column
+      // Left column — wrap values so they don't overlap right column (max ~65 units, x=45..x=110)
+      const hdrW = 65;
       doc.setFont('helvetica', 'bold');
       doc.text('Event:', 20, 72);
       doc.setFont('helvetica', 'normal');
-      doc.text(job.jobName, 45, 72);
-      
+      doc.text(doc.splitTextToSize(job.jobName, hdrW), 45, 72);
+
       doc.setFont('helvetica', 'bold');
       doc.text('Client:', 20, 79);
       doc.setFont('helvetica', 'normal');
-      doc.text(job.customerName, 45, 79);
+      doc.text(doc.splitTextToSize(job.customerName, hdrW), 45, 79);
       
       doc.setFont('helvetica', 'bold');
       doc.text('Date:', 20, 86);
@@ -8556,62 +8558,67 @@ Notes: ${j.notes || 'none'}`;
       
       doc.setFontSize(10);
       scheduleItems.forEach((item, idx) => {
-        if (yPos > 250) { 
-          doc.addPage(); 
-          yPos = 20;
-          // Add header to new page
-          doc.setFillColor(193, 167, 106);
-          doc.rect(0, 0, 210, 15, 'F');
-          doc.setTextColor(255, 255, 255);
-          doc.setFontSize(10);
-          doc.text('EYECON MOMENTS - Event Itinerary (continued)', 105, 10, { align: 'center' });
-          yPos = 30;
-        }
-        
         const duration = item.duration || 2;
         const isNewGroup = !item.groupId || item.groupId !== lastGroupId;
-        
+
         if (isNewGroup) {
           const endTime = addMinsToTime(currentTime, duration * 15);
-          
-          // Alternating row background
+          // Pre-compute wrapped lines so we know actual row height
+          const nameLines = doc.splitTextToSize(item.name, 115); // x=45..x=165, minus ~10 pad
+          const noteLines = item.notes ? doc.splitTextToSize(item.notes, 115) : [];
+          const lineH = 4.5;
+          const rowH = Math.max(10, nameLines.length * lineH + (noteLines.length > 0 ? noteLines.length * 4 + 2 : 0) + 4);
+
+          if (yPos + rowH > 258) {
+            doc.addPage();
+            yPos = 20;
+            doc.setFillColor(193, 167, 106);
+            doc.rect(0, 0, 210, 15, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(10);
+            doc.text('EYECON MOMENTS - Event Itinerary (continued)', 105, 10, { align: 'center' });
+            yPos = 30;
+          }
+
+          // Alternating row background — sized to actual content
           if (idx % 2 === 0) {
             doc.setFillColor(250, 248, 245);
-            doc.rect(15, yPos - 4, 180, item.notes ? 16 : 12, 'F');
+            doc.rect(15, yPos - 3, 180, rowH, 'F');
           }
-          
+
           // Time
           doc.setTextColor(193, 167, 106);
           doc.setFont('helvetica', 'bold');
           doc.text(currentTime, 20, yPos);
-          
-          // Item name
+
+          // Item name — wrapped
           doc.setTextColor(60, 60, 60);
           doc.setFont('helvetica', 'normal');
-          doc.text(`${item.name}`, 45, yPos);
-          
-          // Duration on right
+          doc.text(nameLines, 45, yPos);
+
+          // Duration on right — aligned to first line
           doc.setTextColor(120, 120, 120);
           doc.setFontSize(9);
-          doc.text(`${duration * 15} mins`, 170, yPos);
+          doc.text(`${duration * 15}m`, 175, yPos, { align: 'right' });
           doc.setFontSize(10);
-          
-          if (item.notes) {
+
+          if (noteLines.length > 0) {
             doc.setTextColor(100, 100, 100);
             doc.setFontSize(8);
-            doc.text(`   ${item.notes}`, 45, yPos + 5);
+            doc.text(noteLines, 47, yPos + nameLines.length * lineH);
             doc.setFontSize(10);
-            yPos += 6;
           }
-          yPos += 10;
+
+          yPos += rowH;
           currentTime = endTime;
         } else {
-          // Concurrent item - indent and show with bullet
+          // Concurrent item — indent and wrap
+          const concLines = doc.splitTextToSize(`• ${item.name} (concurrent)`, 120);
           doc.setTextColor(100, 100, 100);
-          doc.text(`    • ${item.name} (concurrent)`, 45, yPos - 5);
-          yPos += 5;
+          doc.text(concLines, 49, yPos - 3);
+          yPos += concLines.length * 4.5;
         }
-        
+
         lastGroupId = item.groupId;
       });
       
@@ -9732,9 +9739,18 @@ Capturing Your Special Day
             f.type === 'drive_project_file' &&
             (!projectFileModal.stageName || f.stageName === projectFileModal.stageName)
           );
+          const _pfLinkTrimmed = projectDriveLinkInput.trim();
+          const _pfCanSaveLink = _pfLinkTrimmed.length > 0 && (_pfLinkTrimmed.startsWith('http://') || _pfLinkTrimmed.startsWith('https://'));
+          const _pfCloseAll = () => { setProjectFileModal(null); setProjectFileSelected(null); setProjectDriveLinkInput(''); };
+          const _pfQueueGoto = () => {
+            const _pfJobNow = editingJobs.find(j => j.id === projectFileModal.jobId);
+            const _pfStageIdx = (_pfJobNow?.stages || []).findIndex(s => s.name === projectFileModal.stageName);
+            const _pfNextStage = _pfJobNow?.stages?.[_pfStageIdx + 1];
+            if (_pfNextStage) setGotoFilePrompt({ jobId: projectFileModal.jobId, stageName: projectFileModal.stageName, nextStageName: _pfNextStage.name.split(',')[0].trim() });
+          };
           return (
             <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl w-full max-w-md`}>
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto`}>
                 <div className={`p-5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                   <div className="flex items-start justify-between">
                     <div>
@@ -9743,16 +9759,16 @@ Capturing Your Special Day
                       </h2>
                       <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{projectFileModal.jobName}</p>
                     </div>
-                    <button onClick={() => setProjectFileModal(null)} className={`text-2xl leading-none ml-3 mt-0.5 ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}>✕</button>
+                    <button onClick={_pfCloseAll} className={`text-2xl leading-none ml-3 mt-0.5 ${darkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}>✕</button>
                   </div>
                   <p className={`text-sm mt-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Upload the project file to Google Drive. It will be saved as <span className="font-semibold">{_pfSuggestedName}</span>.
+                    Save the Google Drive link to the video/project file so the team can find it later.
                   </p>
                 </div>
                 <div className="p-5 space-y-4">
                   {_pfExisting.length > 0 && (
                     <div className={`rounded-lg p-3 ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
-                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>✅ Already on Drive:</p>
+                      <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>✅ Already saved:</p>
                       {_pfExisting.map((f, i) => (
                         <a key={i} href={f.driveLink} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1.5 text-xs text-blue-500 hover:underline mt-0.5">
@@ -9761,62 +9777,90 @@ Capturing Your Special Day
                       ))}
                     </div>
                   )}
-                  {/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? (
-                    <div className={`rounded-xl p-6 text-center border-2 border-dashed ${darkMode ? 'border-gray-600 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
-                      <div className="text-3xl mb-2">💻</div>
-                      <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Open on your computer to upload the project file</p>
-                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Project files (.prproj, .drp, .aep etc.) are too large to upload from a phone</p>
-                    </div>
-                  ) : (
-                  <div
-                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#C1A76A'; }}
-                    onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
-                    onDrop={e => {
-                      e.preventDefault();
-                      e.currentTarget.style.borderColor = '';
-                      const f = e.dataTransfer.files[0];
-                      if (f) setProjectFileSelected(f);
-                    }}
-                    onClick={() => document.getElementById('pf-file-input').click()}
-                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${darkMode ? 'border-gray-600 hover:border-yellow-400' : 'border-gray-300 hover:border-yellow-500'}`}
-                    style={{transition:'border-color 0.2s'}}>
-                    <div className="text-3xl mb-2">📂</div>
-                    {projectFileSelected ? (
-                      <p className="text-sm font-semibold text-green-500">{projectFileSelected.name}<br/><span className="font-normal text-xs">({(projectFileSelected.size / 1024).toFixed(0)} KB)</span></p>
-                    ) : (
-                      <>
-                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drag & drop project file here</p>
-                        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>or tap to browse</p>
-                        <p className={`text-xs mt-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>.prproj · .drp · .aep · .fcpbundle · .ppro</p>
-                      </>
-                    )}
-                    <input type="file" id="pf-file-input" className="hidden"
-                      accept=".prproj,.drp,.aep,.fcpbundle,.ppro,.xml"
-                      onChange={e => { const f = e.target.files[0]; if (f) setProjectFileSelected(f); }} />
+
+                  {/* Primary: paste Google Drive link */}
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      ☁️ Paste Google Drive link
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://drive.google.com/file/d/..."
+                      value={projectDriveLinkInput}
+                      onChange={e => setProjectDriveLinkInput(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 placeholder-gray-400'}`}
+                    />
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Upload to Drive first, then paste the share link here</p>
                   </div>
+
+                  {/* Secondary: upload small project file directly */}
+                  {!projectDriveLinkInput && !(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) && (
+                    <div>
+                      <p className={`text-xs font-semibold mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>— or upload a small project file directly —</p>
+                      <div
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#C1A76A'; }}
+                        onDragLeave={e => { e.currentTarget.style.borderColor = ''; }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          e.currentTarget.style.borderColor = '';
+                          const f = e.dataTransfer.files[0];
+                          if (f) setProjectFileSelected(f);
+                        }}
+                        onClick={() => document.getElementById('pf-file-input').click()}
+                        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer ${darkMode ? 'border-gray-600 hover:border-yellow-400' : 'border-gray-300 hover:border-yellow-500'}`}>
+                        <div className="text-2xl mb-1">📂</div>
+                        {projectFileSelected ? (
+                          <p className="text-sm font-semibold text-green-500">{projectFileSelected.name} <span className="font-normal text-xs">({(projectFileSelected.size / 1024 / 1024).toFixed(1)} MB)</span></p>
+                        ) : (
+                          <>
+                            <p className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drag & drop or tap to browse</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>.prproj · .drp · .aep · .fcpbundle (small files only)</p>
+                          </>
+                        )}
+                        <input type="file" id="pf-file-input" className="hidden"
+                          accept=".prproj,.drp,.aep,.fcpbundle,.ppro,.xml,.mp4,.mov"
+                          onChange={e => { const f = e.target.files[0]; if (f) setProjectFileSelected(f); }} />
+                      </div>
+                      {projectFileSelected && projectFileSelected.size > 4 * 1024 * 1024 && (
+                        <p className="text-xs text-amber-500 mt-1">⚠ File is large ({(projectFileSelected.size/1024/1024).toFixed(0)} MB) — upload may fail. Paste a Drive link instead.</p>
+                      )}
+                    </div>
                   )}
+
                   <div className="flex gap-3">
-                    <button onClick={() => { setProjectFileModal(null); setProjectFileSelected(null); }}
+                    <button onClick={_pfCloseAll}
                       className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                       {archivePromptJob ? 'Next →' : 'Skip for now'}
                     </button>
                     <button
-                      disabled={driveUploading || !projectFileSelected}
+                      disabled={driveUploading || (!_pfCanSaveLink && !projectFileSelected)}
                       onClick={async () => {
-                        if (!projectFileSelected) { alert('Please choose or drag a file first.'); return; }
-                        await uploadToDrive(projectFileModal.jobId, projectFileSelected, _pfSuggestedName, projectFileModal.stageName);
-                        setProjectFileSelected(null);
-                        // Queue goto prompt for the next stage (look up file by jobId+stageName at render time)
-                        const _pfJobNow = editingJobs.find(j => j.id === projectFileModal.jobId);
-                        const _pfStageIdx = (_pfJobNow?.stages || []).findIndex(s => s.name === projectFileModal.stageName);
-                        const _pfNextStage = _pfJobNow?.stages?.[_pfStageIdx + 1];
-                        if (_pfNextStage) {
-                          setGotoFilePrompt({ jobId: projectFileModal.jobId, stageName: projectFileModal.stageName, nextStageName: _pfNextStage.name.split(',')[0].trim() });
+                        if (_pfCanSaveLink) {
+                          // Save Drive link directly — no upload needed
+                          const job = editingJobs.find(j => j.id === projectFileModal.jobId);
+                          if (!job) return;
+                          const driveEntry = {
+                            type: 'drive_project_file',
+                            fileName: _pfSuggestedName,
+                            driveFileId: null,
+                            driveLink: _pfLinkTrimmed,
+                            uploadedAt: new Date().toISOString(),
+                            uploadedBy: currentUser.name,
+                            ...(projectFileModal.stageName ? { stageName: projectFileModal.stageName } : {}),
+                          };
+                          const newFileLocations = [...(job.fileLocations || []), driveEntry];
+                          await db.from('jobs').update({ file_locations: newFileLocations }).eq('id', job.id);
+                          setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, fileLocations: newFileLocations } : j));
+                          _pfQueueGoto();
+                          _pfCloseAll();
+                        } else if (projectFileSelected) {
+                          await uploadToDrive(projectFileModal.jobId, projectFileSelected, _pfSuggestedName, projectFileModal.stageName);
+                          _pfQueueGoto();
+                          _pfCloseAll();
                         }
-                        setProjectFileModal(null);
                       }}
-                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${(driveUploading || !projectFileSelected) ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
-                      {driveUploading ? '⏳ Uploading…' : '☁️ Upload to Drive'}
+                      className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${(driveUploading || (!_pfCanSaveLink && !projectFileSelected)) ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                      {driveUploading ? '⏳ Uploading…' : _pfCanSaveLink ? '💾 Save Link' : '☁️ Upload to Drive'}
                     </button>
                   </div>
                 </div>
