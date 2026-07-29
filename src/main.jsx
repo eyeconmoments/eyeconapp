@@ -2837,6 +2837,18 @@ function EyeconMoments() {
     const deadline = new Date(shootDate.getTime() + 90 * 24 * 60 * 60 * 1000);
 
     const eventName = event.summary || event.title || 'New Job';
+
+    // Duplicate check — same calendar event ID or same name + same shoot date
+    const shootDateStr = shootDate.toISOString().split('T')[0];
+    const duplicate = editingJobs.find(j => {
+      const jDate = j.shootDate instanceof Date ? j.shootDate.toISOString().split('T')[0] : (j.shootDate || '').slice(0, 10);
+      return (event.id && j.calendarEventId === event.id) ||
+             (j.jobName?.toLowerCase() === eventName.toLowerCase() && jDate === shootDateStr);
+    });
+    if (duplicate) {
+      const proceed = window.confirm(`"${eventName}" is already in your job list.\n\nImport it again anyway?`);
+      if (!proceed) return;
+    }
     const nameLower = eventName.toLowerCase();
     const eventType = nameLower.includes('mehndi') ? 'mehndi' :
                       nameLower.includes('wedding') ? 'wedding' :
