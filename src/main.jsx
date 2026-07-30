@@ -1247,9 +1247,24 @@ function EyeconMoments() {
   }, []);
 
   // Sync liveItineraryJob from DB — when admin sets isLive on a job, all clients see it
+  // Auto-clears stale LIVE flag if the shoot date is not today
   useEffect(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
     const liveJob = editingJobs.find(j => j.itinerary?.isLive === true && !archivedJobIds.includes(j.id));
-    setLiveItineraryJob(liveJob?.id ?? null);
+    if (liveJob) {
+      const shootStr = liveJob.shootDate instanceof Date
+        ? liveJob.shootDate.toISOString().slice(0, 10)
+        : (liveJob.shootDate || '').slice(0, 10);
+      if (shootStr !== todayStr) {
+        // Stale — silently clear the flag in DB
+        db.from('jobs').update({ itinerary: { ...liveJob.itinerary, isLive: false } }).eq('id', liveJob.id);
+        setLiveItineraryJob(null);
+      } else {
+        setLiveItineraryJob(liveJob.id);
+      }
+    } else {
+      setLiveItineraryJob(null);
+    }
   }, [editingJobs, archivedJobIds]);
 
   // Admin-only: persist Go Live state to DB so all staff see it instantly via real-time
@@ -9393,8 +9408,10 @@ Capturing Your Special Day
                                   <span className="bg-yellow-400 text-yellow-900 rounded-full px-1 font-bold" style={{fontSize:'9px'}}>{job.itinerary.sharedWith.length}</span>
                                 )}
                               </button>
-                              <button onClick={() => toggleLiveJob(job.id)}
-                                className={`text-xs px-2 py-1 rounded font-semibold ${liveItineraryJob === job.id ? 'bg-red-600 text-white animate-pulse' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
+                              <button onClick={() => {
+                                if (liveItineraryJob !== job.id && !window.confirm(`Start live itinerary for "${job.jobName}"?\n\nThis shows the live schedule to all staff on their devices.`)) return;
+                                toggleLiveJob(job.id);
+                              }} className={`text-xs px-2 py-1 rounded font-semibold ${liveItineraryJob === job.id ? 'bg-red-600 text-white animate-pulse' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}>
                                 {liveItineraryJob === job.id ? '🔴 LIVE' : '▶ Go Live'}
                               </button>
                               {currentUser.isAdmin && (
