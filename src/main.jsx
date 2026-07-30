@@ -791,6 +791,8 @@ function EyeconMoments() {
   const [gotoFilePrompt, setGotoFilePrompt] = useState(null); // { driveLink, fileName, nextStageName } — open prev stage file when next stage starts
   const [projectFileSelected, setProjectFileSelected] = useState(null);
   const [projectDriveLinkInput, setProjectDriveLinkInput] = useState('');
+  const [pfPcName, setPfPcName] = useState('');
+  const [pfPcStepDone, setPfPcStepDone] = useState(false);
   const [driveUploading, setDriveUploading] = useState(false);
   const [gearChecklists, setGearChecklists] = useState([]);
   const [activeGearCheck, setActiveGearCheck] = useState(null); // { jobName, items: [{name,checked}], notes }
@@ -9393,10 +9395,22 @@ Capturing Your Special Day
                                   setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
                                 }
                                 const url = `${window.location.origin}/client/${token}`;
-                                try { await navigator.clipboard.writeText(url); alert(`✅ Consultation link copied!\n\nSend this to your client — they can fill in their event outline before the consultation.\n\n${url}`); }
-                                catch { alert(`Send this link to your client:\n\n${url}`); }
-                              }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1" title="Send consultation link to client">
+                                try { await navigator.clipboard.writeText(url); } catch {}
+                                alert(`✅ Link copied! Send to ${job.customerName || 'client'}.\n\n${url}`);
+                              }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1" title="Copy client portal link">
                                 📋 Client Link
+                              </button>
+                              {/* Open client portal */}
+                              <button onClick={async () => {
+                                let token = job.clientToken;
+                                if (!token) {
+                                  token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                                  await db.from('jobs').update({ client_token: token }).eq('id', job.id);
+                                  setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
+                                }
+                                window.open(`${window.location.origin}/client/${token}`, '_blank');
+                              }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1" title="Open client portal in new tab">
+                                ↗ Open
                               </button>
                               {/* Share itinerary with staff */}
                               <button onClick={() => {
@@ -9946,7 +9960,7 @@ Capturing Your Special Day
           );
           const _pfLinkTrimmed = projectDriveLinkInput.trim();
           const _pfCanSaveLink = _pfLinkTrimmed.length > 0 && (_pfLinkTrimmed.startsWith('http://') || _pfLinkTrimmed.startsWith('https://'));
-          const _pfCloseAll = () => { setProjectFileModal(null); setProjectFileSelected(null); setProjectDriveLinkInput(''); };
+          const _pfCloseAll = () => { setProjectFileModal(null); setProjectFileSelected(null); setProjectDriveLinkInput(''); setPfPcName(''); setPfPcStepDone(false); };
           const _pfQueueGoto = () => {
             const _pfJobNow = editingJobs.find(j => j.id === projectFileModal.jobId);
             const _pfStageIdx = (_pfJobNow?.stages || []).findIndex(s => s.name === projectFileModal.stageName);
@@ -9970,7 +9984,41 @@ Capturing Your Special Day
                     Save the Google Drive link to the video/project file so the team can find it later.
                   </p>
                 </div>
+                {/* Step 1 — which PC? */}
+                {!pfPcStepDone ? (
+                  <div className="p-5 space-y-4">
+                    <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                      💻 Which PC did you complete this on?
+                    </label>
+                    <input
+                      type="text"
+                      value={pfPcName}
+                      onChange={e => setPfPcName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && pfPcName.trim()) setPfPcStepDone(true); }}
+                      placeholder="e.g. Main PC, Studio Laptop, Home PC…"
+                      autoFocus
+                      className={`w-full px-3 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 placeholder-gray-400'}`}
+                    />
+                    <div className="flex gap-3">
+                      <button onClick={() => setPfPcStepDone(true)}
+                        className={`flex-1 py-2.5 rounded-lg font-semibold text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                        Skip
+                      </button>
+                      <button onClick={() => setPfPcStepDone(true)} disabled={!pfPcName.trim()}
+                        className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white ${pfPcName.trim() ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-300 cursor-not-allowed'}`}>
+                        Continue →
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="p-5 space-y-4">
+                  {pfPcName.trim() && (
+                    <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                      <span>💻</span>
+                      <span>Completed on: <strong>{pfPcName.trim()}</strong></span>
+                      <button onClick={() => setPfPcStepDone(false)} className="ml-auto underline opacity-60">change</button>
+                    </div>
+                  )}
                   {_pfExisting.length > 0 && (
                     <div className={`rounded-lg p-3 ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
                       <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>✅ Already saved:</p>
@@ -10051,6 +10099,7 @@ Capturing Your Special Day
                             driveLink: _pfLinkTrimmed,
                             uploadedAt: new Date().toISOString(),
                             uploadedBy: currentUser.name,
+                            completedOnPc: pfPcName.trim() || null,
                             ...(projectFileModal.stageName ? { stageName: projectFileModal.stageName } : {}),
                           };
                           const newFileLocations = [...(job.fileLocations || []), driveEntry];
@@ -10069,6 +10118,7 @@ Capturing Your Special Day
                     </button>
                   </div>
                 </div>
+                )} {/* end pfPcStepDone */}
               </div>
             </div>
           );
