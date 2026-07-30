@@ -144,6 +144,12 @@ function ClientPortalView({ token }) {
   const dragFromRef = React.useRef(null);
   const dragOverRef = React.useRef(null);
   const listRef = React.useRef(null);
+  const [pinVerified, setPinVerified] = React.useState(false);
+  const [pinInput, setPinInput] = React.useState('');
+  const [pinError, setPinError] = React.useState(false);
+  const [wizardStep, setWizardStep] = React.useState(null); // null | 'name' | 'duration'
+  const [wizardMoment, setWizardMoment] = React.useState('');
+  const [wizardInsertIdx, setWizardInsertIdx] = React.useState(null);
 
   // Load job once
   React.useEffect(() => {
@@ -286,6 +292,37 @@ function ClientPortalView({ token }) {
       setItinSaved(true);
     };
 
+    // PIN gate — shoot date as DDMM e.g. 2607 for 26 July
+    const shootPin = (() => {
+      const d = new Date(job.shootDate);
+      return String(d.getDate()).padStart(2,'0') + String(d.getMonth()+1).padStart(2,'0');
+    })();
+    if (!pinVerified) return (
+      <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+        <div style={{maxWidth:360,width:'100%',textAlign:'center'}}>
+          <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain',marginBottom:24}} onError={e=>e.target.style.display='none'} />
+          <div style={{fontSize:36,marginBottom:12}}>🔐</div>
+          <h2 style={{color:gold,fontSize:22,margin:'0 0 8px'}}>Access your event outline</h2>
+          <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,margin:'0 0 24px',lineHeight:1.6}}>Enter your event date as a 4-digit PIN<br/>(day + month — e.g. <strong style={{color:gold}}>2607</strong> for 26th July)</p>
+          <input
+            type="tel" inputMode="numeric" maxLength={4}
+            value={pinInput}
+            onChange={e=>{setPinInput(e.target.value.replace(/\D/g,''));setPinError(false);}}
+            onKeyDown={e=>{if(e.key==='Enter'&&pinInput.length===4){if(pinInput===shootPin)setPinVerified(true);else setPinError(true);}}}
+            placeholder="• • • •"
+            style={{...inp,textAlign:'center',fontSize:28,letterSpacing:12,marginBottom:12}}
+            autoFocus
+          />
+          {pinError && <p style={{color:'#f87171',fontSize:13,marginBottom:12}}>Incorrect — try DDMM format (e.g. 2607 for 26 July)</p>}
+          <button
+            onClick={()=>{if(pinInput===shootPin)setPinVerified(true);else setPinError(true);}}
+            style={{width:'100%',padding:'14px',borderRadius:12,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer'}}
+          >Continue →</button>
+          <p style={{color:'rgba(255,255,255,0.2)',fontSize:12,marginTop:16}}>Need help? Contact Eyecon Moments directly.</p>
+        </div>
+      </div>
+    );
+
     if (itinSaved) return (
       <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:520,margin:'0 auto'}}>
         <div style={{textAlign:'center',marginBottom:28,paddingTop:12}}>
@@ -348,7 +385,7 @@ function ClientPortalView({ token }) {
 
         <div style={{...card,borderLeft:'3px solid rgba(193,167,106,0.4)'}}>
           <p style={{color:'#cbd5e1',fontSize:14,margin:0,lineHeight:1.6}}>
-            Before your consultation, tell us what moments matter most. Tap items below to add them to your schedule — we'll go through it together and finalise everything.
+            Build your event schedule below. Tap <strong style={{color:gold}}>Add a moment</strong> for each thing that'll happen, set how long it'll take, then drag rows to reorder. We'll review it together and finalise everything.
           </p>
         </div>
 
@@ -373,73 +410,144 @@ function ClientPortalView({ token }) {
           </div>
         </div>
 
-        {/* Pre-set moments */}
-        <div style={card}>
-          <span style={label}>Tap to add moments</span>
-          {presetGroups.map(g => (
-            <div key={g.label} style={{marginBottom:16}}>
-              <div style={{color:'rgba(255,255,255,0.35)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>{g.label}</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-                {g.items.map(name => {
-                  const added = itin.scheduleItems.some(it => it.name === name);
-                  return (
-                    <button key={name} onClick={() => added ? removeItem(itin.scheduleItems.find(it=>it.name===name)?.id) : addItem(name)}
-                      style={{padding:'6px 14px',borderRadius:20,border:`1px solid ${added?gold:'rgba(255,255,255,0.15)'}`,background:added?'rgba(193,167,106,0.2)':'transparent',color:added?gold:'rgba(255,255,255,0.6)',fontSize:13,cursor:'pointer',transition:'all 0.15s'}}>
-                      {added ? '✓ ' : ''}{name}
+        {/* Wizard for adding moments */}
+        {wizardStep !== null && (() => {
+          const insertIdx = wizardInsertIdx !== null ? wizardInsertIdx : itin.scheduleItems.length;
+          let wizTime = itin.startTime || '10:00';
+          for (let i = 0; i < insertIdx; i++) wizTime = addMins2(wizTime, itemDurMins(itin.scheduleItems[i]));
+          const confirmAdd = (dur) => {
+            const newItem = {id:Date.now()+Math.random(), name:wizardMoment, color:gold, duration:dur};
+            setItin(p => {
+              const a = [...p.scheduleItems];
+              if (wizardInsertIdx !== null) a.splice(wizardInsertIdx, 0, newItem);
+              else a.push(newItem);
+              return {...p, scheduleItems: a};
+            });
+            setWizardStep(null); setWizardMoment(''); setWizardInsertIdx(null);
+          };
+          return (
+            <div style={card}>
+              {wizardStep === 'name' ? (
+                <>
+                  <div style={{...label, marginBottom:8}}>What will happen at {wizTime}?</div>
+                  {presetGroups.map(g => (
+                    <div key={g.label} style={{marginBottom:14}}>
+                      <div style={{color:'rgba(255,255,255,0.3)',fontSize:11,marginBottom:6,textTransform:'uppercase',letterSpacing:1}}>{g.label}</div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                        {g.items.map(name => (
+                          <button key={name} onClick={()=>{setWizardMoment(name);setWizardStep('duration');}}
+                            style={{padding:'7px 14px',borderRadius:20,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',color:'rgba(255,255,255,0.7)',fontSize:13,cursor:'pointer'}}>
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{marginTop:8,display:'flex',gap:8}}>
+                    <input type="text" value={wizardMoment} onChange={e=>setWizardMoment(e.target.value)}
+                      onKeyDown={e=>{if(e.key==='Enter'&&wizardMoment.trim())setWizardStep('duration');}}
+                      placeholder="Or type your own moment…" style={{...inp,flex:1}} />
+                    <button onClick={()=>{if(wizardMoment.trim())setWizardStep('duration');}}
+                      style={{padding:'10px 16px',borderRadius:10,background:gold,color:navy,fontWeight:700,border:'none',cursor:'pointer',fontSize:14}}>
+                      Next →
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                  <button onClick={()=>{setWizardStep(null);setWizardMoment('');setWizardInsertIdx(null);}}
+                    style={{marginTop:10,background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:13,padding:0,display:'block'}}>
+                    ✕ Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{...label, marginBottom:8}}>How long will "{wizardMoment}" take?</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:14}}>
+                    {[['15m',1],['30m',2],['45m',3],['1hr',4],['1h 30',6],['2hr',8],['2h 30',10],['3hr',12]].map(([lbl,dur])=>(
+                      <button key={dur} onClick={()=>confirmAdd(dur)}
+                        style={{padding:'11px 20px',borderRadius:12,border:'1px solid rgba(255,255,255,0.2)',background:'rgba(255,255,255,0.05)',color:'#e2e8f0',fontSize:14,cursor:'pointer',fontWeight:600}}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                  <p style={{color:'rgba(255,255,255,0.3)',fontSize:12,marginBottom:6}}>Or enter custom minutes:</p>
+                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    <input type="number" placeholder="e.g. 20" step="5" min="5" style={{...inp,flex:1}}
+                      onKeyDown={e=>{if(e.key==='Enter'){const m=parseInt(e.target.value)||0;if(m>0)confirmAdd(Math.max(1,Math.round(m/15)));e.target.value='';}} } />
+                    <span style={{color:'rgba(255,255,255,0.4)',fontSize:13}}>min</span>
+                  </div>
+                  <button onClick={()=>setWizardStep('name')}
+                    style={{marginTop:10,background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:13,padding:0,display:'block'}}>
+                    ← Back
+                  </button>
+                </>
+              )}
             </div>
-          ))}
-          {/* Custom item */}
-          <div style={{marginTop:8,display:'flex',gap:8}}>
-            <input type="text" value={customInput} onChange={e=>setCustomInput(e.target.value)}
-              onKeyDown={e=>{ if(e.key==='Enter'&&customInput.trim()){addItem(customInput.trim());setCustomInput('');} }}
-              placeholder="Add your own moment…" style={{...inp,flex:1}} />
-            <button onClick={()=>{if(customInput.trim()){addItem(customInput.trim());setCustomInput('');}}}
-              style={{padding:'10px 16px',borderRadius:10,background:gold,color:navy,fontWeight:700,border:'none',cursor:'pointer',fontSize:14}}>+</button>
-          </div>
-        </div>
+          );
+        })()}
 
-        {/* Timeline schedule with drag-and-drop */}
+        {/* Add moment button — shown when not in wizard */}
+        {wizardStep === null && (
+          <div style={{textAlign:'center',marginBottom:20}}>
+            <button onClick={()=>{setWizardInsertIdx(null);setWizardMoment('');setWizardStep('name');}}
+              style={{padding:'11px 28px',borderRadius:22,border:`1px solid ${gold}`,background:'rgba(193,167,106,0.12)',color:gold,fontSize:15,cursor:'pointer',fontWeight:600}}>
+              ➕ Add a moment
+            </button>
+          </div>
+        )}
+
+        {/* Timeline with drag-and-drop + insert buttons */}
         {itin.scheduleItems.length > 0 && (
           <div style={card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-              <span style={label}>Your schedule</span>
-              <span style={{color:'rgba(255,255,255,0.25)',fontSize:11}}>≡ drag to reorder</span>
+              <span style={label}>Your schedule ({itin.scheduleItems.length} moment{itin.scheduleItems.length!==1?'s':''})</span>
+              <span style={{color:'rgba(255,255,255,0.2)',fontSize:11}}>≡ drag to reorder</span>
             </div>
             <div ref={listRef}>
+              {wizardStep === null && (
+                <button onClick={()=>{setWizardInsertIdx(0);setWizardMoment('');setWizardStep('name');}}
+                  style={{display:'block',width:'100%',padding:'5px 0',marginBottom:6,background:'none',border:'1px dashed rgba(255,255,255,0.08)',borderRadius:6,color:'rgba(255,255,255,0.2)',cursor:'pointer',fontSize:12}}>
+                  + insert here
+                </button>
+              )}
               {itin.scheduleItems.map((it, idx) => {
                 const isDragging = dragFrom === idx;
                 const isOver = dragOver === idx && dragFrom !== null && dragFrom !== idx;
                 return (
-                  <div
-                    key={it.id}
-                    data-drag-idx={idx}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; dragFromRef.current = idx; dragOverRef.current = idx; setDragFrom(idx); }}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; dragOverRef.current = idx; setDragOver(idx); }}
-                    onDrop={(e) => { e.preventDefault(); doDrop(dragFromRef.current, idx); dragFromRef.current = null; dragOverRef.current = null; setDragFrom(null); setDragOver(null); }}
-                    onDragEnd={() => { dragFromRef.current = null; dragOverRef.current = null; setDragFrom(null); setDragOver(null); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '11px 12px', borderRadius: 10, marginBottom: 4,
-                      background: isDragging ? 'rgba(193,167,106,0.1)' : isOver ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${isOver ? gold : isDragging ? 'rgba(193,167,106,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                      opacity: isDragging ? 0.45 : 1,
-                      transition: 'background 0.1s, border-color 0.1s',
-                    }}
-                  >
-                    <span style={{color: gold, fontSize: 12, fontWeight: 600, minWidth: 38, fontVariantNumeric: 'tabular-nums', flexShrink: 0}}>{itemTimes[idx]}</span>
-                    <span
-                      onTouchStart={() => { dragFromRef.current = idx; dragOverRef.current = idx; setDragFrom(idx); }}
-                      style={{color: 'rgba(255,255,255,0.25)', fontSize: 20, cursor: 'grab', userSelect: 'none', touchAction: 'none', padding: '0 2px', flexShrink: 0}}
-                    >≡</span>
-                    <span style={{flex: 1, color: '#e2e8f0', fontSize: 14}}>{it.name}</span>
-                    <span style={{color: 'rgba(255,255,255,0.2)', fontSize: 11, flexShrink: 0}}>{itemDurMins(it)}m</span>
-                    <button onClick={() => removeItem(it.id)} style={{background: 'none', border: 'none', color: 'rgba(239,68,68,0.5)', cursor: 'pointer', fontSize: 16, padding: '0 2px', lineHeight: 1, flexShrink: 0}}>✕</button>
-                  </div>
+                  <React.Fragment key={it.id}>
+                    <div
+                      data-drag-idx={idx}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.effectAllowed='move'; dragFromRef.current=idx; dragOverRef.current=idx; setDragFrom(idx); }}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect='move'; dragOverRef.current=idx; setDragOver(idx); }}
+                      onDrop={(e) => { e.preventDefault(); doDrop(dragFromRef.current, idx); dragFromRef.current=null; dragOverRef.current=null; setDragFrom(null); setDragOver(null); }}
+                      onDragEnd={() => { dragFromRef.current=null; dragOverRef.current=null; setDragFrom(null); setDragOver(null); }}
+                      style={{
+                        display:'flex', alignItems:'flex-start', gap:10,
+                        padding:'11px 12px', borderRadius:10, marginBottom:4,
+                        background: isDragging?'rgba(193,167,106,0.1)':isOver?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.04)',
+                        border:`1px solid ${isOver?gold:isDragging?'rgba(193,167,106,0.3)':'rgba(255,255,255,0.08)'}`,
+                        opacity: isDragging?0.45:1,
+                        transition:'background 0.1s, border-color 0.1s',
+                      }}
+                    >
+                      <span style={{color:gold,fontSize:12,fontWeight:600,minWidth:38,fontVariantNumeric:'tabular-nums',flexShrink:0,paddingTop:2}}>{itemTimes[idx]}</span>
+                      <span
+                        onTouchStart={()=>{ dragFromRef.current=idx; dragOverRef.current=idx; setDragFrom(idx); }}
+                        style={{color:'rgba(255,255,255,0.25)',fontSize:20,cursor:'grab',userSelect:'none',touchAction:'none',padding:'0 2px',flexShrink:0}}
+                      >≡</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:'#e2e8f0',fontSize:14}}>{it.name}</div>
+                        {it.notes && <div style={{color:'rgba(255,255,255,0.4)',fontSize:12,marginTop:2,lineHeight:1.4}}>{it.notes}</div>}
+                      </div>
+                      <span style={{color:'rgba(255,255,255,0.2)',fontSize:11,flexShrink:0,paddingTop:2}}>{itemDurMins(it)}m</span>
+                      <button onClick={()=>removeItem(it.id)} style={{background:'none',border:'none',color:'rgba(239,68,68,0.5)',cursor:'pointer',fontSize:16,padding:'0 2px',lineHeight:1,flexShrink:0}}>✕</button>
+                    </div>
+                    {wizardStep === null && (
+                      <button onClick={()=>{setWizardInsertIdx(idx+1);setWizardMoment('');setWizardStep('name');}}
+                        style={{display:'block',width:'100%',padding:'5px 0',marginBottom:4,background:'none',border:'1px dashed rgba(255,255,255,0.08)',borderRadius:6,color:'rgba(255,255,255,0.2)',cursor:'pointer',fontSize:12}}>
+                        + insert here
+                      </button>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -4105,6 +4213,9 @@ Notes: ${j.notes || 'none'}`;
           if (!modal.selectedJobId && !modal.customJobName) { alert('Please select a job or enter a job name.'); return; }
           if (hours2 <= 0 && !modal.overrideAmount) { alert('Please enter valid start and end times.'); return; }
           const emp2 = employees.find(e => e.id === currentUser.id) || currentUser;
+          const overtimeAmt2 = modal.ranOver
+            ? (modal.extraOverrideAmount ? parseFloat(modal.extraOverrideAmount) : (parseFloat(modal.extraHours||0)||0) * SHOOT_HOURLY_RATE)
+            : 0;
           const entry2 = {
             id: Date.now(), employeeId: currentUser.id, employeeName: emp2?.name || currentUser.name,
             type: 'shoot', stageName: 'Shoot',
@@ -4115,6 +4226,9 @@ Notes: ${j.notes || 'none'}`;
             isOverride: isOverride2, overrideReason: modal.overrideReason || '',
             customJobName: modal.customJobName || '',
             notes: modal.notes || '',
+            ranOver: modal.ranOver || false,
+            extraHours: parseFloat(modal.extraHours||0) || 0,
+            extraAmount: parseFloat(overtimeAmt2.toFixed(2)),
             submittedAt: new Date().toISOString(),
             approvedAt: isOverride2 ? '' : new Date().toISOString(),
             approvedBy: isOverride2 ? '' : 'auto',
@@ -4172,6 +4286,28 @@ Notes: ${j.notes || 'none'}`;
                     <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Actual End</label>
                     <input type="time" value={actualEnd2} onChange={e => { const isOvr2 = selectedJob2 && (actualStart2 !== scheduled2.start || e.target.value !== scheduled2.end); setWageSubmitModal({ ...modal, actualEnd: e.target.value, isOverride: isOvr2 }); }} className={inp} />
                   </div>
+                </div>
+                <div>
+                  <label className={`flex items-center gap-2 cursor-pointer text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <input type="checkbox" checked={!!modal.ranOver} onChange={e => setWageSubmitModal({...modal, ranOver: e.target.checked, extraHours: '', extraOverrideAmount: ''})} className="rounded" />
+                    We ran over the scheduled end time
+                  </label>
+                  {modal.ranOver && (
+                    <div className="mt-2 ml-6 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input type="number" value={modal.extraHours || ''} step="0.5" min="0" placeholder="Extra hrs"
+                          onChange={e => setWageSubmitModal({...modal, extraHours: e.target.value})}
+                          className={`${inp} w-28`} />
+                        <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          hrs ≈ £{((parseFloat(modal.extraHours||0)||0) * SHOOT_HOURLY_RATE).toFixed(2)}
+                        </span>
+                      </div>
+                      <input type="number" value={modal.extraOverrideAmount || ''} step="0.01" min="0"
+                        placeholder="Or override £ amount"
+                        onChange={e => setWageSubmitModal({...modal, extraOverrideAmount: e.target.value})}
+                        className={inp} />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Override Amount (£) — optional</label>
@@ -4321,16 +4457,18 @@ Notes: ${j.notes || 'none'}`;
                     className={`w-full px-4 py-3 rounded-xl border text-xl font-bold ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                     placeholder="Enter amount…" step="0.01" min="0" />
                 </div>
-                <div>
-                  <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Overtime / extras (£) — optional</label>
-                  <input type="number" value={finalPaymentModal.overtime}
-                    onChange={e => setFinalPaymentModal(p => ({...p, overtime: e.target.value}))}
-                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                    placeholder="0.00" step="0.01" min="0" />
-                  {overtime2 > 0 && (
-                    <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total received: <strong>£{grandTotal2.toFixed(2)}</strong></p>
-                  )}
-                </div>
+                {!finalPaymentModal.earlyPayment && (
+                  <div>
+                    <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Overtime / extras (£) — optional</label>
+                    <input type="number" value={finalPaymentModal.overtime}
+                      onChange={e => setFinalPaymentModal(p => ({...p, overtime: e.target.value}))}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                      placeholder="0.00" step="0.01" min="0" />
+                    {overtime2 > 0 && (
+                      <p className={`text-xs mt-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total received: <strong>£{grandTotal2.toFixed(2)}</strong></p>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className={`block text-sm font-semibold mb-1.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes (optional)</label>
                   <input type="text" value={finalPaymentModal.notes}
@@ -4441,6 +4579,9 @@ Notes: ${j.notes || 'none'}`;
       overrideReason: '',
       customJobName: '',
       notes: '',
+      ranOver: false,
+      extraHours: '',
+      extraOverrideAmount: '',
     });
   };
 
@@ -6807,14 +6948,17 @@ Notes: ${j.notes || 'none'}`;
                             {depositPaid > 0 && remaining > 0 ? ` · £${remaining.toFixed(0)} remaining` : ''}
                           </p>
                         </div>
-                        <button onClick={() => setFinalPaymentModal({
-                          jobId: j.id,
-                          totalPrice: total,
-                          depositPaid,
-                          finalAmount: depositPaid > 0 && remaining > 0 ? remaining.toFixed(2) : '',
-                          overtime: '',
-                          notes: '',
-                        })} className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg font-semibold shrink-0 hover:bg-green-600">
+                        <button onClick={() => {
+                          const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
+                          setFinalPaymentModal({
+                            jobId: j.id,
+                            totalPrice: total,
+                            depositPaid,
+                            finalAmount: depositPaid > 0 && remaining > 0 ? remaining.toFixed(2) : '',
+                            overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
+                            notes: '',
+                          });
+                        }} className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg font-semibold shrink-0 hover:bg-green-600">
                           💷 Log Payment
                         </button>
                       </div>
@@ -9046,61 +9190,6 @@ Capturing Your Special Day
                   })}
                 </div>
 
-                {/* Month summary — combined Eyecon + GCal */}
-                {(() => {
-                  const monthJobs = allJobsWithDates
-                    .filter(j => { const d = new Date(j.shootDate); return d.getFullYear() === ucYear && d.getMonth() === ucMonth; })
-                    .sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
-                  const hasContent = monthJobs.length > 0 || gCalMonthEvents.length > 0;
-                  if (!hasContent) return (
-                    <div className={`mt-3 pt-3 border-t text-center ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
-                      <p className="text-xs">No jobs or calendar events this month.</p>
-                      <p className="text-xs mt-1">Click <strong>Connect Google Cal</strong> to pull in your events.</p>
-                    </div>
-                  );
-                  return (
-                    <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                      {monthJobs.length > 0 && (
-                        <>
-                          <p className={`text-xs font-semibold mb-2 tracking-wide ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>📋 EYECON JOBS</p>
-                          <div className="space-y-1 mb-3">
-                            {monthJobs.map(job => {
-                              const d = new Date(job.shootDate);
-                              const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-                              return (
-                                <div key={job.id} className={`flex items-center justify-between text-sm rounded px-2 py-1.5 ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
-                                  <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName || job.customerName}</span>
-                                  <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{dayStr}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                      {gCalMonthEvents.length > 0 && (
-                        <>
-                          <p className={`text-xs font-semibold mb-2 tracking-wide ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>📅 GOOGLE CALENDAR <span className="font-normal opacity-70 ml-1">— drag into builder ↓</span></p>
-                          <div className="space-y-1">
-                            {gCalMonthEvents.map(ev => (
-                              <div key={ev.id}
-                                draggable
-                                onDragStart={(e) => { e.dataTransfer.setData('application/gcal-event', JSON.stringify(ev.raw)); e.dataTransfer.effectAllowed='copy'; setGcalDragActive(true); }}
-                                onDragEnd={() => setGcalDragActive(false)}
-                                onClick={() => setImportEventModal(ev)}
-                                className={`flex items-center justify-between text-sm rounded px-2 py-1.5 cursor-grab active:cursor-grabbing hover:opacity-80 ${darkMode ? 'bg-orange-900' : 'bg-orange-50'}`}>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-base">⠿</span>
-                                  <span className={`font-medium ${darkMode ? 'text-orange-200' : 'text-orange-800'}`}>{ev.title}</span>
-                                </div>
-                                <span className={`text-xs ${darkMode ? 'text-orange-400' : 'text-orange-500'}`}>{ev.date}{ev.startTime ? ` · ${ev.startTime}` : ''}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
               </div>
             );
           })()}
@@ -11302,16 +11391,35 @@ Capturing Your Special Day
                                 className="text-xs text-gray-400 underline ml-2">undo</button>
                             </div>
                           ) : (
-                            <button onClick={() => setFinalPaymentModal({
-                              jobId: job.id,
-                              totalPrice: total2,
-                              depositPaid: depositPaid2,
-                              finalAmount: depositPaid2 > 0 && remaining2 > 0 ? remaining2.toFixed(2) : '',
-                              overtime: '',
-                              notes: '',
-                            })} className={`text-xs ${darkMode ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700'} underline`}>
-                              + Record final payment{remaining2 > 0 ? ` (£${remaining2.toFixed(2)} due)` : ''}
-                            </button>
+                            <div className="flex flex-col gap-2">
+                              <button onClick={() => {
+                                const priorOT = (job.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
+                                setFinalPaymentModal({
+                                  jobId: job.id,
+                                  totalPrice: total2,
+                                  depositPaid: depositPaid2,
+                                  finalAmount: depositPaid2 > 0 && remaining2 > 0 ? remaining2.toFixed(2) : '',
+                                  overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
+                                  notes: '',
+                                });
+                              }} className={`text-xs ${darkMode ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-700'} underline text-left`}>
+                                + Record final payment{remaining2 > 0 ? ` (£${remaining2.toFixed(2)} due)` : ''}
+                              </button>
+                              {remaining2 > 0 && (
+                                <button onClick={() => setFinalPaymentModal({
+                                  jobId: job.id,
+                                  totalPrice: total2,
+                                  depositPaid: depositPaid2,
+                                  finalAmount: remaining2.toFixed(2),
+                                  overtime: '',
+                                  notes: '',
+                                  earlyPayment: true,
+                                })} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-left"
+                                  style={{background:'rgba(193,167,106,0.15)',border:'1px solid rgba(193,167,106,0.4)',color:'#C1A76A'}}>
+                                  ✓ Balance paid early — £{remaining2.toFixed(2)}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       );
@@ -15561,7 +15669,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                     📅 Pull Calendar
                   </button>
                 )}
-                <button onClick={() => setWageSubmitModal({ selectedJobId: null, customJobName: '', actualStart: '', actualEnd: '', isOverride: false, overrideReason: '', overrideAmount: 0, notes: '' })}
+                <button onClick={() => setWageSubmitModal({ selectedJobId: null, customJobName: '', actualStart: '', actualEnd: '', isOverride: false, overrideReason: '', overrideAmount: 0, notes: '', ranOver: false, extraHours: '', extraOverrideAmount: '' })}
                   className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${dm ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
                   + Log Shoot
                 </button>
