@@ -13054,20 +13054,35 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   )}
                 </div>
                 
-                {/* Follow-up button for quoted inquiries */}
-                {inquiry.status === 'quoted' && !inquiry.followedUp && (
-                  <button 
-                    onClick={() => { setFollowUpInquiry(inquiry); setShowFollowUpModal(true); }}
-                    className="mt-3 w-full bg-orange-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-orange-600"
-                  >
-                    📞 Follow Up
-                  </button>
-                )}
-                {inquiry.followedUp && (
-                  <p className={`mt-3 text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                    ✅ Followed up on {new Date(inquiry.followUpDate).toLocaleDateString()}
-                  </p>
-                )}
+                {/* Follow-up button for quoted inquiries — RAG coloured */}
+                {inquiry.status === 'quoted' && (() => {
+                  const lastDate = inquiry.followUpDate ? new Date(inquiry.followUpDate) : null;
+                  const daysSince = lastDate ? Math.floor((Date.now() - lastDate) / 86400000) : null;
+                  const isRed = daysSince === null || daysSince > 7;
+                  const isAmber = daysSince !== null && daysSince >= 4 && daysSince <= 7;
+                  const isGreen = daysSince !== null && daysSince < 4;
+                  const bgClass = isGreen
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : isAmber
+                    ? 'bg-amber-500 hover:bg-amber-600'
+                    : 'bg-red-600 hover:bg-red-700';
+                  const lastLine = daysSince === null
+                    ? 'Never followed up'
+                    : daysSince === 0
+                    ? 'Last: today'
+                    : daysSince === 1
+                    ? 'Last: yesterday'
+                    : `Last: ${daysSince} days ago`;
+                  return (
+                    <button
+                      onClick={() => { setFollowUpInquiry(inquiry); setShowFollowUpModal(true); }}
+                      className={`mt-3 w-full ${bgClass} text-white py-2 px-3 rounded-lg text-sm font-semibold flex flex-col items-center leading-tight`}
+                    >
+                      <span>📞 Follow Up</span>
+                      <span className="text-xs font-normal opacity-90 mt-0.5">{lastLine}</span>
+                    </button>
+                  );
+                })()}
                 {(inquiry.status === 'contacted' || inquiry.status === 'quoted' || inquiry.status === 'booked') && (
                   <button onClick={() => {
                     setQuoteData({
