@@ -4371,6 +4371,45 @@ Notes: ${j.notes || 'none'}`;
         );
       })()}
 
+      {/* ── Global: Deposit Modal (accessible from any view) ─────────────── */}
+      {depositFormJobId && (() => {
+        const depJob = editingJobs.find(j => j.id === depositFormJobId);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>💰 Record Deposit</h2>
+              {depJob && <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{depJob.customerName} · {depJob.jobName}</p>}
+              <div className="space-y-3">
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
+                  <input type="number" value={depositFormAmt} onChange={e => setDepositFormAmt(e.target.value)}
+                    placeholder="e.g. 500" autoFocus
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                </div>
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Date received</label>
+                  <input type="date" value={depositFormDate} onChange={e => setDepositFormDate(e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setDepositFormJobId(null)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                <button onClick={async () => {
+                  await saveDeposit(depositFormJobId, depositFormAmt, depositFormDate, false);
+                  logActivity('Deposit recorded', depJob?.jobName || '', `£${depositFormAmt}`);
+                  setDepositFormJobId(null);
+                }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Save Deposit</button>
+                <button onClick={async () => {
+                  await saveDeposit(depositFormJobId, depositFormAmt, depositFormDate, true);
+                  logActivity('Deposit paid', depJob?.jobName || '', `£${depositFormAmt}`);
+                  setDepositFormJobId(null);
+                }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white">✅ Save + Paid</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Global: Final Payment Modal (accessible from any view) ─────────── */}
       {finalPaymentModal && (() => {
         const fpJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
@@ -9382,8 +9421,9 @@ Capturing Your Special Day
                             {(() => {
                               const dep2 = getJobDeposit(job);
                               const total2 = calculateJobRevenue(job);
-                              const depositPaid2 = parseFloat(dep2?.amount || 0);
-                              const remaining2 = total2 > 0 ? Math.max(0, total2 - depositPaid2) : 0;
+                              const depositAmt = parseFloat(dep2?.amount || 0);
+                              const remaining2 = total2 > 0 ? Math.max(0, total2 - depositAmt) : 0;
+                              // Paid in full
                               if (job.finalPaymentReceived) {
                                 return (
                                   <span className="inline-flex items-center gap-1 text-xs bg-green-500 bg-opacity-25 text-green-300 border border-green-500 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold">
@@ -9391,19 +9431,26 @@ Capturing Your Special Day
                                   </span>
                                 );
                               }
-                              if (total2 > 0) {
-                                const priorOT = (job.wageEntries||[]).find(e => e.type==='shoot' && e.ranOver && e.extraAmount>0);
+                              // No deposit recorded yet
+                              if (!dep2?.amount) {
                                 return (
-                                  <button onClick={() => setFinalPaymentModal({
-                                    jobId: job.id, totalPrice: total2, depositPaid: depositPaid2,
-                                    finalAmount: depositPaid2>0 && remaining2>0 ? remaining2.toFixed(2) : '',
-                                    overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '', notes:'',
-                                  })} className="inline-flex items-center gap-1 text-xs bg-yellow-500 bg-opacity-20 text-yellow-300 border border-yellow-500 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
-                                    💷 {remaining2 > 0 ? `£${remaining2.toFixed(2)} due` : 'Record payment'}
+                                  <button onClick={() => { setDepositFormJobId(job.id); setDepositFormAmt(total2 > 0 ? String(Math.round(total2 * 0.5)) : ''); setDepositFormDate(new Date().toISOString().slice(0,10)); }}
+                                    className="inline-flex items-center gap-1 text-xs bg-blue-500 bg-opacity-20 text-blue-200 border border-blue-400 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
+                                    💰 Log deposit{total2 > 0 ? ` (£${total2.toFixed(0)} total)` : ''}
                                   </button>
                                 );
                               }
-                              return null;
+                              // Deposit logged, final payment outstanding
+                              const priorOT = (job.wageEntries||[]).find(e => e.type==='shoot' && e.ranOver && e.extraAmount>0);
+                              return (
+                                <button onClick={() => setFinalPaymentModal({
+                                  jobId: job.id, totalPrice: total2, depositPaid: depositAmt,
+                                  finalAmount: remaining2 > 0 ? remaining2.toFixed(2) : '',
+                                  overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '', notes:'',
+                                })} className="inline-flex items-center gap-1 text-xs bg-yellow-500 bg-opacity-20 text-yellow-300 border border-yellow-500 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
+                                  💷 {remaining2 > 0 ? `£${remaining2.toFixed(2)} balance due` : 'Log final payment'}
+                                </button>
+                              );
                             })()}
                             {(() => {
                               const lastEdit = job.itinerary?.clientLastEdit;
@@ -11859,43 +11906,7 @@ Capturing Your Special Day
         )}
 
         {/* Deposit Form Modal */}
-        {depositFormJobId && (() => {
-          const depJob = editingJobs.find(j => j.id === depositFormJobId);
-          return (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
-                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>💰 Record Deposit</h2>
-                {depJob && <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{depJob.customerName} · {depJob.jobName}</p>}
-                <div className="space-y-3">
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Amount received (£)</label>
-                    <input type="number" value={depositFormAmt} onChange={e => setDepositFormAmt(e.target.value)}
-                      placeholder="e.g. 500" autoFocus
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Date received</label>
-                    <input type="date" value={depositFormDate} onChange={e => setDepositFormDate(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`} />
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-5">
-                  <button onClick={() => setDepositFormJobId(null)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
-                  <button onClick={async () => {
-                    await saveDeposit(depositFormJobId, depositFormAmt, depositFormDate, false);
-                    logActivity('Deposit recorded', depJob?.jobName || '', `£${depositFormAmt}`);
-                    setDepositFormJobId(null);
-                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Save Deposit</button>
-                  <button onClick={async () => {
-                    await saveDeposit(depositFormJobId, depositFormAmt, depositFormDate, true);
-                    logActivity('Deposit paid', depJob?.jobName || '', `£${depositFormAmt}`);
-                    setDepositFormJobId(null);
-                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white">✅ Save + Paid</button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        {/* Deposit modal is now in helpModalJSX (global) */}
 
         {depositImportOpen && (() => {
           const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
