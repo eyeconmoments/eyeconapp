@@ -95,6 +95,7 @@ const rowToInquiry = (r) => ({
   budget: r.budget, details: r.details, status: r.status,
   submittedDate: r.submitted_date ? new Date(r.submitted_date) : new Date(),
   contactedDate: r.contacted_date ? new Date(r.contacted_date) : null,
+  followedUp: r.followed_up || false,
   followUpDate: r.follow_up_date ? new Date(r.follow_up_date) : null,
   notes: r.notes || '',
   contactPhoto: r.contact_photo || null,
@@ -12766,11 +12767,12 @@ Eyecon Moments`;
                     📱 Call Client
                   </button>
                   
-                  <button 
-                    onClick={() => {
-                      // Mark as followed up
-                      setInquiries(inquiries.map(i => 
-                        i.id === followUpInquiry.id ? {...i, followedUp: true, followUpDate: new Date().toISOString()} : i
+                  <button
+                    onClick={async () => {
+                      const now = new Date().toISOString();
+                      await db.from('inquiries').update({ followed_up: true, follow_up_date: now }).eq('id', followUpInquiry.id);
+                      setInquiries(inquiries.map(i =>
+                        i.id === followUpInquiry.id ? {...i, followedUp: true, followUpDate: new Date(now)} : i
                       ));
                       setShowFollowUpModal(false);
                       setFollowUpInquiry(null);
