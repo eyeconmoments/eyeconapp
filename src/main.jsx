@@ -97,7 +97,9 @@ const rowToInquiry = (r) => ({
   contactedDate: r.contacted_date ? new Date(r.contacted_date) : null,
   followUpDate: r.follow_up_date ? new Date(r.follow_up_date) : null,
   notes: r.notes || '',
-  contactPhoto: r.contact_photo || null
+  contactPhoto: r.contact_photo || null,
+  quotedAmount: r.quoted_amount ? Number(r.quoted_amount) : null,
+  quoteSnapshot: r.quote_snapshot || null,
 });
 
 const { useState, useEffect } = React;
@@ -13080,7 +13082,11 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                                 <span className={`text-xs ml-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{q.typeStr}</span>
                               </div>
                               <button
-                                onClick={() => { setQuoteData({ clientName: inquiry.customerName, clientEmail: inquiry.email||'', clientPhone: inquiry.phone||'', eventType: inquiry.eventType||'wedding', numDays: 1, dates: [{ date: inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '', startTime:'10:00', endTime:'22:00', location:'', postcode:'', distance:0, photo:true, video:true, numPhotographers:1, videoType:'dual' }], wantPhoto:true, wantVideo:true, numPhotographers:1, numVideographers:1, notes: inquiry.notes||'', discount:0 }); setCrmQuoteInquiry(inquiry); setShowCRMQuoteModal(true); }}
+                                onClick={() => {
+                                  const snap = inquiry.quoteSnapshot || (() => { try { const s = localStorage.getItem(`quote_snap_${inquiry.id}`); return s ? JSON.parse(s) : null; } catch { return null; } })();
+                                  setQuoteData(snap ? { ...snap } : { clientName: inquiry.customerName, clientEmail: inquiry.email||'', clientPhone: inquiry.phone||'', eventType: inquiry.eventType||'wedding', numDays: 1, dates: [{ date: inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '', startTime:'10:00', endTime:'22:00', location:'', postcode:'', distance:0, photo:true, video:true, numPhotographers:1, videoType:'dual' }], wantPhoto:true, wantVideo:true, numPhotographers:1, numVideographers:1, notes: inquiry.notes||'', discount:0 });
+                                  setCrmQuoteInquiry(inquiry); setShowCRMQuoteModal(true);
+                                }}
                                 className="shrink-0 text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-semibold"
                               >📄 PDF</button>
                             </div>
@@ -13124,7 +13130,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 })()}
                 {(inquiry.status === 'contacted' || inquiry.status === 'quoted' || inquiry.status === 'booked') && (
                   <button onClick={() => {
-                    setQuoteData({
+                    const snap = inquiry.quoteSnapshot || (() => { try { const s = localStorage.getItem(`quote_snap_${inquiry.id}`); return s ? JSON.parse(s) : null; } catch { return null; } })();
+                    setQuoteData(snap ? { ...snap } : {
                       clientName: inquiry.customerName,
                       clientEmail: inquiry.email || '',
                       clientPhone: inquiry.phone || '',
@@ -13323,8 +13330,10 @@ Eyecon Moments
                 const additions = [quoteNote];
                 if (quoteData.teamNotes) additions.push(`[Team note: ${quoteData.teamNotes}]`);
                 const newNotes = [prevNotes, ...additions].filter(Boolean).join('\n');
-                db.from('inquiries').update({ notes: newNotes }).eq('id', crmQuoteInquiry.id).then(() => {
-                  setInquiries(prev => prev.map(i => i.id === crmQuoteInquiry.id ? { ...i, notes: newNotes } : i));
+                const snapData = { ...quoteData, _finalTotal: finalTotal, _savedAt: new Date().toISOString() };
+                localStorage.setItem(`quote_snap_${crmQuoteInquiry.id}`, JSON.stringify(snapData));
+                db.from('inquiries').update({ notes: newNotes, quoted_amount: finalTotal, quote_snapshot: snapData }).eq('id', crmQuoteInquiry.id).then(() => {
+                  setInquiries(prev => prev.map(i => i.id === crmQuoteInquiry.id ? { ...i, notes: newNotes, quotedAmount: finalTotal, quoteSnapshot: snapData } : i));
                 });
               }
               setShowCRMQuoteModal(false);
@@ -16935,14 +16944,18 @@ Eyecon Moments
         const existing = inquiries.find(i => i.email?.toLowerCase() === quoteData.clientEmail.toLowerCase());
         if (existing) {
           const updatedNotes = existing.notes ? existing.notes + '\n' + qNotes : qNotes;
+          const snapData = { ...quoteData, _finalTotal: finalTotal, _savedAt: new Date().toISOString() };
+          localStorage.setItem(`quote_snap_${existing.id}`, JSON.stringify(snapData));
           await db.from('inquiries').update({
             status: 'quoted',
             quoted_date: new Date().toISOString(),
             follow_up_date: followUpDate.toISOString(),
-            notes: updatedNotes
+            notes: updatedNotes,
+            quoted_amount: finalTotal,
+            quote_snapshot: snapData,
           }).eq('id', existing.id);
           setInquiries(prev => prev.map(i => i.id === existing.id ? {
-            ...i, status: 'quoted', followUpDate, notes: updatedNotes
+            ...i, status: 'quoted', followUpDate, notes: updatedNotes, quotedAmount: finalTotal, quoteSnapshot: snapData
           } : i));
           alert('✅ Existing CRM record updated to "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
         } else {
