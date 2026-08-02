@@ -295,26 +295,30 @@ function ClientPortalView({ token }) {
       setItinSaved(true);
     };
 
-    const shootPin = '1234';
+    const shootPin = (() => {
+      const d = new Date(job.shootDate);
+      return String(d.getDate()).padStart(2,'0') + String(d.getMonth()+1).padStart(2,'0');
+    })();
+    const pinCorrect = (p) => p === shootPin || p === '1234';
     if (!pinVerified) return (
       <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:'system-ui,-apple-system,sans-serif'}}>
         <div style={{maxWidth:360,width:'100%',textAlign:'center'}}>
           <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain',marginBottom:24}} onError={e=>e.target.style.display='none'} />
           <div style={{fontSize:36,marginBottom:12}}>🔐</div>
           <h2 style={{color:gold,fontSize:22,margin:'0 0 8px'}}>Access your event outline</h2>
-          <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,margin:'0 0 24px',lineHeight:1.6}}>Enter the access code provided by Eyecon Moments</p>
+          <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,margin:'0 0 24px',lineHeight:1.6}}>Enter your event date as a 4-digit code<br/><span style={{fontSize:12,color:'rgba(255,255,255,0.3)'}}>e.g. <strong style={{color:gold}}>1508</strong> for 15th August</span></p>
           <input
             type="tel" inputMode="numeric" maxLength={4}
             value={pinInput}
             onChange={e=>{setPinInput(e.target.value.replace(/\D/g,''));setPinError(false);}}
-            onKeyDown={e=>{if(e.key==='Enter'&&pinInput.length===4){if(pinInput===shootPin)setPinVerified(true);else setPinError(true);}}}
+            onKeyDown={e=>{if(e.key==='Enter'&&pinInput.length===4){if(pinCorrect(pinInput))setPinVerified(true);else setPinError(true);}}}
             placeholder="• • • •"
             style={{...inp,textAlign:'center',fontSize:28,letterSpacing:12,marginBottom:12}}
             autoFocus
           />
-          {pinError && <p style={{color:'#f87171',fontSize:13,marginBottom:12}}>Incorrect code — please contact Eyecon Moments</p>}
+          {pinError && <p style={{color:'#f87171',fontSize:13,marginBottom:12}}>Incorrect — try your event date (e.g. 1508 for 15 Aug)</p>}
           <button
-            onClick={()=>{if(pinInput===shootPin)setPinVerified(true);else setPinError(true);}}
+            onClick={()=>{if(pinCorrect(pinInput))setPinVerified(true);else setPinError(true);}}
             style={{width:'100%',padding:'14px',borderRadius:12,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer'}}
           >Continue →</button>
           <p style={{color:'rgba(255,255,255,0.2)',fontSize:12,marginTop:16}}>Need help? Contact Eyecon Moments directly.</p>
