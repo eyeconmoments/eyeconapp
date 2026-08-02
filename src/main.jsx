@@ -330,7 +330,8 @@ function ClientPortalView({ token }) {
     );
 
     if (itinSaved) return (
-      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:520,margin:'0 auto'}}>
+      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+      <div style={{maxWidth:520,margin:'0 auto',padding:'24px 16px'}}>
         <div style={{textAlign:'center',marginBottom:28,paddingTop:12}}>
           <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
           <div style={{fontSize:48,margin:'16px 0 8px'}}>🎉</div>
@@ -375,10 +376,12 @@ function ClientPortalView({ token }) {
         </button>
         <p style={{textAlign:'center',color:'rgba(255,255,255,0.2)',fontSize:12,paddingBottom:24}}>Eyecon Moments · Visit this link anytime to update your outline</p>
       </div>
+      </div>
     );
 
     return (
-      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:520,margin:'0 auto'}}>
+      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+      <div style={{maxWidth:520,margin:'0 auto',padding:'24px 16px'}}>
         <div style={{textAlign:'center',marginBottom:28,paddingTop:12}}>
           <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
           <h1 style={{color:gold,fontFamily:'Cormorant Garamond,serif',fontSize:26,margin:'12px 0 4px',letterSpacing:1}}>Your Event Outline</h1>
@@ -577,6 +580,7 @@ function ClientPortalView({ token }) {
           <p style={{color:'rgba(255,255,255,0.2)',fontSize:12}}>Eyecon Moments · Your outline will be reviewed at consultation</p>
         </div>
       </div>
+      </div>
     );
   }
 
@@ -597,7 +601,8 @@ function ClientPortalView({ token }) {
   const daysLeft = job.deadline ? Math.ceil((new Date(job.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
-    <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif',padding:'24px 16px',maxWidth:480,margin:'0 auto'}}>
+    <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+    <div style={{maxWidth:480,margin:'0 auto',padding:'24px 16px'}}>
       <div style={{textAlign:'center',marginBottom:32,paddingTop:16}}>
         <img src="/logo.png" alt="Eyecon Moments" style={{height:48,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
         <h1 style={{color:gold,fontFamily:'Cormorant Garamond,serif',fontSize:28,margin:'12px 0 4px',letterSpacing:1}}>Your Project</h1>
@@ -644,6 +649,7 @@ function ClientPortalView({ token }) {
       <div style={{textAlign:'center',paddingBottom:24}}>
         <p style={{color:'rgba(255,255,255,0.3)',fontSize:12}}>Questions? Contact Eyecon Moments</p>
       </div>
+    </div>
     </div>
   );
 }
@@ -9522,12 +9528,12 @@ Capturing Your Special Day
                                 </button>
                                 {clientLinkPopup === job.id && (() => {
                                   const url = `${window.location.origin}/client/${job.clientToken}`;
-                                  const inquiry = inquiries.find(i => i.name === job.customerName || job.jobName?.includes(i.name));
+                                  const inquiry = inquiries.find(i => i.customerName === job.customerName || job.jobName?.includes(i.customerName));
                                   const clientEmail = inquiry?.email || '';
                                   const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
-                                  const emailBod = encodeURIComponent(`Hi ${job.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\n📞 07957 450570\n📧 eyecon.moments@gmail.com`);
+                                  const emailBod = encodeURIComponent(`Hi ${job.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
                                   return (
-                                    <div onClick={e => e.stopPropagation()} style={{position:'absolute',right:0,bottom:'calc(100% + 6px)',zIndex:999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:195,boxShadow:'0 -4px 24px rgba(0,0,0,0.5)'}}>
+                                    <div onClick={e => e.stopPropagation()} style={{position:'absolute',right:0,top:'calc(100% + 6px)',zIndex:9999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:210,boxShadow:'0 8px 24px rgba(0,0,0,0.6)'}}>
                                       <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',padding:'2px 8px 6px',borderBottom:'1px solid rgba(255,255,255,0.08)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{url}</div>
                                       {[
                                         { icon:'📋', label:'Copy link', action: async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkPopup(null); alert('✅ Link copied!'); }},
