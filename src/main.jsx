@@ -163,7 +163,7 @@ function ClientPortalView({ token }) {
           const src = j.itinerary || {};
           // Pre-fill venue from itinerary if set, otherwise pull first line of job notes
           const venueDefault = ('venue' in src && src.venue) ? src.venue : ((j.notes || '').split(/[.\n]/)[0].trim());
-          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' } });
+          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [] });
           // mark loaded on next tick so initial set doesn't trigger auto-save
           setTimeout(() => { loadedRef.current = true; }, 50);
         }
@@ -178,7 +178,7 @@ function ClientPortalView({ token }) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${jobId}` }, ({ new: row }) => {
         if (savingRef.current) return; // ignore echo of our own save
         const src = row.itinerary || {};
-        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' } });
+        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [] });
       })
       .subscribe();
     return () => db.removeChannel(ch);
@@ -278,7 +278,10 @@ function ClientPortalView({ token }) {
     const addItem = (name) => {
       setItin(p => ({ ...p, scheduleItems: [...p.scheduleItems, { id: Date.now() + Math.random(), name, color: '#C1A76A', duration: 2 }] }));
     };
-    const removeItem = (id) => setItin(p => ({ ...p, scheduleItems: p.scheduleItems.filter(it => it.id !== id) }));
+    const removeItem = (id) => setItin(p => {
+      const removed = p.scheduleItems.find(it => it.id === id);
+      return { ...p, scheduleItems: p.scheduleItems.filter(it => it.id !== id), clientChangelog:[...(p.clientChangelog||[]), {timestamp:new Date().toISOString(), type:'removed', itemName:removed?.name||'item'}] };
+    });
     const doDrop = (from, to) => {
       if (from === null || to === null || from === to) return;
       setItin(p => { const a = [...p.scheduleItems]; const [it] = a.splice(from, 1); a.splice(to, 0, it); return { ...p, scheduleItems: a }; });
@@ -416,12 +419,13 @@ function ClientPortalView({ token }) {
           let wizTime = itin.startTime || '10:00';
           for (let i = 0; i < insertIdx; i++) wizTime = addMins2(wizTime, itemDurMins(itin.scheduleItems[i]));
           const confirmAdd = (dur) => {
-            const newItem = {id:Date.now()+Math.random(), name:wizardMoment, color:gold, duration:dur};
+            const newItem = {id:Date.now()+Math.random(), name:wizardMoment, color:gold, duration:dur, clientAdded:true};
+            const logEntry = {timestamp:new Date().toISOString(), type:'added', itemName:wizardMoment};
             setItin(p => {
               const a = [...p.scheduleItems];
               if (wizardInsertIdx !== null) a.splice(wizardInsertIdx, 0, newItem);
               else a.push(newItem);
-              return {...p, scheduleItems: a};
+              return {...p, scheduleItems: a, clientChangelog:[...(p.clientChangelog||[]), logEntry]};
             });
             setWizardStep(null); setWizardMoment(''); setWizardInsertIdx(null);
           };
@@ -9368,9 +9372,26 @@ Capturing Your Special Day
                               const lastEdit = job.itinerary?.clientLastEdit;
                               if (!lastEdit) return null;
                               const secAgo = Math.floor((Date.now() - new Date(lastEdit).getTime()) / 1000);
-                              if (secAgo > 300) return null; // only show within 5 min
+                              if (secAgo > 300) return null;
                               const label2 = secAgo < 10 ? 'just now' : secAgo < 60 ? `${secAgo}s ago` : `${Math.floor(secAgo/60)}m ago`;
                               return <span className="inline-flex items-center gap-1 text-xs bg-white bg-opacity-25 rounded-full px-2 py-0.5 mt-1 font-semibold animate-pulse">📱 Client edited {label2}</span>;
+                            })()}
+                            {(() => {
+                              const log = job.itinerary?.clientChangelog;
+                              if (!log || log.length === 0) return null;
+                              return (
+                                <div className="mt-1.5 space-y-0.5">
+                                  {[...log].reverse().slice(0, 5).map((entry, i) => {
+                                    const d = new Date(entry.timestamp);
+                                    const fmt = d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+                                    return (
+                                      <span key={i} className="block text-xs bg-cyan-900 bg-opacity-60 text-cyan-200 rounded px-2 py-0.5">
+                                        {entry.type === 'added' ? '➕' : '✕'} {entry.itemName} — {fmt}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              );
                             })()}
                           </div>
                           <div className="flex flex-col items-end gap-2">
@@ -9687,9 +9708,12 @@ Capturing Your Special Day
                                       {group.items.map((item) => (
                                         <div key={item.idx} draggable onDragStart={(e) => handleDragStart(e, item, item.idx)}
                                           className="text-white text-xs p-2 rounded mb-1 cursor-grab active:cursor-grabbing"
-                                          style={{ backgroundColor: item.color }}>
+                                          style={{ backgroundColor: item.clientAdded ? '#0e7490' : item.color, border: item.clientAdded ? '2px solid #22d3ee' : 'none' }}>
                                           <div className="flex justify-between items-start">
-                                            <span className="font-medium text-xs">{item.name}</span>
+                                            <div>
+                                              {item.clientAdded && <span className="text-cyan-200 text-xs font-bold block mb-0.5">👤 Client added</span>}
+                                              <span className="font-medium text-xs">{item.name}</span>
+                                            </div>
                                             <button onClick={() => removeFromSchedule(job.id, item.idx)}
                                               className="ml-1 hover:bg-white hover:bg-opacity-20 rounded px-1 text-xs">✕</button>
                                           </div>
