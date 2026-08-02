@@ -9499,9 +9499,9 @@ Capturing Your Special Day
                                   {isMinimized ? '▼ Expand' : '▲ Minimise'}
                                 </button>
                               )}
-                              {/* Client draft badge */}
+                              {/* Client schedule badge */}
                               {job.itinerary?.clientDraft && (
-                                <span className="text-xs bg-green-500 text-white px-2 py-1 rounded font-semibold" title="Client has submitted their event outline">✓ Client outline</span>
+                                <span className="text-xs bg-green-500 text-white px-2 py-1 rounded font-semibold" title="Client has submitted their event schedule">📋 Schedule received</span>
                               )}
                               {/* Client link popup */}
                               <div className="relative">
@@ -13058,9 +13058,39 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   {inquiry.details && inquiry.details !== 'Added via Instagram screenshot' && (
                     <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} italic`}>{inquiry.details}</p>
                   )}
-                  {inquiry.notes && (
-                    <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mt-1`}>📝 {inquiry.notes}</p>
-                  )}
+                  {inquiry.notes && (() => {
+                    // Parse structured [Quote sent DD/MM/YYYY] entries from notes
+                    const qRe = /\[Quote sent (\d{2}\/\d{2}\/\d{4})\]\s*(£[\d,.]+)\s*—\s*([^.]+)\.\s*Follow up by ([^.\n]+)\./g;
+                    const quotes = [];
+                    let m;
+                    while ((m = qRe.exec(inquiry.notes)) !== null) {
+                      quotes.push({ sentDate: m[1], amount: m[2], typeStr: m[3].trim(), followUpBy: m[4].trim(), raw: m[0] });
+                    }
+                    if (!quotes.length) {
+                      return <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mt-1`}>📝 {inquiry.notes}</p>;
+                    }
+                    const remaining = quotes.reduce((s, q) => s.replace(q.raw, ''), inquiry.notes).trim().replace(/\n+/g, ' ');
+                    return (
+                      <div className="mt-2 space-y-1.5">
+                        {quotes.map((q, qi) => (
+                          <div key={qi} className={`rounded-lg px-3 py-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{q.amount}</span>
+                                <span className={`text-xs ml-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{q.typeStr}</span>
+                              </div>
+                              <button
+                                onClick={() => { setQuoteData({ clientName: inquiry.customerName, clientEmail: inquiry.email||'', clientPhone: inquiry.phone||'', eventType: inquiry.eventType||'wedding', numDays: 1, dates: [{ date: inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '', startTime:'10:00', endTime:'22:00', location:'', postcode:'', distance:0, photo:true, video:true, numPhotographers:1, videoType:'dual' }], wantPhoto:true, wantVideo:true, numPhotographers:1, numVideographers:1, notes: inquiry.notes||'', discount:0 }); setCrmQuoteInquiry(inquiry); setShowCRMQuoteModal(true); }}
+                                className="shrink-0 text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-semibold"
+                              >📄 PDF</button>
+                            </div>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Sent {q.sentDate} · Follow up by {q.followUpBy}</p>
+                          </div>
+                        ))}
+                        {remaining && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📝 {remaining}</p>}
+                      </div>
+                    );
+                  })()}
                 </div>
                 
                 {/* Follow-up button for quoted inquiries — RAG coloured */}
