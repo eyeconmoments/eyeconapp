@@ -240,7 +240,7 @@ function ClientPortalView({ token }) {
   const navy = '#1a2535';
   const card = {background:'rgba(255,255,255,0.05)',borderRadius:16,padding:'20px',marginBottom:20};
   const label = {color:'rgba(193,167,106,0.8)',fontSize:11,letterSpacing:2,textTransform:'uppercase',margin:'0 0 10px',display:'block'};
-  const inp = {width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.07)',color:'#fff',fontSize:15,boxSizing:'border-box',fontFamily:'system-ui'};
+  const inp = {width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.07)',color:'#fff',fontSize:15,boxSizing:'border-box',fontFamily:'system-ui',colorScheme:'dark'};
 
   if (loading) return (
     <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center'}}>
