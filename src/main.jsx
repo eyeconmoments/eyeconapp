@@ -9465,7 +9465,7 @@ Capturing Your Special Day
                                   const emailSubj = encodeURIComponent(`Your Event Outline — ${job.jobName}`);
                                   const emailBod = encodeURIComponent(`Hi ${job.customerName || 'there'},\n\nHere's your personalised event outline link — use it to build your schedule before the big day:\n\n${url}\n\nWarm regards,\nEyecon Moments`);
                                   return (
-                                    <div onClick={e => e.stopPropagation()} style={{position:'absolute',right:0,top:'calc(100% + 6px)',zIndex:999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:195,boxShadow:'0 8px 24px rgba(0,0,0,0.5)'}}>
+                                    <div onClick={e => e.stopPropagation()} style={{position:'absolute',right:0,bottom:'calc(100% + 6px)',zIndex:999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:195,boxShadow:'0 -4px 24px rgba(0,0,0,0.5)'}}>
                                       <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',padding:'2px 8px 6px',borderBottom:'1px solid rgba(255,255,255,0.08)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{url}</div>
                                       {[
                                         { icon:'📋', label:'Copy link', action: async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkPopup(null); alert('✅ Link copied!'); }},
