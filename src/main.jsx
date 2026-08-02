@@ -9433,22 +9433,25 @@ Capturing Your Special Day
                               }
                               // No deposit recorded yet
                               if (!dep2?.amount) {
+                                const knownPrice = job.customPrice > 0 ? job.customPrice : null;
                                 return (
-                                  <button onClick={() => { setDepositFormJobId(job.id); setDepositFormAmt(total2 > 0 ? String(Math.round(total2 * 0.5)) : ''); setDepositFormDate(new Date().toISOString().slice(0,10)); }}
+                                  <button onClick={() => { setDepositFormJobId(job.id); setDepositFormAmt(knownPrice ? String(Math.round(knownPrice * 0.5)) : ''); setDepositFormDate(new Date().toISOString().slice(0,10)); }}
                                     className="inline-flex items-center gap-1 text-xs bg-blue-500 bg-opacity-20 text-blue-200 border border-blue-400 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
-                                    💰 Log deposit{total2 > 0 ? ` (£${total2.toFixed(0)} total)` : ''}
+                                    💰 Log deposit{knownPrice ? ` (£${knownPrice.toFixed(0)} total)` : ''}
                                   </button>
                                 );
                               }
                               // Deposit logged, final payment outstanding
+                              const knownTotal = job.customPrice > 0 ? job.customPrice : null;
                               const priorOT = (job.wageEntries||[]).find(e => e.type==='shoot' && e.ranOver && e.extraAmount>0);
+                              const balanceDue = knownTotal ? Math.max(0, knownTotal - depositAmt) : null;
                               return (
                                 <button onClick={() => setFinalPaymentModal({
-                                  jobId: job.id, totalPrice: total2, depositPaid: depositAmt,
-                                  finalAmount: remaining2 > 0 ? remaining2.toFixed(2) : '',
+                                  jobId: job.id, totalPrice: knownTotal || 0, depositPaid: depositAmt,
+                                  finalAmount: balanceDue > 0 ? balanceDue.toFixed(2) : '',
                                   overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '', notes:'',
                                 })} className="inline-flex items-center gap-1 text-xs bg-yellow-500 bg-opacity-20 text-yellow-300 border border-yellow-500 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
-                                  💷 {remaining2 > 0 ? `£${remaining2.toFixed(2)} balance due` : 'Log final payment'}
+                                  💷 {balanceDue > 0 ? `£${balanceDue.toFixed(2)} balance due` : 'Log final payment'}
                                 </button>
                               );
                             })()}
