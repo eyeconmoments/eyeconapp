@@ -9521,8 +9521,8 @@ Capturing Your Special Day
                                   const url = `${window.location.origin}/client/${job.clientToken}`;
                                   const inquiry = inquiries.find(i => i.name === job.customerName || job.jobName?.includes(i.name));
                                   const clientEmail = inquiry?.email || '';
-                                  const emailSubj = encodeURIComponent(`Your Event Outline — ${job.jobName}`);
-                                  const emailBod = encodeURIComponent(`Hi ${job.customerName || 'there'},\n\nHere's your personalised event outline link — use it to build your schedule before the big day:\n\n${url}\n\nWarm regards,\nEyecon Moments`);
+                                  const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
+                                  const emailBod = encodeURIComponent(`Hi ${job.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\n📞 07957 450570\n📧 eyecon.moments@gmail.com`);
                                   return (
                                     <div onClick={e => e.stopPropagation()} style={{position:'absolute',right:0,bottom:'calc(100% + 6px)',zIndex:999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:195,boxShadow:'0 -4px 24px rgba(0,0,0,0.5)'}}>
                                       <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',padding:'2px 8px 6px',borderBottom:'1px solid rgba(255,255,255,0.08)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{url}</div>
