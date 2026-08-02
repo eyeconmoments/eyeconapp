@@ -9378,6 +9378,33 @@ Capturing Your Special Day
                             <h3 className="text-lg font-bold">{job.jobName}</h3>
                             <p className="text-sm opacity-90">{job.customerName}</p>
                             <p className="text-xs opacity-75">{shootDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                            {/* Payment status pill */}
+                            {(() => {
+                              const dep2 = getJobDeposit(job);
+                              const total2 = calculateJobRevenue(job);
+                              const depositPaid2 = parseFloat(dep2?.amount || 0);
+                              const remaining2 = total2 > 0 ? Math.max(0, total2 - depositPaid2) : 0;
+                              if (job.finalPaymentReceived) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 text-xs bg-green-500 bg-opacity-25 text-green-300 border border-green-500 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold">
+                                    ✅ Paid in full{job.finalPaymentDate ? ` · ${new Date(job.finalPaymentDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : ''}
+                                  </span>
+                                );
+                              }
+                              if (total2 > 0) {
+                                const priorOT = (job.wageEntries||[]).find(e => e.type==='shoot' && e.ranOver && e.extraAmount>0);
+                                return (
+                                  <button onClick={() => setFinalPaymentModal({
+                                    jobId: job.id, totalPrice: total2, depositPaid: depositPaid2,
+                                    finalAmount: depositPaid2>0 && remaining2>0 ? remaining2.toFixed(2) : '',
+                                    overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '', notes:'',
+                                  })} className="inline-flex items-center gap-1 text-xs bg-yellow-500 bg-opacity-20 text-yellow-300 border border-yellow-500 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
+                                    💷 {remaining2 > 0 ? `£${remaining2.toFixed(2)} due` : 'Record payment'}
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
                             {(() => {
                               const lastEdit = job.itinerary?.clientLastEdit;
                               if (!lastEdit) return null;
