@@ -13195,8 +13195,46 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               const qType = crmAnyPhoto && crmAnyVideo ? 'Photography & Cinematography' : crmAnyPhoto ? 'Photography' : 'Cinematography';
               const crmEventDateRaw = quoteData.dates[0]?.date;
               const crmPayRef = crmEventDateRaw ? new Date(crmEventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
-              const subject = `${qType} Quote - Eyecon Moments`;
-              const body = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${qType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${crmPayRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind regards,\nEyecon Moments`;
+              const subject = `Your ${qType} Quote — Eyecon Moments`;
+              const body = `Hi ${firstName},
+
+Thank you for your enquiry. Here is your personalised quote for ${qType.toLowerCase()} coverage.
+
+________________________________
+QUOTE SUMMARY
+________________________________
+
+Service:     ${qType}
+Date:        ${crmPayRef}
+Total:       £${finalTotal.toFixed(2)}
+Deposit:     £${(finalTotal / 2).toFixed(2)} (50% to confirm)
+Balance:     £${(finalTotal / 2).toFixed(2)} (due before the event)
+________________________________
+
+TO CONFIRM YOUR BOOKING
+________________________________
+
+Transfer your deposit to:
+
+  Eyecon Moments Ltd
+  Account:    25406742
+  Sort code:  04-06-05
+  Reference:  ${crmPayRef}
+
+Once received, we will send your booking confirmation.
+
+________________________________
+
+A full PDF breakdown is attached for your records.
+
+If you have any questions, please don't hesitate to get in touch — we would love to be part of your special day.
+
+Kind regards,
+Eyecon Moments
+📞 07957 450570
+📧 eyecon.moments@gmail.com
+🌐 www.eyeconmoments.co.uk
+📸 @eyeconmoments`;
               openMail(`mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
               updateInquiryStatus(crmQuoteInquiry.id, 'quoted');
               {
@@ -16786,10 +16824,48 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
     // Email Quote - Opens Gmail compose + saves to CRM
     const emailQuote = async () => {
       const firstName = (quoteData.clientName || '').split(' ')[0].split('&')[0].trim() || 'there';
-      const subjectText = `${quoteType} Quote - Eyecon Moments`;
+      const subjectText = `Your ${quoteType} Quote — Eyecon Moments`;
       const eventDateRaw = quoteData.dates[0]?.date;
       const payRef = eventDateRaw ? new Date(eventDateRaw + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (quoteData.clientName || 'your event date');
-      const bodyText = `Hello ${firstName},\n\nHope you are well.\n\nPlease find attached your personalised quote for ${quoteType.toLowerCase()} coverage. The full breakdown of services and pricing is included in the PDF for your reference.\n\nYour quoted package total is £${finalTotal.toFixed(2)}.\n\nIf you would like to go ahead and secure your booking, simply transfer a 50% deposit of £${(finalTotal / 2).toFixed(2)} to the following account and we will get everything confirmed for you:\n\nEyecon Moments Ltd\nAccount number: 25406742\nSort code: 04-06-05\n\nPlease use "${payRef}" as your payment reference.\n\nIf you have any questions or would like to discuss anything further, please don't hesitate to get in touch. We look forward to hearing from you!\n\nKind regards,\nEyecon Moments`;
+      const bodyText = `Hi ${firstName},
+
+Thank you for your enquiry. Here is your personalised quote for ${quoteType.toLowerCase()} coverage.
+
+________________________________
+QUOTE SUMMARY
+________________________________
+
+Service:     ${quoteType}
+Date:        ${payRef}
+Total:       £${finalTotal.toFixed(2)}
+Deposit:     £${(finalTotal / 2).toFixed(2)} (50% to confirm)
+Balance:     £${(finalTotal / 2).toFixed(2)} (due before the event)
+________________________________
+
+TO CONFIRM YOUR BOOKING
+________________________________
+
+Transfer your deposit to:
+
+  Eyecon Moments Ltd
+  Account:    25406742
+  Sort code:  04-06-05
+  Reference:  ${payRef}
+
+Once received, we will send your booking confirmation.
+
+________________________________
+
+A full PDF breakdown is attached for your records.
+
+If you have any questions, please don't hesitate to get in touch — we would love to be part of your special day.
+
+Kind regards,
+Eyecon Moments
+📞 07957 450570
+📧 eyecon.moments@gmail.com
+🌐 www.eyeconmoments.co.uk
+📸 @eyeconmoments`;
       openMail(`mailto:${encodeURIComponent(quoteData.clientEmail)}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(bodyText)}`);
 
       // Save to CRM
