@@ -2185,6 +2185,15 @@ function EyeconMoments() {
     setInquiries(prev => prev.map(inq => inq.id === inquiryId ? { ...inq, status: newStatus } : inq));
   };
 
+  // Auto-mark quoted inquiries as declined when their event date has passed
+  useEffect(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const passed = inquiries.filter(i =>
+      i.status === 'quoted' && i.eventDate && new Date(i.eventDate) < today
+    );
+    passed.forEach(i => updateInquiryStatus(i.id, 'declined'));
+  }, [inquiries.length]);
+
   const uploadInquiryPhoto = async (inquiryId, file) => {
     try {
       const compressed = await new Promise((resolve) => {
