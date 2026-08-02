@@ -295,18 +295,14 @@ function ClientPortalView({ token }) {
       setItinSaved(true);
     };
 
-    // PIN gate — shoot date as DDMM e.g. 2607 for 26 July
-    const shootPin = (() => {
-      const d = new Date(job.shootDate);
-      return String(d.getDate()).padStart(2,'0') + String(d.getMonth()+1).padStart(2,'0');
-    })();
+    const shootPin = '1234';
     if (!pinVerified) return (
       <div style={{minHeight:'100vh',background:navy,display:'flex',alignItems:'center',justifyContent:'center',padding:24,fontFamily:'system-ui,-apple-system,sans-serif'}}>
         <div style={{maxWidth:360,width:'100%',textAlign:'center'}}>
           <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain',marginBottom:24}} onError={e=>e.target.style.display='none'} />
           <div style={{fontSize:36,marginBottom:12}}>🔐</div>
           <h2 style={{color:gold,fontSize:22,margin:'0 0 8px'}}>Access your event outline</h2>
-          <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,margin:'0 0 24px',lineHeight:1.6}}>Enter your event date as a 4-digit PIN<br/>(day + month — e.g. <strong style={{color:gold}}>2607</strong> for 26th July)</p>
+          <p style={{color:'rgba(255,255,255,0.55)',fontSize:14,margin:'0 0 24px',lineHeight:1.6}}>Enter the access code provided by Eyecon Moments</p>
           <input
             type="tel" inputMode="numeric" maxLength={4}
             value={pinInput}
@@ -316,7 +312,7 @@ function ClientPortalView({ token }) {
             style={{...inp,textAlign:'center',fontSize:28,letterSpacing:12,marginBottom:12}}
             autoFocus
           />
-          {pinError && <p style={{color:'#f87171',fontSize:13,marginBottom:12}}>Incorrect — try DDMM format (e.g. 2607 for 26 July)</p>}
+          {pinError && <p style={{color:'#f87171',fontSize:13,marginBottom:12}}>Incorrect code — please contact Eyecon Moments</p>}
           <button
             onClick={()=>{if(pinInput===shootPin)setPinVerified(true);else setPinError(true);}}
             style={{width:'100%',padding:'14px',borderRadius:12,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer'}}
