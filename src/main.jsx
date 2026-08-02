@@ -6228,6 +6228,9 @@ Notes: ${j.notes || 'none'}`;
             <div>
               <h1 className="font-bold text-lg leading-none" style={{color:'var(--gold)', fontFamily:'Cormorant Garamond, serif', letterSpacing:'1px'}}>Eyecon Moments</h1>
               <p className="text-xs" style={{color:'rgba(193,167,106,0.6)', letterSpacing:'2px', fontSize:'9px'}}>BUSINESS MANAGEMENT</p>
+              <p style={{color:'rgba(193,167,106,0.35)', fontSize:'8px', marginTop:1, letterSpacing:'0.5px'}}>
+                {__GIT_COMMIT__} · {new Date(__BUILD_TIME__).toLocaleDateString('en-GB',{day:'numeric',month:'short'})} {new Date(__BUILD_TIME__).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {navActiveEntry && (
