@@ -4429,8 +4429,9 @@ Notes: ${j.notes || 'none'}`;
         const url = `${window.location.origin}/client/${mlJob.clientToken}`;
         const inq = inquiries.find(i => i.customerName === mlJob.customerName || mlJob.jobName?.includes(i.customerName));
         const clientEmail = inq?.email || '';
+        const greeting = (mlJob.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim() || 'there';
         const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
-        const emailBod = encodeURIComponent(`Hi ${mlJob.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+        const emailBod = encodeURIComponent(`Hi ${greeting},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
         return (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-[9999] flex items-end justify-center" onClick={() => setClientLinkModal(null)}>
             <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
@@ -7062,7 +7063,7 @@ Notes: ${j.notes || 'none'}`;
                     const remaining = total > 0 ? Math.max(0, total - depositPaid) : depositPaid;
                     const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
                     const clientEmail = clientInq?.email || '';
-                    const firstName = j.customerName?.split(' ')[0] || 'there';
+                    const firstName = (j.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim().split(' ')[0] || 'there';
                     const balanceStr = remaining > 0 ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
                     const reminderSubj = encodeURIComponent(`Your Outstanding Balance — ${j.jobName}`);
                     const reminderBody = encodeURIComponent(`Hi ${firstName},\n\nThank you so much for having us — it was a pleasure to be part of your day.\n\nWe just wanted to drop you a quick message as ${balanceStr} is now due. Please feel free to transfer at your earliest convenience, and don't hesitate to get in touch if you have any questions.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
