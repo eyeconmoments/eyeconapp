@@ -9225,25 +9225,24 @@ Capturing Your Special Day
             return (
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
                 {/* Header row */}
-                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div className="flex items-center justify-between mb-2 gap-2">
                   <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗓️ Jobs Calendar</h3>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Google Calendar sync button */}
-                    <button
-                      onClick={() => syncGCalForMonth(ucMonth, ucYear)}
-                      disabled={gCalSyncing}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        isGoogleSignedIn
-                          ? 'bg-green-500 text-white hover:bg-green-600'
-                          : 'bg-blue-500 text-white hover:bg-blue-600'
-                      } ${gCalSyncing ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                      {gCalSyncing ? '⏳ Syncing…' : isGoogleSignedIn ? '🔄 Sync Google Cal' : '🔗 Connect Google Cal'}
-                    </button>
-                    {/* Month nav */}
-                    <button onClick={goBack} className={`px-2 py-1 rounded text-sm ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>‹</button>
-                    <span className={`font-semibold text-sm min-w-[130px] text-center ${darkMode ? 'text-white' : ''}`}>{ucMonthName}</span>
-                    <button onClick={goFwd}  className={`px-2 py-1 rounded text-sm ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>›</button>
-                  </div>
+                  <button
+                    onClick={() => syncGCalForMonth(ucMonth, ucYear)}
+                    disabled={gCalSyncing}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                      isGoogleSignedIn
+                        ? 'bg-green-500 text-white hover:bg-green-600'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    } ${gCalSyncing ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                    {gCalSyncing ? '⏳ Syncing…' : isGoogleSignedIn ? '🔄 Sync Google Cal' : '🔗 Connect Google Cal'}
+                  </button>
+                </div>
+                {/* Month nav — own row so arrows never wrap */}
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <button onClick={goBack} className={`px-3 py-1 rounded text-lg font-bold ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>‹</button>
+                  <span className={`font-semibold text-sm min-w-[130px] text-center ${darkMode ? 'text-white' : ''}`}>{ucMonthName}</span>
+                  <button onClick={goFwd}  className={`px-3 py-1 rounded text-lg font-bold ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>›</button>
                 </div>
 
                 {/* Legend */}
@@ -9532,12 +9531,12 @@ Capturing Your Special Day
                                 <button onClick={async (e) => {
                                   e.stopPropagation();
                                   if (clientLinkPopup?.id === job.id) { setClientLinkPopup(null); return; }
+                                  const rect = e.currentTarget.getBoundingClientRect();
                                   if (!job.clientToken) {
                                     const token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
                                     await db.from('jobs').update({ client_token: token }).eq('id', job.id);
                                     setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
                                   }
-                                  const rect = e.currentTarget.getBoundingClientRect();
                                   setClientLinkPopup({ id: job.id, top: rect.bottom + 6, right: window.innerWidth - rect.right });
                                 }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1">
                                   🔗 Client Link
