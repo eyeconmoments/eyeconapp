@@ -166,7 +166,7 @@ function ClientPortalView({ token }) {
           const src = j.itinerary || {};
           // Pre-fill venue from itinerary if set, otherwise pull first line of job notes
           const venueDefault = ('venue' in src && src.venue) ? src.venue : ((j.notes || '').split(/[.\n]/)[0].trim());
-          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [] });
+          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [], inspirationLinks: src.inspirationLinks || [] });
           // mark loaded on next tick so initial set doesn't trigger auto-save
           setTimeout(() => { loadedRef.current = true; }, 50);
         }
@@ -181,7 +181,7 @@ function ClientPortalView({ token }) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${jobId}` }, ({ new: row }) => {
         if (savingRef.current) return; // ignore echo of our own save
         const src = row.itinerary || {};
-        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [] });
+        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [], inspirationLinks: src.inspirationLinks || [] });
       })
       .subscribe();
     return () => db.removeChannel(ch);
@@ -570,6 +570,39 @@ function ClientPortalView({ token }) {
           <textarea value={itin.notes} onChange={e=>setItin(p=>({...p,notes:e.target.value}))}
             rows={3} placeholder="Special requests, important people to capture, things to avoid…"
             style={{...inp,resize:'vertical',lineHeight:1.5}} />
+        </div>
+
+        {/* Inspiration Links */}
+        <div style={card}>
+          <span style={label}>Your Inspiration</span>
+          <p style={{color:'rgba(255,255,255,0.5)',fontSize:13,marginBottom:14,lineHeight:1.6}}>
+            Share links to photos or videos that feel similar to what you'd love for your big day — something that resonates with your style, vibe, or vision. Paste a link below and we'll use it as a reference.
+          </p>
+          {(itin.inspirationLinks || []).map((link, idx) => (
+            <div key={idx} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              <a href={link} target="_blank" rel="noopener noreferrer"
+                style={{flex:1,color:gold,fontSize:13,wordBreak:'break-all',textDecoration:'underline',opacity:0.9}}>
+                {link}
+              </a>
+              <button onClick={() => setItin(p => ({ ...p, inspirationLinks: p.inspirationLinks.filter((_,i)=>i!==idx) }))}
+                style={{background:'rgba(255,255,255,0.08)',border:'none',color:'rgba(255,255,255,0.4)',borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:13,flexShrink:0}}>
+                ✕
+              </button>
+            </div>
+          ))}
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <input id="inspo-input" type="url" placeholder="https://www.pinterest.com/…"
+              style={{...inp,flex:1}} />
+            <button onClick={() => {
+              const el = document.getElementById('inspo-input');
+              const val = (el?.value || '').trim();
+              if (!val) return;
+              setItin(p => ({ ...p, inspirationLinks: [...(p.inspirationLinks||[]), val] }));
+              if (el) el.value = '';
+            }} style={{background:gold,border:'none',borderRadius:10,color:navy,fontWeight:700,padding:'10px 16px',cursor:'pointer',fontSize:14,flexShrink:0}}>
+              Add
+            </button>
+          </div>
         </div>
 
         <button onClick={saveItin}
@@ -5915,6 +5948,19 @@ Notes: ${j.notes || 'none'}`;
                         <span>👤</span><span><strong>Next of Kin:</strong> {itin.nextOfKin.name}{itin.nextOfKin.phone ? ` · ${itin.nextOfKin.phone}` : ''}</span>
                       </div>
                     )}
+                    {itin.inspirationLinks?.length > 0 && (
+                      <div className={`px-4 py-3 border-b ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-purple-50 border-purple-100'}`}>
+                        <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>✨ Client Inspiration</p>
+                        <div className="space-y-1">
+                          {itin.inspirationLinks.map((link, i) => (
+                            <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                              className={`block text-xs truncate underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                              {link}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {itemsWithTime.length === 0
                       ? <p className={`px-4 py-4 text-sm text-center ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>No schedule items added yet.</p>
                       : <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
@@ -9986,6 +10032,21 @@ Capturing Your Special Day
                             rows={3}
                             className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : ''}`} />
                         </div>
+
+                        {/* Client Inspiration Links (read-only — submitted via client portal) */}
+                        {itinerary.inspirationLinks?.length > 0 && (
+                          <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-purple-900 bg-opacity-30' : 'bg-purple-50'}`}>
+                            <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>✨ Client Inspiration</p>
+                            <div className="space-y-1">
+                              {itinerary.inspirationLinks.map((link, i) => (
+                                <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                                  className={`block text-xs break-all underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                  {link}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Generate PDF & Email Buttons */}
