@@ -166,7 +166,7 @@ function ClientPortalView({ token }) {
           const src = j.itinerary || {};
           // Pre-fill venue from itinerary if set, otherwise pull first line of job notes
           const venueDefault = ('venue' in src && src.venue) ? src.venue : ((j.notes || '').split(/[.\n]/)[0].trim());
-          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [], inspirationLinks: src.inspirationLinks || [] });
+          setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: venueDefault, scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [], inspirationLinks: src.inspirationLinks || [], inspirationImages: src.inspirationImages || [] });
           // mark loaded on next tick so initial set doesn't trigger auto-save
           setTimeout(() => { loadedRef.current = true; }, 50);
         }
@@ -181,7 +181,7 @@ function ClientPortalView({ token }) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${jobId}` }, ({ new: row }) => {
         if (savingRef.current) return; // ignore echo of our own save
         const src = row.itinerary || {};
-        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [], inspirationLinks: src.inspirationLinks || [] });
+        setItin({ startTime: src.startTime || '10:00', endTime: src.endTime || '22:00', venue: src.venue || '', scheduleItems: src.scheduleItems || [], notes: src.notes || '', nextOfKin: src.nextOfKin || { name:'', phone:'' }, clientChangelog: src.clientChangelog || [], inspirationLinks: src.inspirationLinks || [], inspirationImages: src.inspirationImages || [] });
       })
       .subscribe();
     return () => db.removeChannel(ch);
@@ -572,12 +572,29 @@ function ClientPortalView({ token }) {
             style={{...inp,resize:'vertical',lineHeight:1.5}} />
         </div>
 
-        {/* Inspiration Links */}
+        {/* Inspiration */}
         <div style={card}>
           <span style={label}>Your Inspiration</span>
-          <p style={{color:'rgba(255,255,255,0.5)',fontSize:13,marginBottom:14,lineHeight:1.6}}>
-            Share links to photos or videos that feel similar to what you'd love for your big day — something that resonates with your style, vibe, or vision. Paste a link below and we'll use it as a reference.
+          <p style={{color:'rgba(255,255,255,0.5)',fontSize:13,marginBottom:16,lineHeight:1.65}}>
+            Share anything that inspires your day — paste a link from Pinterest, Instagram or YouTube, or upload a screenshot saved on your phone. We'll use it as a reference when planning your shoot.
           </p>
+
+          {/* Image thumbnails grid */}
+          {(itin.inspirationImages || []).length > 0 && (
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
+              {(itin.inspirationImages).map((img, idx) => (
+                <div key={idx} style={{position:'relative'}}>
+                  <img src={img} alt="inspiration" style={{width:'100%',aspectRatio:'1',objectFit:'cover',borderRadius:10,display:'block'}} />
+                  <button onClick={() => setItin(p => ({ ...p, inspirationImages: p.inspirationImages.filter((_,i)=>i!==idx) }))}
+                    style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,0.65)',border:'none',color:'#fff',borderRadius:'50%',width:22,height:22,cursor:'pointer',fontSize:12,lineHeight:'22px',padding:0,textAlign:'center'}}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Link list */}
           {(itin.inspirationLinks || []).map((link, idx) => (
             <div key={idx} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
               <a href={link} target="_blank" rel="noopener noreferrer"
@@ -590,8 +607,10 @@ function ClientPortalView({ token }) {
               </button>
             </div>
           ))}
-          <div style={{display:'flex',gap:8,marginTop:4}}>
-            <input id="inspo-input" type="url" placeholder="https://www.pinterest.com/…"
+
+          {/* URL input row */}
+          <div style={{display:'flex',gap:8,marginBottom:10}}>
+            <input id="inspo-input" type="url" placeholder="Paste a link — Pinterest, Instagram, YouTube…"
               style={{...inp,flex:1}} />
             <button onClick={() => {
               const el = document.getElementById('inspo-input');
@@ -600,9 +619,35 @@ function ClientPortalView({ token }) {
               setItin(p => ({ ...p, inspirationLinks: [...(p.inspirationLinks||[]), val] }));
               if (el) el.value = '';
             }} style={{background:gold,border:'none',borderRadius:10,color:navy,fontWeight:700,padding:'10px 16px',cursor:'pointer',fontSize:14,flexShrink:0}}>
-              Add
+              Add link
             </button>
           </div>
+
+          {/* Photo / screenshot upload */}
+          <label style={{display:'block',textAlign:'center',padding:'12px 16px',border:'1px dashed rgba(255,255,255,0.15)',borderRadius:10,cursor:'pointer',color:'rgba(255,255,255,0.45)',fontSize:13,marginTop:4}}>
+            📷 Upload a photo or screenshot
+            <input type="file" accept="image/*" style={{display:'none'}} onChange={e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = ev => {
+                const imgEl = new Image();
+                imgEl.onload = () => {
+                  const MAX = 900;
+                  let w = imgEl.width, h = imgEl.height;
+                  if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+                  const canvas = document.createElement('canvas');
+                  canvas.width = w; canvas.height = h;
+                  canvas.getContext('2d').drawImage(imgEl, 0, 0, w, h);
+                  const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+                  setItin(p => ({ ...p, inspirationImages: [...(p.inspirationImages||[]), dataUrl] }));
+                };
+                imgEl.src = ev.target.result;
+              };
+              reader.readAsDataURL(file);
+              e.target.value = '';
+            }} />
+          </label>
         </div>
 
         <button onClick={saveItin}
@@ -5948,17 +5993,26 @@ Notes: ${j.notes || 'none'}`;
                         <span>👤</span><span><strong>Next of Kin:</strong> {itin.nextOfKin.name}{itin.nextOfKin.phone ? ` · ${itin.nextOfKin.phone}` : ''}</span>
                       </div>
                     )}
-                    {itin.inspirationLinks?.length > 0 && (
+                    {(itin.inspirationLinks?.length > 0 || itin.inspirationImages?.length > 0) && (
                       <div className={`px-4 py-3 border-b ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-purple-50 border-purple-100'}`}>
                         <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>✨ Client Inspiration</p>
-                        <div className="space-y-1">
-                          {itin.inspirationLinks.map((link, i) => (
-                            <a key={i} href={link} target="_blank" rel="noopener noreferrer"
-                              className={`block text-xs truncate underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                              {link}
-                            </a>
-                          ))}
-                        </div>
+                        {itin.inspirationImages?.length > 0 && (
+                          <div className="grid grid-cols-4 gap-1.5 mb-2">
+                            {itin.inspirationImages.map((img, i) => (
+                              <img key={i} src={img} alt="inspiration" className="w-full aspect-square object-cover rounded-lg" />
+                            ))}
+                          </div>
+                        )}
+                        {itin.inspirationLinks?.length > 0 && (
+                          <div className="space-y-1">
+                            {itin.inspirationLinks.map((link, i) => (
+                              <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                                className={`block text-xs truncate underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                {link}
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     {itemsWithTime.length === 0
@@ -10033,18 +10087,27 @@ Capturing Your Special Day
                             className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : ''}`} />
                         </div>
 
-                        {/* Client Inspiration Links (read-only — submitted via client portal) */}
-                        {itinerary.inspirationLinks?.length > 0 && (
+                        {/* Client Inspiration (read-only — submitted via client portal) */}
+                        {(itinerary.inspirationLinks?.length > 0 || itinerary.inspirationImages?.length > 0) && (
                           <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-purple-900 bg-opacity-30' : 'bg-purple-50'}`}>
                             <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>✨ Client Inspiration</p>
-                            <div className="space-y-1">
-                              {itinerary.inspirationLinks.map((link, i) => (
-                                <a key={i} href={link} target="_blank" rel="noopener noreferrer"
-                                  className={`block text-xs break-all underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                                  {link}
-                                </a>
-                              ))}
-                            </div>
+                            {itinerary.inspirationImages?.length > 0 && (
+                              <div className="grid grid-cols-3 gap-2 mb-3">
+                                {itinerary.inspirationImages.map((img, i) => (
+                                  <img key={i} src={img} alt="inspiration" className="w-full aspect-square object-cover rounded-lg" />
+                                ))}
+                              </div>
+                            )}
+                            {itinerary.inspirationLinks?.length > 0 && (
+                              <div className="space-y-1">
+                                {itinerary.inspirationLinks.map((link, i) => (
+                                  <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                                    className={`block text-xs break-all underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                    {link}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
