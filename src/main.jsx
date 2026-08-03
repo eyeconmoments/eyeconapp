@@ -130,7 +130,7 @@ const Camera = () => <span>📸</span>;
 const Archive = () => <span>📦</span>;
 const Eye = () => <span>👁️</span>;
 
-function ClientPortalView({ token }) {
+function ClientPortalView({ token, readOnly }) {
   const [job, setJob] = React.useState(null);
   const [jobId, setJobId] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -156,7 +156,10 @@ function ClientPortalView({ token }) {
 
   // Load job once
   React.useEffect(() => {
-    db.from('jobs').select('*').eq('client_token', token).single()
+    const q = readOnly
+      ? db.from('jobs').select('*').filter('itinerary->>shareToken', 'eq', token).single()
+      : db.from('jobs').select('*').eq('client_token', token).single();
+    q
       .then(({ data, error }) => {
         if (error || !data) { setNotFound(true); }
         else {
@@ -176,7 +179,7 @@ function ClientPortalView({ token }) {
 
   // Real-time: pick up admin edits on the same job
   React.useEffect(() => {
-    if (!jobId) return;
+    if (readOnly || !jobId) return;
     const ch = db.channel(`client-itin-${jobId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${jobId}` }, ({ new: row }) => {
         if (savingRef.current) return; // ignore echo of our own save
@@ -189,7 +192,7 @@ function ClientPortalView({ token }) {
 
   // Auto-save whenever itin changes (debounced 800ms)
   React.useEffect(() => {
-    if (!loadedRef.current || !itin || !jobId) return;
+    if (readOnly || !loadedRef.current || !itin || !jobId) return;
     setSaveStatus('saving');
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -258,6 +261,74 @@ function ClientPortalView({ token }) {
 
   const todayMid = new Date(); todayMid.setHours(0,0,0,0);
   const isUpcoming = job.shootDate ? new Date(job.shootDate) >= todayMid : false;
+
+  // ── Read-only shared view (family & friends link) ─────────────────────────
+  if (readOnly && itin) {
+    const roTimes = (() => {
+      const times = []; let cur = itin.startTime || '10:00';
+      (itin.scheduleItems || []).forEach(it => {
+        times.push(cur);
+        const [h, m] = cur.split(':').map(Number);
+        const tot = h * 60 + m + (it.duration || 2) * 15;
+        cur = `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`;
+      });
+      return times;
+    })();
+    return (
+      <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif'}}>
+      <div style={{maxWidth:520,margin:'0 auto',padding:'24px 16px 48px'}}>
+        <div style={{textAlign:'center',marginBottom:28,paddingTop:12}}>
+          <img src="/logo.png" alt="Eyecon Moments" style={{height:44,objectFit:'contain',marginBottom:16}} onError={e=>e.target.style.display='none'} />
+          <div style={{display:'inline-block',background:'rgba(193,167,106,0.1)',border:'1px solid rgba(193,167,106,0.3)',borderRadius:20,padding:'4px 16px',marginBottom:14}}>
+            <span style={{color:gold,fontSize:11,letterSpacing:1.5}}>SHARED ITINERARY · VIEW ONLY</span>
+          </div>
+          <h1 style={{color:'#fff',fontSize:22,fontWeight:700,margin:'0 0 4px'}}>{job?.jobName}</h1>
+          {job?.shootDate && <p style={{color:'rgba(193,167,106,0.6)',fontSize:13,margin:0}}>
+            {new Date(job.shootDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+          </p>}
+        </div>
+        {(itin.startTime || itin.venue) && (
+          <div style={{background:'rgba(255,255,255,0.05)',borderRadius:16,padding:'14px 20px',marginBottom:14}}>
+            {itin.startTime && itin.endTime && <div style={{color:'rgba(255,255,255,0.55)',fontSize:13,marginBottom:itin.venue?6:0}}>⏱ {itin.startTime} – {itin.endTime}</div>}
+            {itin.venue && <div style={{color:'rgba(255,255,255,0.8)',fontSize:14}}>📍 {itin.venue}</div>}
+          </div>
+        )}
+        {itin.scheduleItems?.length > 0 && (
+          <div style={{background:'rgba(255,255,255,0.05)',borderRadius:16,overflow:'hidden',marginBottom:14}}>
+            {itin.scheduleItems.map((item, idx) => (
+              <div key={idx} style={{padding:'11px 20px',borderBottom:'1px solid rgba(255,255,255,0.04)',display:'flex',alignItems:'center',gap:14}}>
+                <span style={{color:gold,fontSize:12,fontFamily:'monospace',fontWeight:700,flexShrink:0,width:40}}>{roTimes[idx]}</span>
+                <span style={{color:'#f0f0f0',fontSize:14,flex:1}}>{item.name || item.label}</span>
+                {item.notes && <span style={{color:'rgba(255,255,255,0.35)',fontSize:12}}>{item.notes}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {itin.notes ? (
+          <div style={{background:'rgba(255,255,255,0.05)',borderRadius:16,padding:'14px 20px',marginBottom:14}}>
+            <div style={{color:'rgba(193,167,106,0.65)',fontSize:10,letterSpacing:2,textTransform:'uppercase',marginBottom:8}}>Notes</div>
+            <p style={{color:'rgba(255,255,255,0.65)',fontSize:14,margin:0,lineHeight:1.65,whiteSpace:'pre-wrap'}}>{itin.notes}</p>
+          </div>
+        ) : null}
+        {(itin.inspirationImages?.length > 0 || itin.inspirationLinks?.length > 0) && (
+          <div style={{background:'rgba(255,255,255,0.05)',borderRadius:16,padding:'14px 20px',marginBottom:14}}>
+            <div style={{color:'rgba(193,167,106,0.65)',fontSize:10,letterSpacing:2,textTransform:'uppercase',marginBottom:12}}>Our Inspiration</div>
+            {itin.inspirationImages?.length > 0 && (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
+                {itin.inspirationImages.map((img,i) => <img key={i} src={img} alt="" style={{width:'100%',aspectRatio:'1',objectFit:'cover',borderRadius:8}} />)}
+              </div>
+            )}
+            {itin.inspirationLinks?.map((link,i) => (
+              <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                style={{display:'block',color:gold,fontSize:13,wordBreak:'break-all',marginBottom:4,opacity:0.75,textDecoration:'underline'}}>{link}</a>
+            ))}
+          </div>
+        )}
+        <p style={{textAlign:'center',color:'rgba(255,255,255,0.15)',fontSize:12,marginTop:8}}>Eyecon Moments · Shared event outline</p>
+      </div>
+      </div>
+    );
+  }
 
   // ── Pre-shoot: itinerary builder ──────────────────────────────────────────
   if (isUpcoming && itin) {
@@ -651,9 +722,31 @@ function ClientPortalView({ token }) {
         </div>
 
         <button onClick={saveItin}
-          style={{width:'100%',padding:'16px',borderRadius:14,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer',marginBottom:32}}>
+          style={{width:'100%',padding:'16px',borderRadius:14,background:`linear-gradient(135deg,${gold},#a08040)`,color:navy,fontWeight:700,fontSize:16,border:'none',cursor:'pointer',marginBottom:12}}>
           ✅ Finish &amp; View My Outline
         </button>
+
+        <button onClick={async () => {
+          let shareToken = itin.shareToken;
+          if (!shareToken) {
+            shareToken = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+            const newItin = { ...itin, shareToken };
+            await db.from('jobs').update({
+              itinerary: { clientDraft: true, clientLastEdit: new Date().toISOString(), ...newItin }
+            }).eq('client_token', token);
+            setItin(p => ({ ...p, shareToken }));
+          }
+          const shareUrl = `${window.location.origin}/client/share/${shareToken}`;
+          if (navigator.share) {
+            try { await navigator.share({ title: job.jobName, text: 'View our event itinerary', url: shareUrl }); } catch {}
+          } else {
+            try { await navigator.clipboard.writeText(shareUrl); } catch {}
+            alert('Link copied! Send it to family and friends — they can view but not make any changes.');
+          }
+        }} style={{width:'100%',padding:'14px',borderRadius:14,background:'rgba(193,167,106,0.1)',border:'1px solid rgba(193,167,106,0.3)',color:gold,fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:28}}>
+          🔗 Share with family &amp; friends
+        </button>
+
         <div style={{textAlign:'center',paddingBottom:24}}>
           <p style={{color:'rgba(255,255,255,0.2)',fontSize:12}}>Eyecon Moments · Your outline will be reviewed at consultation</p>
         </div>
@@ -3367,7 +3460,9 @@ function EyeconMoments() {
   }, [currentView, currentUser]);
 
 
+  const _shareToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/share\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
   const _portalToken = React.useMemo(() => { const m = window.location.pathname.match(/^\/client\/([a-z0-9-]+)$/i); return m ? m[1] : null; }, []);
+  if (_shareToken) return <ClientPortalView token={_shareToken} readOnly={true} />;
   if (_portalToken) return <ClientPortalView token={_portalToken} />;
 
   // LOGIN VIEW
