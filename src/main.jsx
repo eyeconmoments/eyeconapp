@@ -8501,12 +8501,11 @@ Notes: ${j.notes || 'none'}`;
   if (currentView === 'upcoming') {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const thirtyDaysFromNow = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
     const upcomingJobsList = editingJobs
       .filter(job => {
         const shootDate = new Date(job.shootDate);
         shootDate.setHours(0, 0, 0, 0);
-        return shootDate >= today && shootDate <= thirtyDaysFromNow && !archivedJobIds.includes(job.id);
+        return shootDate >= today && !archivedJobIds.includes(job.id);
       })
       .sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
     
