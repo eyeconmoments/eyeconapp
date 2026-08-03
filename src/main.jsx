@@ -3245,12 +3245,6 @@ function EyeconMoments() {
 
   // Initialise gapi.client on mount so Calendar API is ready before sign-in
   useEffect(() => { initGoogleCalendar().catch(() => {}); }, []);
-  useEffect(() => {
-    if (!clientLinkPopup) return;
-    const close = () => setClientLinkPopup(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [clientLinkPopup?.id]);
 
   useEffect(() => {
     if (isGoogleSignedIn) {
@@ -12725,7 +12719,10 @@ Capturing Your Special Day
             const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
             const emailBod = encodeURIComponent(`Hi ${popupJob.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
             return (
-              <div onClick={e => e.stopPropagation()} style={{position:'fixed',top:clientLinkPopup.top,right:clientLinkPopup.right,zIndex:99999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:230,boxShadow:'0 8px 32px rgba(0,0,0,0.7)'}}>
+              <>
+              {/* Invisible overlay catches clicks outside popup */}
+              <div onClick={() => setClientLinkPopup(null)} style={{position:'fixed',inset:0,zIndex:99998}} />
+              <div onClick={e => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }} style={{position:'fixed',top:clientLinkPopup.top,right:clientLinkPopup.right,zIndex:99999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:230,boxShadow:'0 8px 32px rgba(0,0,0,0.7)'}}>
                 <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',padding:'2px 8px 6px',borderBottom:'1px solid rgba(255,255,255,0.08)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:214}}>{url}</div>
                 {[
                   { icon:'📋', label:'Copy link', action: async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkPopup(null); alert('Link copied!'); }},
@@ -12739,6 +12736,7 @@ Capturing Your Special Day
                   </button>
                 ))}
               </div>
+              </>
             );
           })()}
 
