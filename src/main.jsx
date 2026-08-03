@@ -697,6 +697,8 @@ function EyeconMoments() {
   const [importEventModal, setImportEventModal] = useState(null); // gcal event to preview/import
   const [gcalDragActive, setGcalDragActive] = useState(false); // true while dragging a gcal event card
   const [clientLinkModal, setClientLinkModal] = useState(null); // jobId for bottom-sheet modal
+  const [renamingJobId, setRenamingJobId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
   const [itineraryShareModal, setItineraryShareModal] = useState(null); // jobId being shared
   const [itineraryShareWith, setItineraryShareWith] = useState([]); // selected employee IDs
   const [adminAssignedOpen, setAdminAssignedOpen] = useState(false);
@@ -9477,7 +9479,43 @@ Capturing Your Special Day
                       <div className={`p-4 ${isToday ? 'bg-red-500' : isTomorrow ? 'bg-orange-500' : 'bg-blue-500'} text-white`}>
                         <div className="flex justify-between items-center">
                           <div>
-                            <h3 className="text-lg font-bold">{job.jobName}</h3>
+                            {renamingJobId === job.id ? (
+                              <div className="flex items-center gap-2 mb-1" onClick={e => e.stopPropagation()}>
+                                <input
+                                  autoFocus
+                                  value={renameValue}
+                                  onChange={e => setRenameValue(e.target.value)}
+                                  onKeyDown={async e => {
+                                    if (e.key === 'Enter') {
+                                      const trimmed = renameValue.trim();
+                                      if (trimmed && trimmed !== job.jobName) {
+                                        await db.from('jobs').update({ job_name: trimmed, customer_name: trimmed }).eq('id', job.id);
+                                        setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, jobName: trimmed, customerName: trimmed } : j));
+                                      }
+                                      setRenamingJobId(null);
+                                    }
+                                    if (e.key === 'Escape') setRenamingJobId(null);
+                                  }}
+                                  className="bg-white bg-opacity-20 text-white placeholder-white placeholder-opacity-60 font-bold text-base rounded px-2 py-1 border border-white border-opacity-40 outline-none w-full"
+                                  style={{minWidth:0}}
+                                />
+                                <button onClick={async () => {
+                                  const trimmed = renameValue.trim();
+                                  if (trimmed && trimmed !== job.jobName) {
+                                    await db.from('jobs').update({ job_name: trimmed, customer_name: trimmed }).eq('id', job.id);
+                                    setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, jobName: trimmed, customerName: trimmed } : j));
+                                  }
+                                  setRenamingJobId(null);
+                                }} className="text-white font-bold text-lg leading-none shrink-0">✓</button>
+                                <button onClick={() => setRenamingJobId(null)} className="text-white opacity-60 text-lg leading-none shrink-0">✕</button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-bold">{job.jobName}</h3>
+                                <button onClick={e => { e.stopPropagation(); setRenameValue(job.jobName); setRenamingJobId(job.id); }}
+                                  className="text-white opacity-50 hover:opacity-90 text-sm leading-none" title="Rename job">✏️</button>
+                              </div>
+                            )}
                             <p className="text-sm opacity-90">{job.customerName}</p>
                             <p className="text-xs opacity-75">{shootDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
                             {/* Payment status pill */}
