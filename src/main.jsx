@@ -4422,6 +4422,42 @@ Notes: ${j.notes || 'none'}`;
         );
       })()}
 
+      {/* ── Global: Client Link Modal ─────────────────────────────────────── */}
+      {clientLinkModal && (() => {
+        const mlJob = editingJobs.find(j => j.id === clientLinkModal);
+        if (!mlJob) return null;
+        const url = `${window.location.origin}/client/${mlJob.clientToken}`;
+        const inq = inquiries.find(i => i.customerName === mlJob.customerName || mlJob.jobName?.includes(i.customerName));
+        const clientEmail = inq?.email || '';
+        const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
+        const emailBod = encodeURIComponent(`Hi ${mlJob.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-[9999] flex items-end justify-center" onClick={() => setClientLinkModal(null)}>
+            <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-white font-bold text-lg">🔗 Client Link</h3>
+                <button onClick={() => setClientLinkModal(null)} className="text-gray-400 text-2xl leading-none">×</button>
+              </div>
+              <p className="text-gray-500 text-xs mb-4 truncate">{url}</p>
+              <div className="space-y-2">
+                <button onClick={async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkModal(null); alert('Link copied!'); }}
+                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
+                  📋 Copy link
+                </button>
+                <button onClick={() => { window.open(url, '_blank'); setClientLinkModal(null); }}
+                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
+                  ↗ Open in browser
+                </button>
+                <button onClick={() => { openMail(`mailto:${clientEmail}?subject=${emailSubj}&body=${emailBod}`); setClientLinkModal(null); }}
+                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
+                  📧 {clientEmail ? `Email — ${clientEmail}` : 'Email to client'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Global: Final Payment Modal (accessible from any view) ─────────── */}
       {finalPaymentModal && (() => {
         const fpJob = editingJobs.find(j => j.id === finalPaymentModal.jobId);
@@ -12705,41 +12741,6 @@ Capturing Your Special Day
             );
           })()}
           
-          {/* Client link bottom-sheet modal */}
-          {clientLinkModal && (() => {
-            const mlJob = editingJobs.find(j => j.id === clientLinkModal);
-            if (!mlJob) return null;
-            const url = `${window.location.origin}/client/${mlJob.clientToken}`;
-            const inq = inquiries.find(i => i.customerName === mlJob.customerName || mlJob.jobName?.includes(i.customerName));
-            const clientEmail = inq?.email || '';
-            const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
-            const emailBod = encodeURIComponent(`Hi ${mlJob.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
-            return (
-              <div className="fixed inset-0 bg-black bg-opacity-60 z-[9999] flex items-end justify-center" onClick={() => setClientLinkModal(null)}>
-                <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-white font-bold text-lg">🔗 Client Link</h3>
-                    <button onClick={() => setClientLinkModal(null)} className="text-gray-400 text-2xl leading-none">×</button>
-                  </div>
-                  <p className="text-gray-500 text-xs mb-4 truncate">{url}</p>
-                  <div className="space-y-2">
-                    <button onClick={async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkModal(null); alert('Link copied!'); }}
-                      className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
-                      📋 Copy link
-                    </button>
-                    <button onClick={() => { window.open(url, '_blank'); setClientLinkModal(null); }}
-                      className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
-                      ↗ Open in browser
-                    </button>
-                    <button onClick={() => { openMail(`mailto:${clientEmail}?subject=${emailSubj}&body=${emailBod}`); setClientLinkModal(null); }}
-                      className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
-                      📧 {clientEmail ? `Email — ${clientEmail}` : 'Email to client'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
 
           {/* Follow-Up Modal */}
           {showFollowUpModal && followUpInquiry && (
