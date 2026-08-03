@@ -696,7 +696,7 @@ function EyeconMoments() {
   const [gCalSyncing, setGCalSyncing] = useState(false);
   const [importEventModal, setImportEventModal] = useState(null); // gcal event to preview/import
   const [gcalDragActive, setGcalDragActive] = useState(false); // true while dragging a gcal event card
-  const [clientLinkPopup, setClientLinkPopup] = useState(null); // { id, top, right } with popup open
+  const [clientLinkModal, setClientLinkModal] = useState(null); // jobId for bottom-sheet modal
   const [itineraryShareModal, setItineraryShareModal] = useState(null); // jobId being shared
   const [itineraryShareWith, setItineraryShareWith] = useState([]); // selected employee IDs
   const [adminAssignedOpen, setAdminAssignedOpen] = useState(false);
@@ -9520,22 +9520,18 @@ Capturing Your Special Day
                               {job.itinerary?.clientDraft && (
                                 <span className="text-xs bg-green-500 text-white px-2 py-1 rounded font-semibold" title="Client has submitted their event schedule">📋 Schedule received</span>
                               )}
-                              {/* Client link popup */}
-                              <div>
-                                <button onClick={async (e) => {
-                                  e.stopPropagation();
-                                  if (clientLinkPopup?.id === job.id) { setClientLinkPopup(null); return; }
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  if (!job.clientToken) {
-                                    const token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-                                    await db.from('jobs').update({ client_token: token }).eq('id', job.id);
-                                    setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
-                                  }
-                                  setClientLinkPopup({ id: job.id, top: rect.bottom + 6, right: window.innerWidth - rect.right });
-                                }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1">
-                                  🔗 Client Link
-                                </button>
-                              </div>
+                              {/* Client link */}
+                              <button onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!job.clientToken) {
+                                  const token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                                  await db.from('jobs').update({ client_token: token }).eq('id', job.id);
+                                  setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, clientToken: token } : j));
+                                }
+                                setClientLinkModal(job.id);
+                              }} className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1">
+                                🔗 Client Link
+                              </button>
                               {/* Share itinerary with staff */}
                               <button onClick={() => {
                                 setItineraryShareModal(job.id);
@@ -12709,34 +12705,39 @@ Capturing Your Special Day
             );
           })()}
           
-          {/* Client link fixed popup — rendered at root so it escapes overflow clipping */}
-          {clientLinkPopup && (() => {
-            const popupJob = editingJobs.find(j => j.id === clientLinkPopup.id);
-            if (!popupJob) return null;
-            const url = `${window.location.origin}/client/${popupJob.clientToken}`;
-            const inquiry = inquiries.find(i => i.customerName === popupJob.customerName || popupJob.jobName?.includes(i.customerName));
-            const clientEmail = inquiry?.email || '';
+          {/* Client link bottom-sheet modal */}
+          {clientLinkModal && (() => {
+            const mlJob = editingJobs.find(j => j.id === clientLinkModal);
+            if (!mlJob) return null;
+            const url = `${window.location.origin}/client/${mlJob.clientToken}`;
+            const inq = inquiries.find(i => i.customerName === mlJob.customerName || mlJob.jobName?.includes(i.customerName));
+            const clientEmail = inq?.email || '';
             const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
-            const emailBod = encodeURIComponent(`Hi ${popupJob.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+            const emailBod = encodeURIComponent(`Hi ${mlJob.customerName || 'there'},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
             return (
-              <>
-              {/* Invisible overlay catches clicks outside popup */}
-              <div onClick={() => setClientLinkPopup(null)} style={{position:'fixed',inset:0,zIndex:99998}} />
-              <div onClick={e => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }} style={{position:'fixed',top:clientLinkPopup.top,right:clientLinkPopup.right,zIndex:99999,background:'#1e293b',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'6px',minWidth:230,boxShadow:'0 8px 32px rgba(0,0,0,0.7)'}}>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',padding:'2px 8px 6px',borderBottom:'1px solid rgba(255,255,255,0.08)',marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:214}}>{url}</div>
-                {[
-                  { icon:'📋', label:'Copy link', action: async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkPopup(null); alert('Link copied!'); }},
-                  { icon:'↗', label:'Open in browser', action: () => { window.open(url,'_blank'); setClientLinkPopup(null); }},
-                  { icon:'📧', label: clientEmail ? `Email — ${clientEmail}` : 'Email to client', action: () => { openMail(`mailto:${clientEmail}?subject=${emailSubj}&body=${emailBod}`); setClientLinkPopup(null); }},
-                ].map(({icon, label, action}) => (
-                  <button key={label} onClick={action}
-                    style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',borderRadius:6,background:'none',border:'none',color:'#e2e8f0',fontSize:13,cursor:'pointer',textAlign:'left'}}
-                    onMouseOver={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'} onMouseOut={e=>e.currentTarget.style.background='none'}>
-                    <span style={{width:16,textAlign:'center'}}>{icon}</span> {label}
-                  </button>
-                ))}
+              <div className="fixed inset-0 bg-black bg-opacity-60 z-[9999] flex items-end justify-center" onClick={() => setClientLinkModal(null)}>
+                <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-white font-bold text-lg">🔗 Client Link</h3>
+                    <button onClick={() => setClientLinkModal(null)} className="text-gray-400 text-2xl leading-none">×</button>
+                  </div>
+                  <p className="text-gray-500 text-xs mb-4 truncate">{url}</p>
+                  <div className="space-y-2">
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(url); } catch {} setClientLinkModal(null); alert('Link copied!'); }}
+                      className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
+                      📋 Copy link
+                    </button>
+                    <button onClick={() => { window.open(url, '_blank'); setClientLinkModal(null); }}
+                      className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
+                      ↗ Open in browser
+                    </button>
+                    <button onClick={() => { openMail(`mailto:${clientEmail}?subject=${emailSubj}&body=${emailBod}`); setClientLinkModal(null); }}
+                      className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
+                      📧 {clientEmail ? `Email — ${clientEmail}` : 'Email to client'}
+                    </button>
+                  </div>
+                </div>
               </div>
-              </>
             );
           })()}
 
