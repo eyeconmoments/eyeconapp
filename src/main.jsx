@@ -4483,7 +4483,8 @@ Notes: ${j.notes || 'none'}`;
         const overtime2 = parseFloat(finalPaymentModal.overtime || 0) || 0;
         const finalAmt2 = parseFloat(finalPaymentModal.finalAmount || 0) || 0;
         const grandTotal2 = finalAmt2 + overtime2;
-        const remaining2 = Math.max(0, total2 - dep2);
+        // When total is known use it; otherwise assume 50/50 so balance = deposit
+        const remaining2 = total2 > 0 ? Math.max(0, total2 - dep2) : dep2;
         const sixtyDaysAgoFP = new Date(); sixtyDaysAgoFP.setDate(sixtyDaysAgoFP.getDate() - 60); sixtyDaysAgoFP.setHours(0,0,0,0);
         const otherUnpaidSameCustomer = editingJobs.filter(j =>
           j.id !== finalPaymentModal.jobId &&
@@ -4510,16 +4511,18 @@ Notes: ${j.notes || 'none'}`;
                 <div className={`rounded-xl p-4 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
                   {dep2 > 0 ? (
                     <>
-                      <div className="flex justify-between text-sm">
-                        <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
-                        <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>£{total2.toFixed(2)}</span>
-                      </div>
+                      {total2 > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
+                          <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>£{total2.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-sm">
                         <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid</span>
                         <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
                       </div>
                       <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
-                        <span>Balance due</span>
+                        <span>Balance due{total2 === 0 ? ' (50/50 est.)' : ''}</span>
                         <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
                       </div>
                     </>
@@ -7026,7 +7029,7 @@ Notes: ${j.notes || 'none'}`;
                     const dep = getJobDeposit(j);
                     const total = calculateJobRevenue(j);
                     const depositPaid = parseFloat(dep?.amount || 0);
-                    const remaining = total > 0 ? Math.max(0, total - depositPaid) : 0;
+                    const remaining = total > 0 ? Math.max(0, total - depositPaid) : depositPaid;
                     return (
                       <div key={j.id} className="flex justify-between items-center gap-2">
                         <div className="min-w-0">
@@ -7042,7 +7045,7 @@ Notes: ${j.notes || 'none'}`;
                             jobId: j.id,
                             totalPrice: total,
                             depositPaid,
-                            finalAmount: depositPaid > 0 && remaining > 0 ? remaining.toFixed(2) : '',
+                            finalAmount: remaining > 0 ? remaining.toFixed(2) : depositPaid > 0 ? depositPaid.toFixed(2) : '',
                             overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
                             notes: '',
                           });
@@ -9462,7 +9465,7 @@ Capturing Your Special Day
                               // Deposit logged, final payment outstanding
                               const knownTotal = job.customPrice > 0 ? job.customPrice : null;
                               const priorOT = (job.wageEntries||[]).find(e => e.type==='shoot' && e.ranOver && e.extraAmount>0);
-                              const balanceDue = knownTotal ? Math.max(0, knownTotal - depositAmt) : null;
+                              const balanceDue = knownTotal ? Math.max(0, knownTotal - depositAmt) : depositAmt;
                               return (
                                 <button onClick={() => setFinalPaymentModal({
                                   jobId: job.id, totalPrice: knownTotal || 0, depositPaid: depositAmt,
@@ -11564,7 +11567,7 @@ Capturing Your Special Day
                       const dep2 = getJobDeposit(job);
                       const total2 = calculateJobRevenue(job);
                       const depositPaid2 = parseFloat(dep2?.amount || 0);
-                      const remaining2 = total2 > 0 ? Math.max(0, total2 - depositPaid2) : 0;
+                      const remaining2 = total2 > 0 ? Math.max(0, total2 - depositPaid2) : depositPaid2;
                       return (
                         <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                           <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💷 Final Payment</p>
@@ -11584,7 +11587,7 @@ Capturing Your Special Day
                                   jobId: job.id,
                                   totalPrice: total2,
                                   depositPaid: depositPaid2,
-                                  finalAmount: depositPaid2 > 0 && remaining2 > 0 ? remaining2.toFixed(2) : '',
+                                  finalAmount: remaining2 > 0 ? remaining2.toFixed(2) : depositPaid2 > 0 ? depositPaid2.toFixed(2) : '',
                                   overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
                                   notes: '',
                                 });
