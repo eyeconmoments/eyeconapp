@@ -6089,23 +6089,38 @@ Notes: ${j.notes || 'none'}`;
                       </div>
                     )}
                     {(itin.inspirationLinks?.length > 0 || itin.inspirationImages?.length > 0) && (
-                      <div className={`px-4 py-3 border-b ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-purple-50 border-purple-100'}`}>
-                        <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>✨ Client Inspiration</p>
+                      <div className={`px-4 py-4 border-b ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-violet-50 border-violet-100'}`}>
+                        <p className={`text-xs font-bold tracking-widest uppercase mb-3 ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>✨ Client Inspiration</p>
                         {itin.inspirationImages?.length > 0 && (
-                          <div className="grid grid-cols-4 gap-1.5 mb-2">
+                          <div className="grid grid-cols-2 gap-2 mb-3">
                             {itin.inspirationImages.map((img, i) => (
-                              <img key={i} src={img} alt="inspiration" className="w-full aspect-square object-cover rounded-lg" />
+                              <div key={i} className="relative group">
+                                <img src={img} alt="inspiration"
+                                  className="w-full rounded-xl object-cover cursor-pointer"
+                                  style={{maxHeight:160,objectPosition:'center'}}
+                                  onClick={() => window.open(img, '_blank')} />
+                                <a href={img} download={`inspiration-${i+1}.jpg`}
+                                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-60 text-white rounded-lg px-2 py-1 text-xs font-medium"
+                                  onClick={e => e.stopPropagation()}>
+                                  ↓
+                                </a>
+                              </div>
                             ))}
                           </div>
                         )}
                         {itin.inspirationLinks?.length > 0 && (
-                          <div className="space-y-1">
-                            {itin.inspirationLinks.map((link, i) => (
-                              <a key={i} href={link} target="_blank" rel="noopener noreferrer"
-                                className={`block text-xs truncate underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                                {link}
-                              </a>
-                            ))}
+                          <div className="space-y-2">
+                            {itin.inspirationLinks.map((link, i) => {
+                              let domain = link;
+                              try { domain = new URL(link).hostname.replace('www.',''); } catch {}
+                              return (
+                                <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${darkMode ? 'bg-gray-700 text-violet-300 hover:bg-gray-600' : 'bg-white text-violet-700 hover:bg-violet-100'} transition-colors`}>
+                                  <span className="truncate flex-1">{domain}</span>
+                                  <span className="shrink-0 opacity-60">↗</span>
+                                </a>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -9202,6 +9217,91 @@ Notes: ${j.notes || 'none'}`;
         yPos += 10;
       }
       
+      // Inspiration section — new page if any content
+      if (itinerary.inspirationImages?.length > 0 || itinerary.inspirationLinks?.length > 0) {
+        doc.addPage();
+        let iy = 0;
+        // Page header bar
+        doc.setFillColor(193, 167, 106);
+        doc.rect(0, 0, 210, 14, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('EYECON MOMENTS — Event Itinerary', 105, 9.5, { align: 'center' });
+        iy = 24;
+        // Section title
+        doc.setTextColor(193, 167, 106);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('CLIENT INSPIRATION', 105, iy, { align: 'center' });
+        iy += 5;
+        doc.setDrawColor(193, 167, 106);
+        doc.setLineWidth(0.5);
+        doc.line(20, iy, 190, iy);
+        iy += 10;
+        // Images in 2-col grid
+        if (itinerary.inspirationImages?.length > 0) {
+          const imgW = 82, imgH = 62;
+          let col = 0;
+          for (let ii = 0; ii < itinerary.inspirationImages.length; ii++) {
+            if (iy + imgH > 248) {
+              doc.addPage();
+              doc.setFillColor(193, 167, 106);
+              doc.rect(0, 0, 210, 14, 'F');
+              doc.setTextColor(255, 255, 255);
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(9);
+              doc.text('EYECON MOMENTS — Client Inspiration (continued)', 105, 9.5, { align: 'center' });
+              iy = 24; col = 0;
+            }
+            const x = col === 0 ? 20 : 108;
+            try {
+              const raw = itinerary.inspirationImages[ii].replace(/^data:[^;]+;base64,/, '');
+              doc.addImage(raw, 'JPEG', x, iy, imgW, imgH, undefined, 'MEDIUM');
+            } catch(e) {
+              doc.setFillColor(240, 236, 255);
+              doc.rect(x, iy, imgW, imgH, 'F');
+              doc.setTextColor(150, 100, 200);
+              doc.setFontSize(8);
+              doc.text(`Photo ${ii+1}`, x + imgW/2, iy + imgH/2, { align: 'center' });
+            }
+            col++;
+            if (col === 2) { col = 0; iy += imgH + 6; }
+          }
+          if (col !== 0) iy += imgH + 6;
+          iy += 4;
+        }
+        // Links
+        if (itinerary.inspirationLinks?.length > 0) {
+          if (iy > 240) {
+            doc.addPage();
+            doc.setFillColor(193, 167, 106);
+            doc.rect(0, 0, 210, 14, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('EYECON MOMENTS — Client Inspiration (continued)', 105, 9.5, { align: 'center' });
+            iy = 24;
+          }
+          doc.setTextColor(193, 167, 106);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text('REFERENCE LINKS', 20, iy);
+          iy += 8;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          itinerary.inspirationLinks.forEach(link => {
+            if (iy > 255) {
+              doc.addPage(); iy = 20;
+            }
+            doc.setTextColor(70, 50, 160);
+            const lines = doc.splitTextToSize(`• ${link}`, 170);
+            doc.text(lines, 22, iy);
+            iy += lines.length * 5.5;
+          });
+        }
+      }
+
       // Footer section
       const footerY = 260;
       
@@ -10184,25 +10284,47 @@ Capturing Your Special Day
 
                         {/* Client Inspiration (read-only — submitted via client portal) */}
                         {(itinerary.inspirationLinks?.length > 0 || itinerary.inspirationImages?.length > 0) && (
-                          <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-purple-900 bg-opacity-30' : 'bg-purple-50'}`}>
-                            <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>✨ Client Inspiration</p>
-                            {itinerary.inspirationImages?.length > 0 && (
-                              <div className="grid grid-cols-3 gap-2 mb-3">
-                                {itinerary.inspirationImages.map((img, i) => (
-                                  <img key={i} src={img} alt="inspiration" className="w-full aspect-square object-cover rounded-lg" />
-                                ))}
-                              </div>
-                            )}
-                            {itinerary.inspirationLinks?.length > 0 && (
-                              <div className="space-y-1">
-                                {itinerary.inspirationLinks.map((link, i) => (
-                                  <a key={i} href={link} target="_blank" rel="noopener noreferrer"
-                                    className={`block text-xs break-all underline ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                                    {link}
-                                  </a>
-                                ))}
-                              </div>
-                            )}
+                          <div className={`mt-4 rounded-xl overflow-hidden border ${darkMode ? 'bg-gray-800 border-violet-900' : 'bg-violet-50 border-violet-100'}`}>
+                            <div className={`px-4 py-2.5 flex items-center justify-between ${darkMode ? 'bg-violet-900 bg-opacity-40' : 'bg-violet-100'}`}>
+                              <p className={`text-xs font-bold tracking-widest uppercase ${darkMode ? 'text-violet-300' : 'text-violet-700'}`}>✨ Client Inspiration</p>
+                              <span className={`text-xs ${darkMode ? 'text-violet-400' : 'text-violet-500'}`}>
+                                {(itinerary.inspirationImages?.length||0) + (itinerary.inspirationLinks?.length||0)} item{(itinerary.inspirationImages?.length||0)+(itinerary.inspirationLinks?.length||0)!==1?'s':''}
+                              </span>
+                            </div>
+                            <div className="p-3">
+                              {itinerary.inspirationImages?.length > 0 && (
+                                <div className="grid grid-cols-2 gap-2 mb-3">
+                                  {itinerary.inspirationImages.map((img, i) => (
+                                    <div key={i} className="relative group">
+                                      <img src={img} alt="inspiration"
+                                        className="w-full rounded-lg object-cover cursor-pointer"
+                                        style={{maxHeight:140,objectPosition:'center'}}
+                                        onClick={() => window.open(img, '_blank')} />
+                                      <a href={img} download={`inspiration-${i+1}.jpg`}
+                                        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-65 text-white rounded-md px-2 py-0.5 text-xs font-medium"
+                                        onClick={e => e.stopPropagation()}>
+                                        ↓ Save
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {itinerary.inspirationLinks?.length > 0 && (
+                                <div className="space-y-1.5">
+                                  {itinerary.inspirationLinks.map((link, i) => {
+                                    let domain = link;
+                                    try { domain = new URL(link).hostname.replace('www.',''); } catch {}
+                                    return (
+                                      <a key={i} href={link} target="_blank" rel="noopener noreferrer"
+                                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${darkMode ? 'bg-gray-700 text-violet-300 hover:bg-gray-600' : 'bg-white text-violet-700 hover:bg-violet-100 border border-violet-100'} transition-colors`}>
+                                        <span className="truncate flex-1">{domain}</span>
+                                        <span className="shrink-0 opacity-50">↗</span>
+                                      </a>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
