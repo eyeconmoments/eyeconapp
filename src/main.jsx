@@ -7030,28 +7030,43 @@ Notes: ${j.notes || 'none'}`;
                     const total = calculateJobRevenue(j);
                     const depositPaid = parseFloat(dep?.amount || 0);
                     const remaining = total > 0 ? Math.max(0, total - depositPaid) : depositPaid;
+                    const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
+                    const clientEmail = clientInq?.email || '';
+                    const firstName = j.customerName?.split(' ')[0] || 'there';
+                    const balanceStr = remaining > 0 ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
+                    const reminderSubj = encodeURIComponent(`Your Outstanding Balance — ${j.jobName}`);
+                    const reminderBody = encodeURIComponent(`Hi ${firstName},\n\nThank you so much for having us — it was a pleasure to be part of your day.\n\nWe just wanted to drop you a quick message as ${balanceStr} is now due. Please feel free to transfer at your earliest convenience, and don't hesitate to get in touch if you have any questions.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
                     return (
                       <div key={j.id} className="flex justify-between items-center gap-2">
                         <div className="min-w-0">
                           <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
-                            {depositPaid > 0 && remaining > 0 ? ` · £${remaining.toFixed(0)} remaining` : ''}
+                            {remaining > 0 ? ` · £${remaining.toFixed(0)} remaining` : ''}
                           </p>
                         </div>
-                        <button onClick={() => {
-                          const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
-                          setFinalPaymentModal({
-                            jobId: j.id,
-                            totalPrice: total,
-                            depositPaid,
-                            finalAmount: remaining > 0 ? remaining.toFixed(2) : depositPaid > 0 ? depositPaid.toFixed(2) : '',
-                            overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
-                            notes: '',
-                          });
-                        }} className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg font-semibold shrink-0 hover:bg-green-600">
-                          💷 Log Payment
-                        </button>
+                        <div className="flex gap-1.5 shrink-0">
+                          {clientEmail && (
+                            <button onClick={() => openMail(`mailto:${clientEmail}?subject=${reminderSubj}&body=${reminderBody}`)}
+                              title={`Send reminder to ${clientEmail}`}
+                              className="text-xs px-2.5 py-1.5 bg-blue-500 bg-opacity-20 text-blue-300 border border-blue-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
+                              📧 Remind
+                            </button>
+                          )}
+                          <button onClick={() => {
+                            const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
+                            setFinalPaymentModal({
+                              jobId: j.id,
+                              totalPrice: total,
+                              depositPaid,
+                              finalAmount: remaining > 0 ? remaining.toFixed(2) : depositPaid > 0 ? depositPaid.toFixed(2) : '',
+                              overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
+                              notes: '',
+                            });
+                          }} className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600">
+                            💷 Log
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
