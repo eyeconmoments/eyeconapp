@@ -7046,13 +7046,11 @@ Notes: ${j.notes || 'none'}`;
                           </p>
                         </div>
                         <div className="flex gap-1.5 shrink-0">
-                          {clientEmail && (
-                            <button onClick={() => openMail(`mailto:${clientEmail}?subject=${reminderSubj}&body=${reminderBody}`)}
-                              title={`Send reminder to ${clientEmail}`}
-                              className="text-xs px-2.5 py-1.5 bg-blue-500 bg-opacity-20 text-blue-300 border border-blue-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
-                              📧 Remind
-                            </button>
-                          )}
+                          <button onClick={() => openMail(`mailto:${clientEmail}?subject=${reminderSubj}&body=${reminderBody}`)}
+                            title={clientEmail ? `Send reminder to ${clientEmail}` : 'Send reminder (add email address)'}
+                            className="text-xs px-2.5 py-1.5 bg-blue-500 bg-opacity-20 text-blue-300 border border-blue-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
+                            📧 Remind
+                          </button>
                           <button onClick={() => {
                             const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
                             setFinalPaymentModal({
