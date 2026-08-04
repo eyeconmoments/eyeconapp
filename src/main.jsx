@@ -7272,11 +7272,12 @@ Notes: ${j.notes || 'none'}`;
                     const dep = getJobDeposit(j);
                     const total = calculateJobRevenue(j);
                     const depositPaid = parseFloat(dep?.amount || 0);
-                    const remaining = total > 0 ? Math.max(0, total - depositPaid) : depositPaid;
+                    // Only show a specific remaining amount when we actually know the total price
+                    const remaining = total > 0 ? Math.max(0, total - depositPaid) : null;
                     const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
                     const clientEmail = clientInq?.email || '';
                     const firstName = (j.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim().split(' ')[0] || 'there';
-                    const balanceStr = remaining > 0 ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
+                    const balanceStr = remaining !== null ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
                     const reminderSubj = encodeURIComponent(`Your Outstanding Balance — ${j.jobName}`);
                     const reminderBody = encodeURIComponent(`Hi ${firstName},\n\nThank you so much for having us — it was a pleasure to be part of your day.\n\nWe just wanted to drop you a quick message as ${balanceStr} is now due. Please feel free to transfer at your earliest convenience, and don't hesitate to get in touch if you have any questions.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
                     return (
@@ -7285,7 +7286,7 @@ Notes: ${j.notes || 'none'}`;
                           <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
-                            {remaining > 0 ? ` · £${remaining.toFixed(0)} remaining` : ''}
+                            {remaining !== null ? ` · £${remaining.toFixed(0)} remaining` : ' · Balance due'}
                           </p>
                         </div>
                         <div className="flex gap-1.5 shrink-0">
@@ -7300,7 +7301,7 @@ Notes: ${j.notes || 'none'}`;
                               jobId: j.id,
                               totalPrice: total,
                               depositPaid,
-                              finalAmount: remaining > 0 ? remaining.toFixed(2) : depositPaid > 0 ? depositPaid.toFixed(2) : '',
+                              finalAmount: remaining !== null && remaining > 0 ? remaining.toFixed(2) : '',
                               overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
                               notes: '',
                             });
