@@ -12271,7 +12271,8 @@ Capturing Your Special Day
                     photo_status:'not-started', notes:newJob.notes, shoot_hours:newJob.shootHours,
                     num_videographers:newJob.numVideographers, num_photographers:newJob.numPhotographers,
                     video_edit_hours:newJob.videoEditHours, photo_edit_hours:newJob.photoEditHours,
-                    custom_price:newJob.customPrice, file_locations:[], stages
+                    custom_price:newJob.customPrice, file_locations:[], stages,
+                    itinerary: manualJob.venue ? { venue: manualJob.venue } : null
                   }]).select();
                   if (data) setEditingJobs(prev => [...prev, rowToJob(data[0])]);
                   setShowManualJobModal(false);
@@ -13343,6 +13344,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       customerName: inq.customerName || '',
                       shootDate: bookingDate || '',
                       customPrice: bookingTotalPrice || '',
+                      venue: bookingVenue || '',
                     }));
                     setShowBookingConfirmModal(false);
                     setBookingConfirmInquiry(null);
@@ -13585,6 +13587,22 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                 <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
                   {bookedInquiries.map(inquiry => {
                     const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
+                    const openBookingEmail = () => {
+                      const qs = inquiry.quoteSnapshot || { dates: [{}] };
+                      const qd0 = qs.dates?.[0] || {};
+                      const extractPrice = (str) => { const m = String(str||'').match(/£([\d,]+(?:\.\d{1,2})?)/); return m ? parseFloat(m[1].replace(/,/g,'')) : NaN; };
+                      const budgetNum = [inquiry.budget, inquiry.notes, inquiry.details].reduce((found, src) => isNaN(found) ? extractPrice(src) : found, NaN);
+                      setBookingDate(inquiry.eventDate ? inquiry.eventDate.toISOString().split('T')[0] : qd0.date || '');
+                      setBookingNumDays(qs.dates?.length >= 2 ? 2 : 1);
+                      setBookingDate2(qs.dates?.[1]?.date || '');
+                      setBookingStartTime(qd0.startTime || '10:00');
+                      setBookingEndTime(qd0.endTime || '17:00');
+                      setBookingVenue(qd0.location || '');
+                      setBookingTotalPrice(isNaN(budgetNum) ? '' : String(budgetNum));
+                      setBookingDeposit(isNaN(budgetNum) ? '' : String(Math.round(budgetNum * 0.5)));
+                      setBookingConfirmInquiry({ ...inquiry });
+                      setShowBookingConfirmModal(true);
+                    };
                     return (
                       <div key={inquiry.id} className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                         <div className="flex justify-between items-start mb-2">
@@ -13618,6 +13636,11 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         {inquiry.notes && (
                           <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inquiry.notes}</p>
                         )}
+                        <button onClick={openBookingEmail}
+                          className={`mt-2 w-full py-1.5 rounded-lg text-xs font-semibold border ${darkMode ? 'border-yellow-600 text-yellow-400 hover:bg-yellow-900 hover:bg-opacity-30' : 'border-yellow-400 text-yellow-700 hover:bg-yellow-50'}`}
+                          style={{borderColor:'var(--gold)',color:'var(--gold)'}}>
+                          ✉️ Send Booking Confirmation Email
+                        </button>
                       </div>
                     );
                   })}
