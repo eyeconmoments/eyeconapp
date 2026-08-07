@@ -7327,6 +7327,66 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
+          {/* Pre-Itinerary Prompts — jobs shooting within 18 days, portal email not yet sent */}
+          {(() => {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const cutoff = new Date(today); cutoff.setDate(today.getDate() + 18);
+            const needsItin = editingJobs.filter(j => {
+              if (archivedJobIds.includes(j.id)) return false;
+              if (!j.shootDate) return false;
+              if (j.itinerary?.preItinerarySent) return false;
+              const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
+              return shoot > today && shoot <= cutoff;
+            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
+            if (needsItin.length === 0) return null;
+            return (
+              <div className="rounded-lg border-l-4 p-3" style={{borderColor:'var(--gold)', background:'rgba(193,167,106,0.07)'}}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">📋</span>
+                  <p className="font-semibold" style={{color:'var(--gold)'}}>Send pre-itinerary — {needsItin.length} job{needsItin.length !== 1 ? 's' : ''} in next 18 days</p>
+                </div>
+                <div className="space-y-2">
+                  {needsItin.map(j => {
+                    const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
+                    const daysUntil = Math.round((shoot - today) / (1000*60*60*24));
+                    const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
+                    const clientEmail = clientInq?.email || '';
+                    const firstName = (j.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim().split(' ')[0] || 'there';
+                    return (
+                      <div key={j.id} className="flex justify-between items-center gap-2">
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}
+                            {' · '}{daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`}
+                            {clientEmail ? ` · ${clientEmail}` : ' · no email on file'}
+                          </p>
+                        </div>
+                        <button onClick={async () => {
+                          let token = j.clientToken;
+                          if (!token) {
+                            token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                            await db.from('jobs').update({ client_token: token }).eq('id', j.id);
+                            setEditingJobs(prev => prev.map(jj => jj.id === j.id ? { ...jj, clientToken: token } : jj));
+                          }
+                          const updatedItin = { ...(j.itinerary || {}), preItinerarySent: true, preItinerarySentAt: new Date().toISOString() };
+                          await db.from('jobs').update({ itinerary: updatedItin }).eq('id', j.id);
+                          setEditingJobs(prev => prev.map(jj => jj.id === j.id ? { ...jj, itinerary: updatedItin } : jj));
+                          const portalUrl = `${window.location.origin}/client/${token}`;
+                          const subject = encodeURIComponent(`Your Event Outline — Action Needed | Eyecon Moments`);
+                          const body = encodeURIComponent(`Hi ${firstName},\n\nYour shoot is coming up in ${daysUntil} day${daysUntil===1?'':'s'}! Before the big day, we'd love for you to spend a few minutes building out your event outline — it really helps us plan everything perfectly.\n\nPlease tap the link below and fill in as much as you can: timings, key moments you want captured, and anything special we should know:\n\n${portalUrl}\n\nLooking forward to it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+                          openMail(`mailto:${clientEmail}?subject=${subject}&body=${body}`);
+                        }} className="text-xs px-3 py-1.5 rounded-lg font-bold shrink-0" style={{background:'var(--gold)',color:'#1a2535'}}>
+                          📨 Send
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="text-white rounded-2xl p-6 shadow-lg" style={{background:'linear-gradient(135deg,#1a2535 0%,#243040 60%,#1a2535 100%)', border:'1px solid rgba(193,167,106,0.3)'}}>
             <div className="flex justify-between items-start">
               <div>
