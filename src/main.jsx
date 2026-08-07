@@ -7249,17 +7249,17 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
-          {/* Final Payment Due — jobs shot 1–60 days ago with no final payment */}
+          {/* Final Payment Due — jobs within 3 days ahead or up to 60 days past, no final payment */}
           {(() => {
             const today = new Date(); today.setHours(0,0,0,0);
             const sixtyDaysAgo = new Date(today); sixtyDaysAgo.setDate(today.getDate() - 60);
+            const threeDaysAhead = new Date(today); threeDaysAhead.setDate(today.getDate() + 3);
             const needsPayment = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || j.finalPaymentReceived) return false;
               if (!j.shootDate) return false;
               const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
-              const dayAfter = new Date(shoot); dayAfter.setDate(shoot.getDate() + 1);
-              return dayAfter <= today && shoot >= sixtyDaysAgo;
-            }).sort((a, b) => new Date(b.shootDate) - new Date(a.shootDate));
+              return shoot >= sixtyDaysAgo && shoot <= threeDaysAhead;
+            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
             if (needsPayment.length === 0) return null;
             return (
               <div className="rounded-lg border-l-4 border-green-500 bg-green-900/20 p-3">
@@ -7280,10 +7280,20 @@ Notes: ${j.notes || 'none'}`;
                     const balanceStr = remaining !== null ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
                     const reminderSubj = encodeURIComponent(`Your Outstanding Balance — ${j.jobName}`);
                     const reminderBody = encodeURIComponent(`Hi ${firstName},\n\nThank you so much for having us — it was a pleasure to be part of your day.\n\nWe just wanted to drop you a quick message as ${balanceStr} is now due. Please feel free to transfer at your earliest convenience, and don't hesitate to get in touch if you have any questions.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+                    const shootMid = j.shootDate ? new Date(j.shootDate) : null;
+                    if (shootMid) shootMid.setHours(0,0,0,0);
+                    const daysUntil = shootMid ? Math.round((shootMid - today) / (1000*60*60*24)) : null;
+                    const isUpcomingJob = daysUntil !== null && daysUntil >= 0;
+                    const dueLabel = isUpcomingJob
+                      ? daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`
+                      : null;
                     return (
                       <div key={j.id} className="flex justify-between items-center gap-2">
                         <div className="min-w-0">
-                          <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
+                            {dueLabel && <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-amber-500 bg-opacity-20 text-amber-400 shrink-0">{dueLabel}</span>}
+                          </div>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
                             {remaining !== null ? ` · £${remaining.toFixed(0)} remaining` : ' · Balance due'}
