@@ -1113,6 +1113,7 @@ function EyeconMoments() {
   const [manualJob, setManualJob] = useState({ jobName:'', customerName:'', shootDate:'', deadline:'', jobType:'photo-video', hasPhotos:true, hasVideo:true, notes:'', shootHours:8, numVideographers:1, numPhotographers:1, videoEditHours:20, photoEditHours:10, customPrice:'' });
   const [uploadedImage, setUploadedImage] = useState(null);
   const [activityLog, setActivityLog] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_activity_log') || '[]'); } catch { return []; } });
+  const [setoffLegs, setSetoffLegs] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_setoff_legs') || '{}'); } catch { return {}; } });
   const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
     const entry = { id: Date.now(), ts: new Date().toISOString(), action, jobName, details };
@@ -7379,6 +7380,119 @@ Notes: ${j.notes || 'none'}`;
                         }} className="text-xs px-3 py-1.5 rounded-lg font-bold shrink-0" style={{background:'var(--gold)',color:'#1a2535'}}>
                           📨 Send
                         </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 🚗 Set-off calculator — jobs today or tomorrow */}
+          {(() => {
+            const todayStr = new Date().toDateString();
+            const tomorrowStr = new Date(Date.now() + 86400000).toDateString();
+            const soonJobs = editingJobs.filter(j => {
+              if (archivedJobIds.includes(j.id) || !j.shootDate) return false;
+              const ds = new Date(j.shootDate).toDateString();
+              return ds === todayStr || ds === tomorrowStr;
+            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
+            if (soonJobs.length === 0) return null;
+
+            const parseMins = t => { const [h,m]=(t||'10:00').split(':').map(Number); return h*60+(m||0); };
+            const fmtTime = m => { const h=Math.floor(((m%1440)+1440)%1440/60),mn=((m%1440)+1440)%1440%60; return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`; };
+
+            const updateLeg = (jobId, field, val) => {
+              setSetoffLegs(prev => {
+                const next = { ...prev, [jobId]: { ...( prev[jobId] || {}), [field]: val } };
+                localStorage.setItem('eyecon_setoff_legs', JSON.stringify(next));
+                return next;
+              });
+            };
+
+            return (
+              <div className="rounded-lg border-l-4 p-3" style={{borderColor:'#60a5fa', background:'rgba(96,165,250,0.07)'}}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">🚗</span>
+                  <p className="font-semibold text-blue-400">Set-off times — {soonJobs.length} shoot{soonJobs.length!==1?'s':''} coming up</p>
+                </div>
+                <div className="space-y-4">
+                  {soonJobs.map(j => {
+                    const itin = j.itinerary || {};
+                    const startTime = itin.startTime || j.calendarStartTime || null;
+                    const venue = itin.venue || (j.notes||'').split(/[.\n]/)[0].trim() || '';
+                    const legs = setoffLegs[j.id] || {};
+                    const homeToOffice = legs.homeToOffice ?? 20;
+                    const gearLoad    = legs.gearLoad    ?? 15;
+                    const officeToVenue = legs.officeToVenue ?? '';
+                    const isToday = new Date(j.shootDate).toDateString() === todayStr;
+
+                    const shootMins = startTime ? parseMins(startTime) : null;
+                    const ovMins = officeToVenue !== '' ? parseInt(officeToVenue) : null;
+                    const leaveOfficeMins = (shootMins !== null && ovMins !== null) ? shootMins - ovMins : null;
+                    const leaveHomeMins   = leaveOfficeMins !== null ? leaveOfficeMins - parseInt(gearLoad) - parseInt(homeToOffice) : null;
+
+                    return (
+                      <div key={j.id}>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div>
+                            <p className={`text-sm font-bold ${darkMode?'text-white':'text-gray-900'}`}>{j.jobName}</p>
+                            <p className={`text-xs ${darkMode?'text-gray-400':'text-gray-500'}`}>
+                              {isToday ? 'Today' : 'Tomorrow'}{startTime ? ` · Coverage from ${startTime}` : ''}
+                              {venue ? ` · ${venue}` : ''}
+                            </p>
+                          </div>
+                          {venue && (
+                            <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venue)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-xs px-2 py-1 rounded-lg bg-blue-500 bg-opacity-20 text-blue-300 shrink-0 font-medium">
+                              🗺️ Directions
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Journey leg inputs */}
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                          {[
+                            { label: 'Home→Office', field: 'homeToOffice', val: homeToOffice },
+                            { label: 'Load gear', field: 'gearLoad', val: gearLoad },
+                            { label: 'Office→Venue', field: 'officeToVenue', val: officeToVenue, placeholder: '?' },
+                          ].map(({label, field, val, placeholder}) => (
+                            <label key={field} className="flex flex-col gap-0.5">
+                              <span className={`text-xs ${darkMode?'text-gray-400':'text-gray-500'}`}>{label}</span>
+                              <div className="flex items-center gap-1">
+                                <input type="number" min="0" value={val} placeholder={placeholder||''}
+                                  onChange={e => updateLeg(j.id, field, e.target.value)}
+                                  className={`w-full text-sm text-center rounded-lg px-1 py-1.5 border ${darkMode?'bg-gray-700 border-gray-600 text-white':'bg-white border-gray-200'}`} />
+                                <span className={`text-xs shrink-0 ${darkMode?'text-gray-500':'text-gray-400'}`}>min</span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+
+                        {/* Result */}
+                        {leaveHomeMins !== null ? (
+                          <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{background:'rgba(193,167,106,0.12)',border:'1px solid rgba(193,167,106,0.25)'}}>
+                            <div>
+                              <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave home</p>
+                              <p className="text-xl font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveHomeMins)}</p>
+                            </div>
+                            <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
+                            <div className="text-center">
+                              <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>At office</p>
+                              <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveHomeMins + parseInt(homeToOffice))}</p>
+                            </div>
+                            <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
+                            <div className="text-right">
+                              <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave office</p>
+                              <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveOfficeMins)}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className={`text-xs italic ${darkMode?'text-gray-500':'text-gray-400'}`}>
+                            {!startTime ? 'Add a coverage start time to the itinerary to calculate.' : 'Enter Office→Venue time to calculate.'}
+                          </p>
+                        )}
                       </div>
                     );
                   })}
