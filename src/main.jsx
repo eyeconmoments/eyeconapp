@@ -888,7 +888,7 @@ function EyeconMoments() {
   const [expandedAvailableJobs, setExpandedAvailableJobs] = useState({});
   const [stageFileModal, setStageFileModal] = useState(null); // { jobId, stageId, stageName, isPhoto }
   const [backupModal, setBackupModal] = useState(null); // { jobId }
-  const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '' });
+  const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null });
   const [stageFileForm, setStageFileForm] = useState({ hardware: '', drive: '', path: '', notes: '', filename: '' });
   const [assignedJobsCollapsed, setAssignedJobsCollapsed] = useState(false);
   const [addPhotoModal, setAddPhotoModal] = useState(null); // jobId to add photo editing to
@@ -7130,13 +7130,67 @@ Notes: ${j.notes || 'none'}`;
         {/* Backup Modal */}
         {backupModal && (() => {
           const job = editingJobs.find(j => String(j.id) === String(backupModal.jobId));
+          const scanFolder = async () => {
+            if (!window.showDirectoryPicker) { alert('Folder scanning is not supported in this browser. Use Chrome or Edge on desktop.'); return; }
+            try {
+              const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+              setBackupForm(p => ({...p, fileCheck: { scanning: true }}));
+              const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
+              const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
+              const collectFiles = async (handle, list = []) => {
+                for await (const [name, h] of handle.entries()) {
+                  if (h.kind === 'file') list.push(name);
+                  else if (h.kind === 'directory') await collectFiles(h, list);
+                }
+                return list;
+              };
+              const files = await collectFiles(dirHandle);
+              let photos = 0, videos = 0, other = 0;
+              const seqMap = {};
+              for (const name of files) {
+                const ext = (name.split('.').pop() || '').toLowerCase();
+                if (PHOTO_EXTS.has(ext)) photos++;
+                else if (VIDEO_EXTS.has(ext)) videos++;
+                else other++;
+                const m = name.match(/^([A-Za-z_]+?)(\d{3,})/);
+                if (m) {
+                  const pfx = m[1].toUpperCase();
+                  if (!seqMap[pfx]) seqMap[pfx] = [];
+                  seqMap[pfx].push(parseInt(m[2]));
+                }
+              }
+              const anomalies = [];
+              const sequences = [];
+              for (const [pfx, nums] of Object.entries(seqMap)) {
+                if (nums.length < 3) continue;
+                nums.sort((a,b) => a-b);
+                const gaps = [];
+                for (let i = 1; i < nums.length; i++) {
+                  if (nums[i] - nums[i-1] > 1) {
+                    const cnt = nums[i] - nums[i-1] - 1;
+                    gaps.push({ from: nums[i-1]+1, to: nums[i]-1, count: cnt });
+                    anomalies.push(cnt === 1
+                      ? `${pfx}: file #${nums[i-1]+1} missing`
+                      : `${pfx}: ${cnt} files missing between #${nums[i-1]+1} and #${nums[i]-1}`);
+                  }
+                }
+                sequences.push({ prefix: pfx, count: nums.length, min: nums[0], max: nums[nums.length-1], gaps });
+              }
+              if (photos === 0 && videos === 0) anomalies.push('No photos or video files found in this folder');
+              const fileCheck = { scannedAt: new Date().toISOString(), folder: dirHandle.name, total: files.length, photos, videos, other, sequences, anomalies };
+              setBackupForm(p => ({...p, fileCheck, path: p.path || dirHandle.name}));
+            } catch(err) {
+              if (err.name !== 'AbortError') setBackupForm(p => ({...p, fileCheck: { error: err.message || 'Could not read folder' }}));
+            }
+          };
+
           const saveBackup = async () => {
             if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
-            const newLoc = { drive: backupForm.drive, path: backupForm.path, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true };
+            const newLoc = { drive: backupForm.drive, path: backupForm.path, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true, fileCheck: backupForm.fileCheck || null };
             const newLocs = [...(job.fileLocations || []), newLoc];
             await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
             setEditingJobs(prev => prev.map(j => String(j.id) === String(backupModal.jobId) ? { ...j, fileLocations: newLocs } : j));
-            setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '' });
+            setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null });
           };
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
@@ -7174,8 +7228,44 @@ Notes: ${j.notes || 'none'}`;
                       onChange={e => setBackupForm(p => ({...p, notes: e.target.value}))}
                       className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} rows={2} />
                   </div>
+                  {/* File check section */}
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode?'text-gray-300':'text-gray-700'}`}>File Check <span className="font-normal text-xs opacity-50">(Chrome/Edge desktop)</span></label>
+                    {!backupForm.fileCheck ? (
+                      <button onClick={scanFolder}
+                        className="w-full text-sm py-2 rounded-lg flex items-center justify-center gap-2 font-medium text-blue-300"
+                        style={{border:'1px dashed rgba(96,165,250,0.4)',background:'rgba(96,165,250,0.06)'}}>
+                        📁 Scan folder to check files
+                      </button>
+                    ) : backupForm.fileCheck.scanning ? (
+                      <p className={`text-xs text-center py-2 ${darkMode?'text-gray-400':'text-gray-500'}`}>⏳ Scanning files…</p>
+                    ) : backupForm.fileCheck.error ? (
+                      <div className="rounded-lg p-2 text-xs text-red-300" style={{background:'rgba(239,68,68,0.1)'}}>⚠ {backupForm.fileCheck.error}</div>
+                    ) : (
+                      <div className="rounded-lg p-2.5 space-y-1.5" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-semibold truncate ${darkMode?'text-white':'text-gray-800'}`}>📁 {backupForm.fileCheck.folder}</span>
+                          <button onClick={scanFolder} className="text-xs text-blue-400 ml-2 shrink-0">rescan</button>
+                        </div>
+                        <div className="flex gap-3 text-xs flex-wrap">
+                          <span className={darkMode?'text-gray-300':'text-gray-600'}>{backupForm.fileCheck.total} total</span>
+                          <span className="text-blue-300">📷 {backupForm.fileCheck.photos} photos</span>
+                          <span className="text-purple-300">🎬 {backupForm.fileCheck.videos} videos</span>
+                          {backupForm.fileCheck.other > 0 && <span className="text-gray-400">+{backupForm.fileCheck.other} other</span>}
+                        </div>
+                        {backupForm.fileCheck.anomalies?.length > 0 ? (
+                          <div className="space-y-0.5 pt-0.5">
+                            {backupForm.fileCheck.anomalies.map((a,i) => <p key={i} className="text-xs text-amber-400">⚠ {a}</p>)}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-green-400 pt-0.5">✓ No missing files detected</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3 pt-1">
-                    <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '' }); }}
+                    <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null }); }}
                       className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Skip</button>
                     <button onClick={saveBackup} className="py-2 rounded-lg font-semibold bg-blue-500 text-white">💾 Save Backup</button>
                   </div>
