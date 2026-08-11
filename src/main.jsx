@@ -7276,39 +7276,115 @@ Notes: ${j.notes || 'none'}`;
         })()}
 
         <div className="p-4 space-y-4">
-          {/* Quick-access alert grid */}
+          {/* B-layout: header */}
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{color:'var(--gold)'}}>Welcome back</p>
+              <h2 className="text-2xl font-bold" style={{fontFamily:'Cormorant Garamond, serif'}}>{currentUser.name}</h2>
+              <p className="text-sm mt-0.5" style={{color:'rgba(255,255,255,0.5)'}}>
+                {activeJobs.length} active jobs · {new Date().toLocaleDateString('en-GB', {weekday:'short',day:'numeric',month:'short'})}
+              </p>
+            </div>
+            {(() => {
+              const liveEntry = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
+              const liveJob = liveEntry?.jobId ? editingJobs.find(j => j.id === liveEntry.jobId) : null;
+              return liveEntry ? (
+                <button onClick={() => initiateClockOut(liveEntry.id)}
+                  className="flex flex-col items-end gap-0.5 bg-red-500 bg-opacity-90 px-3 py-2 rounded-xl text-white">
+                  <span className="text-xs font-bold flex items-center gap-1">🔴 {calculateElapsedTime(liveEntry.clockIn)}</span>
+                  <span className="text-xs opacity-80 truncate max-w-[120px]">{liveJob?.jobName || liveEntry.description || 'General'}</span>
+                  <span className="text-xs font-semibold mt-0.5 underline">Tap to Clock Out</span>
+                </button>
+              ) : (
+                <button onClick={() => { setClockInPickingJob(''); setShowClockInPrompt(true); }}
+                  className="bg-green-500 bg-opacity-90 px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold text-white">
+                  🟢 Clock In
+                </button>
+              );
+            })()}
+          </div>
+
+          {/* B-layout: today's / tomorrow's shoot hero */}
           {(() => {
             const today = new Date(); today.setHours(0,0,0,0);
             const todayS = today.toDateString();
             const tomorrowS = new Date(today.getTime()+86400000).toDateString();
+            const todayJob = editingJobs.find(j =>
+              !archivedJobIds.includes(j.id) && j.shootDate &&
+              (new Date(j.shootDate).toDateString() === todayS || new Date(j.shootDate).toDateString() === tomorrowS)
+            );
+            if (!todayJob) return null;
+            const isToday = new Date(todayJob.shootDate).toDateString() === todayS;
+            const venue = todayJob.itinerary?.venue || todayJob.location || '';
+            const startTime = todayJob.itinerary?.coverageStart || '';
+            const setoffActive = homePanel === 'setoff';
+            return (
+              <div className="rounded-2xl p-4 relative overflow-hidden"
+                style={{background:'linear-gradient(135deg,#1e2f45 0%,#243a52 100%)', border:'1px solid rgba(193,167,106,0.35)'}}>
+                <div style={{position:'absolute',top:-20,right:-20,width:100,height:100,background:'radial-gradient(circle,rgba(193,167,106,0.15) 0%,transparent 70%)',pointerEvents:'none'}}/>
+                <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{color:'var(--gold)'}}>📅 {isToday ? "Today's shoot" : "Tomorrow's shoot"}</p>
+                <p className="font-bold text-lg leading-tight text-white mb-0.5" style={{fontFamily:'Cormorant Garamond, serif'}}>{todayJob.jobName}</p>
+                <p className="text-sm mb-3" style={{color:'rgba(240,244,248,0.65)'}}>
+                  {startTime ? `Coverage from ${startTime}` : 'Shoot day'}
+                  {venue ? ` · ${venue}` : ''}
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setHomePanel(hp => hp === 'setoff' ? null : 'setoff')}
+                    className="text-xs font-bold px-3 py-2 rounded-lg transition-all"
+                    style={setoffActive
+                      ? {background:'rgba(193,167,106,0.2)',color:'var(--gold)',border:'1px solid rgba(193,167,106,0.5)'}
+                      : {background:'var(--gold)',color:'#0f1923',border:'none'}}>
+                    🚗 Set off times
+                  </button>
+                  {venue && (
+                    <button onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(venue)}`, '_blank')}
+                      className="text-xs font-bold px-3 py-2 rounded-lg"
+                      style={{background:'rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.85)'}}>
+                      🗺️ Directions
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* B-layout: 2×2 alert bento grid */}
+          {(() => {
+            const today = new Date(); today.setHours(0,0,0,0);
             const counts = {
-              setoff:    editingJobs.filter(j => !archivedJobIds.includes(j.id) && j.shootDate && (new Date(j.shootDate).toDateString()===todayS||new Date(j.shootDate).toDateString()===tomorrowS)).length,
               payment:   editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||j.finalPaymentReceived||!j.shootDate)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const d60=new Date(today);d60.setDate(today.getDate()-60);const d3=new Date(today);d3.setDate(today.getDate()+3);return s>=d60&&s<=d3; }).length,
               itinerary: editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||!j.shootDate||j.itinerary?.preItinerarySent)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const c=new Date(today);c.setDate(today.getDate()+18);return s>today&&s<=c; }).length,
               backup:    editingJobs.filter(j => { if(j.archived||!j.shootDate)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);if(s>today)return false;return !(j.fileLocations||[]).some(l=>l.isBackup||l.drive); }).length,
               deadline:  revisions.filter(r => { if(r.completed)return false; const dl=new Date(r.date);dl.setDate(dl.getDate()+30+(r.extensions||0)*7);dl.setHours(0,0,0,0);return Math.floor((dl-today)/86400000)<=7; }).length,
             };
-            const PANELS = [
-              {key:'setoff',   icon:'🚗', label:'Today',       color:'#60a5fa', bg:'rgba(96,165,250,0.12)'},
-              {key:'payment',  icon:'💷', label:'Payments',    color:'#4ade80', bg:'rgba(74,222,128,0.12)'},
-              {key:'itinerary',icon:'📋', label:'Itineraries', color:'#c1a76a', bg:'rgba(193,167,106,0.12)'},
-              {key:'backup',   icon:'💾', label:'Backups',     color:'#60a5fa', bg:'rgba(96,165,250,0.12)'},
-              {key:'deadline', icon:'⏰', label:'Deadlines',   color:'#f97316', bg:'rgba(249,115,22,0.12)'},
+            const CARDS = [
+              {key:'payment',  icon:'💷', label:'Payments',    color:'#4ade80', dim:'rgba(74,222,128,0.12)',   detail: n => n ? `${n} outstanding` : 'All received'},
+              {key:'itinerary',icon:'📋', label:'Itineraries', color:'#c1a76a', dim:'rgba(193,167,106,0.12)', detail: n => n ? `${n} to send` : 'All sent'},
+              {key:'backup',   icon:'💾', label:'Backups',     color:'#60a5fa', dim:'rgba(96,165,250,0.12)',   detail: n => n ? `${n} unlogged` : 'All backed up'},
+              {key:'deadline', icon:'⏰', label:'Deadlines',   color:'#f97316', dim:'rgba(249,115,22,0.12)',   detail: n => n ? `${n} this week` : 'Nothing due'},
             ];
             if (Object.values(counts).every(c=>c===0)) return null;
             return (
-              <div className="grid grid-cols-5 gap-2">
-                {PANELS.map(p => {
-                  const count = counts[p.key];
-                  const active = homePanel === p.key;
+              <div className="grid grid-cols-2 gap-3">
+                {CARDS.map(card => {
+                  const n = counts[card.key];
+                  const active = homePanel === card.key;
                   return (
-                    <button key={p.key}
-                      onClick={() => count>0 && setHomePanel(hp => hp===p.key ? null : p.key)}
-                      className="rounded-xl py-3 px-1 flex flex-col items-center gap-1 transition-all"
-                      style={{background:active?p.bg:'rgba(255,255,255,0.04)',border:`1px solid ${active?p.color:count>0?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.05)'}`,opacity:count>0?1:0.3,cursor:count>0?'pointer':'default'}}>
-                      <span className="text-xl leading-none">{p.icon}</span>
-                      <span className="text-sm font-bold leading-none mt-0.5" style={{color:count>0?p.color:'rgba(255,255,255,0.2)'}}>{count}</span>
-                      <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.6rem',textAlign:'center',lineHeight:1.2}}>{p.label}</span>
+                    <button key={card.key}
+                      onClick={() => n > 0 && setHomePanel(hp => hp === card.key ? null : card.key)}
+                      className="rounded-xl p-3 text-left transition-all"
+                      style={{
+                        background: active ? card.dim : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${active ? card.color : n > 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
+                        opacity: n > 0 ? 1 : 0.35,
+                        cursor: n > 0 ? 'pointer' : 'default',
+                      }}>
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="text-base">{card.icon}</span>
+                        <span className="text-2xl font-extrabold" style={{color: n > 0 ? card.color : 'rgba(255,255,255,0.2)', fontVariantNumeric:'tabular-nums'}}>{n}</span>
+                      </div>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{color:'rgba(255,255,255,0.45)'}}>{card.label}</p>
+                      <p className="text-xs leading-tight" style={{color:'rgba(255,255,255,0.3)'}}>{card.detail(n)}</p>
                     </button>
                   );
                 })}
@@ -7754,37 +7830,6 @@ Notes: ${j.notes || 'none'}`;
               </div>
             );
           })()}
-
-          <div className="text-white rounded-2xl p-6 shadow-lg" style={{background:'linear-gradient(135deg,#1a2535 0%,#243040 60%,#1a2535 100%)', border:'1px solid rgba(193,167,106,0.3)'}}>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-xs font-medium mb-1" style={{color:'var(--gold)', letterSpacing:'2px'}}>WELCOME BACK</p>
-                <h2 className="text-2xl font-bold mb-1" style={{fontFamily:'Cormorant Garamond, serif'}}>{currentUser.name}</h2>
-                <p className="text-sm" style={{color:'rgba(255,255,255,0.6)'}}>You have {activeJobs.length} active jobs</p>
-              </div>
-              {(() => {
-                const liveEntry = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
-                const liveJob = liveEntry?.jobId ? editingJobs.find(j => j.id === liveEntry.jobId) : null;
-                return liveEntry ? (
-                  <button
-                    onClick={() => initiateClockOut(liveEntry.id)}
-                    className="flex flex-col items-end gap-0.5 bg-red-500 bg-opacity-90 hover:bg-opacity-100 px-3 py-2 rounded-xl text-white"
-                  >
-                    <span className="text-xs font-bold flex items-center gap-1">🔴 {calculateElapsedTime(liveEntry.clockIn)}</span>
-                    <span className="text-xs opacity-80 truncate max-w-[120px]">{liveJob?.jobName || liveEntry.description || 'General'}</span>
-                    <span className="text-xs font-semibold mt-0.5 underline">Tap to Clock Out</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => { setClockInPickingJob(''); setShowClockInPrompt(true); }}
-                    className="bg-green-500 bg-opacity-90 hover:bg-opacity-100 px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold text-white"
-                  >
-                    🟢 Clock In
-                  </button>
-                );
-              })()}
-            </div>
-          </div>
 
           {getUserAssignedJobs(currentUser.id).length > 0 && (
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
