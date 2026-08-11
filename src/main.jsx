@@ -7283,7 +7283,7 @@ Notes: ${j.notes || 'none'}`;
 
         <div className="p-4 space-y-4">
           {/* B-layout: header */}
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center rounded-2xl px-4 py-3" style={{background:'linear-gradient(135deg,#1a2535 0%,#243040 60%,#1a2535 100%)', border:'1px solid rgba(193,167,106,0.3)'}}>
             <div>
               <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{color:'var(--gold)'}}>Welcome back</p>
               <h2 className="text-2xl font-bold" style={{fontFamily:'Cormorant Garamond, serif'}}>{currentUser.name}</h2>
