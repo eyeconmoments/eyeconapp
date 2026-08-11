@@ -959,6 +959,12 @@ function EyeconMoments() {
   const [minimizedJobs, setMinimizedJobs] = useState(new Set());
   const [collapsedItineraries, setCollapsedItineraries] = useState(new Set());
   const [dashStatOpen, setDashStatOpen] = useState(null);
+  const [itinNeededOpen, setItinNeededOpen] = useState(false);
+  const [looseThreadsOpen, setLooseThreadsOpen] = useState(false);
+  const [upcomingShootsOpen, setUpcomingShootsOpen] = useState(false);
+  const [overdueJobsOpen, setOverdueJobsOpen] = useState(false);
+  const [dueSoonOpen, setDueSoonOpen] = useState(false);
+  const [overdueFollowUpsOpen, setOverdueFollowUpsOpen] = useState(false);
   const [parkedItineraries, setParkedItineraries] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_parked_itins') || '[]'); } catch(e) { return []; } });
   const [showParkedItins, setShowParkedItins] = useState(false);
   const [fileOverrideModal, setFileOverrideModal] = useState(null); // { jobId, locationIndex, drive, path, notes }
@@ -8195,39 +8201,40 @@ Notes: ${j.notes || 'none'}`;
             });
             
             if (needsItinerary.length === 0) return null;
-            
             return (
-              <div className="bg-purple-500 text-white rounded-lg p-4 shadow-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">📋</span>
-                  <h3 className="font-bold text-lg">Itinerary Needed!</h3>
-                </div>
-                <p className="text-sm opacity-90 mb-3">
-                  {needsItinerary.length} upcoming job{needsItinerary.length > 1 ? 's need' : ' needs'} an itinerary created
-                </p>
-                <div className="space-y-2">
+              <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(147,51,234,0.35)', background:'rgba(147,51,234,0.07)'}}>
+                <button className="w-full flex justify-between items-center p-3 text-left" onClick={() => setItinNeededOpen(o => !o)}>
+                  <div className="flex items-center gap-2">
+                    <span>📋</span>
+                    <span className="font-semibold text-sm text-white">Itinerary Needed</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(147,51,234,0.3)',color:'#c084fc'}}>{needsItinerary.length}</span>
+                  </div>
+                  <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem'}}>{itinNeededOpen ? '▲' : '▼'}</span>
+                </button>
+                {itinNeededOpen && (
+                <div className="px-3 pb-3 space-y-2">
                   {needsItinerary.slice(0, 3).map(job => {
                     const shootDate = new Date(job.shootDate);
                     const daysUntil = Math.ceil((shootDate - todayDate) / (1000 * 60 * 60 * 24));
                     return (
-                      <div key={job.id} className="bg-white bg-opacity-20 p-2 rounded flex justify-between items-center">
+                      <div key={job.id} className="flex justify-between items-center p-2 rounded-lg" style={{background:'rgba(147,51,234,0.15)'}}>
                         <div>
-                          <p className="font-semibold">{job.jobName}</p>
-                          <p className="text-xs opacity-80">{shootDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+                          <p className="font-semibold text-sm text-white">{job.jobName}</p>
+                          <p className="text-xs" style={{color:'rgba(255,255,255,0.55)'}}>{shootDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
                         </div>
-                        <span className={`text-sm font-bold px-2 py-1 rounded ${daysUntil <= 3 ? 'bg-red-600' : 'bg-purple-700'}`}>
+                        <span className="text-sm font-bold px-2 py-1 rounded" style={{background: daysUntil <= 3 ? 'rgba(239,68,68,0.3)' : 'rgba(147,51,234,0.3)', color: daysUntil <= 3 ? '#fca5a5' : '#c084fc'}}>
                           {daysUntil === 0 ? 'TODAY!' : daysUntil === 1 ? 'TOMORROW!' : `${daysUntil} days`}
                         </span>
                       </div>
                     );
                   })}
+                  <button onClick={() => setCurrentView('upcoming')}
+                    className="w-full mt-1 py-2 rounded-lg text-sm font-bold"
+                    style={{background:'rgba(147,51,234,0.25)',color:'#c084fc'}}>
+                    Create Itineraries →
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setCurrentView('upcoming')}
-                  className="w-full mt-3 bg-white text-purple-600 py-2 rounded-lg font-bold hover:bg-purple-50"
-                >
-                  Create Itineraries →
-                </button>
+                )}
               </div>
             );
           })()}
@@ -8687,16 +8694,20 @@ Notes: ${j.notes || 'none'}`;
           })()}
 
           {/* Loose Threads */}
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📌 Loose Threads</h3>
+          <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(255,255,255,0.09)', background:'rgba(255,255,255,0.04)'}}>
+            <button className="w-full flex justify-between items-center p-3 text-left" onClick={() => setLooseThreadsOpen(o => !o)}>
               <div className="flex items-center gap-2">
-                <span className={`text-xs px-2 py-1 rounded font-medium ${looseThreads.filter(t => !t.done).length > 0 ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                  {looseThreads.filter(t => !t.done).length} open
-                </span>
-                <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-400'}`}>💾 auto-saved</span>
+                <span>📌</span>
+                <span className="font-semibold text-sm text-white">Loose Threads</span>
+                {looseThreads.filter(t => !t.done).length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(249,115,22,0.25)',color:'#fb923c'}}>{looseThreads.filter(t => !t.done).length} open</span>
+                )}
+                <span className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>💾</span>
               </div>
-            </div>
+              <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem'}}>{looseThreadsOpen ? '▲' : '▼'}</span>
+            </button>
+            {looseThreadsOpen && (
+            <div className="px-3 pb-3">
 
             {/* Add new thread */}
             <div className="flex gap-2 mb-4">
@@ -8829,6 +8840,8 @@ Notes: ${j.notes || 'none'}`;
                 </div>
               </div>
             )}
+            </div>
+            )}
           </div>
 
           {/* Upcoming Jobs Section - Summary */}
@@ -8845,113 +8858,123 @@ Notes: ${j.notes || 'none'}`;
               .slice(0, 5);
             
             if (upcomingJobs.length === 0) return null;
-            
             return (
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>📅 Upcoming Shoots</h3>
-                  <button 
-                    onClick={() => setCurrentView('upcoming')}
-                    className="text-blue-500 text-sm hover:underline"
-                  >
-                    View all →
-                  </button>
-                </div>
-                <div className="space-y-2">
+              <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(96,165,250,0.25)', background:'rgba(255,255,255,0.04)'}}>
+                <button className="w-full flex justify-between items-center p-3 text-left" onClick={() => setUpcomingShootsOpen(o => !o)}>
+                  <div className="flex items-center gap-2">
+                    <span>📅</span>
+                    <span className="font-semibold text-sm text-white">Upcoming Shoots</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(96,165,250,0.2)',color:'#93c5fd'}}>{upcomingJobs.length}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={e => { e.stopPropagation(); setCurrentView('upcoming'); }} className="text-xs" style={{color:'#60a5fa'}}>View all →</button>
+                    <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem'}}>{upcomingShootsOpen ? '▲' : '▼'}</span>
+                  </div>
+                </button>
+                {upcomingShootsOpen && (
+                <div className="px-3 pb-3 space-y-2">
                   {upcomingJobs.map(job => {
                     const shootDate = new Date(job.shootDate); shootDate.setHours(0,0,0,0);
                     const daysUntil = Math.ceil((shootDate - today) / (1000 * 60 * 60 * 24));
                     const isToday = daysUntil === 0;
                     const isTomorrow = daysUntil === 1;
-                    
                     return (
-                      <div 
-                        key={job.id} 
-                        className={`flex justify-between items-center p-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}
-                      >
+                      <div key={job.id} className="flex justify-between items-center p-2 rounded-lg" style={{background:'rgba(255,255,255,0.05)'}}>
                         <div>
-                          <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className="font-medium text-sm text-white">{job.jobName}</p>
+                          <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>
                             {shootDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
                           </p>
                         </div>
-                        <span className={`text-xs font-bold px-2 py-1 rounded ${
-                          isToday ? 'bg-red-500 text-white' :
-                          isTomorrow ? 'bg-orange-500 text-white' :
-                          daysUntil <= 7 ? 'bg-yellow-500 text-white' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
+                        <span className="text-xs font-bold px-2 py-1 rounded" style={{
+                          background: isToday ? 'rgba(239,68,68,0.3)' : isTomorrow ? 'rgba(249,115,22,0.3)' : daysUntil <= 7 ? 'rgba(234,179,8,0.3)' : 'rgba(96,165,250,0.2)',
+                          color: isToday ? '#fca5a5' : isTomorrow ? '#fdba74' : daysUntil <= 7 ? '#fde047' : '#93c5fd',
+                        }}>
                           {isToday ? 'TODAY' : isTomorrow ? 'TOMORROW' : `${daysUntil}d`}
                         </span>
                       </div>
                     );
                   })}
+                  <button onClick={() => setCurrentView('upcoming')}
+                    className="w-full mt-1 py-2 rounded-lg text-sm font-semibold"
+                    style={{background:'rgba(96,165,250,0.15)',color:'#93c5fd'}}>
+                    📅 Manage Upcoming & Itineraries
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setCurrentView('upcoming')}
-                  className="w-full mt-3 bg-blue-500 text-white py-2 rounded-lg font-semibold hover:bg-blue-600"
-                >
-                  📅 Manage Upcoming & Itineraries
-                </button>
+                )}
               </div>
             );
           })()}
 
           {overdueJobs.length > 0 && (
-            <div className="bg-red-500 text-white border-4 border-red-700 rounded-lg p-4 shadow-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-3xl">🚨</span>
-                <h3 className="font-bold text-xl">URGENT: {overdueJobs.length} Overdue Job{overdueJobs.length > 1 ? 's' : ''}</h3>
-              </div>
-              <p className="text-sm opacity-90 mb-3">These jobs have exceeded the 3-month deadline and require immediate attention!</p>
-              <div className="space-y-2">
+            <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(239,68,68,0.4)', background:'rgba(239,68,68,0.08)'}}>
+              <button className="w-full flex justify-between items-center p-3 text-left" onClick={() => setOverdueJobsOpen(o => !o)}>
+                <div className="flex items-center gap-2">
+                  <span>🚨</span>
+                  <span className="font-semibold text-sm text-white">Overdue Jobs</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(239,68,68,0.3)',color:'#fca5a5'}}>{overdueJobs.length}</span>
+                </div>
+                <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem'}}>{overdueJobsOpen ? '▲' : '▼'}</span>
+              </button>
+              {overdueJobsOpen && (
+              <div className="px-3 pb-3 space-y-2">
                 {overdueJobs.map(job => {
                   const daysOverdue = Math.abs(getDaysUntilDeadline(job.deadline));
                   return (
-                    <div key={job.id} className="bg-white bg-opacity-20 p-3 rounded">
+                    <div key={job.id} className="p-3 rounded-lg" style={{background:'rgba(239,68,68,0.15)'}}>
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-bold text-lg">{job.jobName}</p>
-                          <p className="text-sm opacity-90">{job.customerName}</p>
+                          <p className="font-bold text-sm text-white">{job.jobName}</p>
+                          <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>{job.customerName}</p>
                           <button
                             onClick={() => {
                               const next = job.jobType === 'photo-video' ? 'video' : job.jobType === 'video' ? 'photo' : 'photo-video';
                               updateJobType(job.id, next);
                             }}
-                            className="inline-block mt-1 text-xs font-semibold bg-white bg-opacity-30 hover:bg-opacity-50 active:bg-opacity-60 px-2 py-0.5 rounded-full cursor-pointer"
+                            className="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
+                            style={{background:'rgba(255,255,255,0.15)',color:'rgba(255,255,255,0.8)'}}
                             title="Tap to change type"
                           >
                             {job.jobType === 'video' ? '🎬 Video' : job.jobType === 'photo' ? '📷 Photo' : '📷🎬 Photo & Video'} ✎
                           </button>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-2xl">{daysOverdue}</p>
-                          <p className="text-xs">days overdue</p>
+                          <p className="font-bold text-xl" style={{color:'#fca5a5'}}>{daysOverdue}</p>
+                          <p className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>days overdue</p>
                         </div>
                       </div>
                     </div>
                   );
                 })}
+                <button onClick={() => setCurrentView('jobs')}
+                  className="w-full mt-1 py-2 rounded-lg text-sm font-bold"
+                  style={{background:'rgba(239,68,68,0.2)',color:'#fca5a5'}}>
+                  View Overdue Jobs →
+                </button>
               </div>
-              <button
-                onClick={() => setCurrentView('jobs')}
-                className="w-full mt-3 bg-white text-red-600 py-3 rounded-lg font-bold hover:bg-red-50"
-              >
-                View Overdue Jobs →
-              </button>
+              )}
             </div>
           )}
           {dueSoonJobs.length > 0 && (
-            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle /><h3 className="font-bold text-yellow-800">Due Soon ({dueSoonJobs.length})</h3>
-              </div>
-              {dueSoonJobs.map(job => (
-                <div key={job.id} className="text-sm">
-                  <span className="font-semibold">{job.jobName}</span>
-                  <span className="text-yellow-700 ml-2">Due in {getDaysUntilDeadline(job.deadline)} days</span>
+            <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(234,179,8,0.3)', background:'rgba(234,179,8,0.07)'}}>
+              <button className="w-full flex justify-between items-center p-3 text-left" onClick={() => setDueSoonOpen(o => !o)}>
+                <div className="flex items-center gap-2">
+                  <span>⏳</span>
+                  <span className="font-semibold text-sm text-white">Due Soon</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(234,179,8,0.25)',color:'#fde047'}}>{dueSoonJobs.length}</span>
                 </div>
-              ))}
+                <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem'}}>{dueSoonOpen ? '▲' : '▼'}</span>
+              </button>
+              {dueSoonOpen && (
+              <div className="px-3 pb-3 space-y-1.5">
+                {dueSoonJobs.map(job => (
+                  <div key={job.id} className="flex justify-between items-center p-2 rounded-lg" style={{background:'rgba(234,179,8,0.1)'}}>
+                    <span className="text-sm text-white font-medium">{job.jobName}</span>
+                    <span className="text-xs" style={{color:'#fde047'}}>Due in {getDaysUntilDeadline(job.deadline)} days</span>
+                  </div>
+                ))}
+              </div>
+              )}
             </div>
           )}
           {/* Overdue follow-ups — visible to all admins */}
@@ -8964,28 +8987,36 @@ Notes: ${j.notes || 'none'}`;
             });
             if (overdueFollowUps.length === 0) return null;
             return (
-              <div className="bg-red-50 border-2 border-red-400 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-bold text-red-800">🚨 Overdue Follow-Ups ({overdueFollowUps.length})</h3>
-                </div>
-                <div className="space-y-2 mb-3">
+              <div className="rounded-xl overflow-hidden" style={{border:'1px solid rgba(251,113,133,0.35)', background:'rgba(251,113,133,0.07)'}}>
+                <button className="w-full flex justify-between items-center p-3 text-left" onClick={() => setOverdueFollowUpsOpen(o => !o)}>
+                  <div className="flex items-center gap-2">
+                    <span>🚨</span>
+                    <span className="font-semibold text-sm text-white">Overdue Follow-Ups</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(251,113,133,0.25)',color:'#fda4af'}}>{overdueFollowUps.length}</span>
+                  </div>
+                  <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.7rem'}}>{overdueFollowUpsOpen ? '▲' : '▼'}</span>
+                </button>
+                {overdueFollowUpsOpen && (
+                <div className="px-3 pb-3 space-y-2">
                   {overdueFollowUps.map(inq => {
                     const days = Math.floor((currentTime - new Date(inq.quotedDate || inq.submittedDate)) / (1000 * 60 * 60 * 24));
                     return (
-                      <div key={inq.id} className="flex justify-between items-center p-2 bg-white rounded border border-red-200">
+                      <div key={inq.id} className="flex justify-between items-center p-2 rounded-lg" style={{background:'rgba(251,113,133,0.12)'}}>
                         <div>
-                          <p className="font-semibold text-sm text-gray-800">{inq.customerName}</p>
-                          <p className="text-xs text-red-600">{days} days since quoted · {inq.eventType}</p>
+                          <p className="font-semibold text-sm text-white">{inq.customerName}</p>
+                          <p className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>{days} days since quoted · {inq.eventType}</p>
                         </div>
                         <button onClick={() => { setFollowUpInquiry(inq); setShowFollowUpModal(true); setCurrentView('crm'); }}
-                          className="text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+                          className="text-xs px-3 py-1 rounded font-bold"
+                          style={{background:'rgba(239,68,68,0.4)',color:'#fca5a5'}}>
                           Follow Up
                         </button>
                       </div>
                     );
                   })}
+                  <button onClick={() => setCurrentView('crm')} className="text-sm font-semibold" style={{color:'#fda4af'}}>Go to CRM →</button>
                 </div>
-                <button onClick={() => setCurrentView('crm')} className="text-sm text-red-700 font-semibold">Go to CRM →</button>
+                )}
               </div>
             );
           })()}
