@@ -7432,7 +7432,7 @@ Notes: ${j.notes || 'none'}`;
               setRouteStatus(p => ({ ...p, [jobId]: 'loading' }));
               try {
                 if (!officeAddress.trim()) throw new Error('Set your office address first');
-                if (!gmapsKey.trim()) throw new Error('Add your Google Maps API key below');
+                if (!gmapsKey.trim()) throw new Error('Add your Google Maps API key above');
                 const pos = await new Promise((res, rej) =>
                   navigator.geolocation.getCurrentPosition(res, rej, { timeout: 12000, maximumAge: 60000 }));
                 const { latitude: lat, longitude: lng } = pos.coords;
