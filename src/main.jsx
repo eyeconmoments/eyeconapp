@@ -1116,6 +1116,8 @@ function EyeconMoments() {
   const [setoffLegs, setSetoffLegs] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_setoff_legs') || '{}'); } catch { return {}; } });
   const [officeAddress, setOfficeAddress] = useState(() => localStorage.getItem('eyecon_office_address') || '');
   const [editingOfficeAddr, setEditingOfficeAddr] = useState(false);
+  const [gmapsKey, setGmapsKey] = useState(() => localStorage.getItem('eyecon_gmaps_key') || '');
+  const [editingGmapsKey, setEditingGmapsKey] = useState(false);
   const [routeStatus, setRouteStatus] = useState({});
   const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
@@ -7413,37 +7415,44 @@ Notes: ${j.notes || 'none'}`;
               });
             };
 
+            const loadGoogleMaps = () => new Promise((resolve, reject) => {
+              if (window.google?.maps?.DistanceMatrixService) { resolve(window.google.maps); return; }
+              const prev = document.getElementById('eyecon-gmaps');
+              if (prev) prev.remove();
+              const s = document.createElement('script');
+              s.id = 'eyecon-gmaps';
+              s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(gmapsKey)}`;
+              s.async = true;
+              s.onload = () => window.google?.maps ? resolve(window.google.maps) : reject(new Error('Google Maps did not initialise'));
+              s.onerror = () => reject(new Error('API key invalid or Maps JavaScript API not enabled in Google Cloud'));
+              document.head.appendChild(s);
+            });
+
             const calcRoutes = async (jobId, venueStr) => {
               setRouteStatus(p => ({ ...p, [jobId]: 'loading' }));
               try {
                 if (!officeAddress.trim()) throw new Error('Set your office address first');
+                if (!gmapsKey.trim()) throw new Error('Add your Google Maps API key below');
                 const pos = await new Promise((res, rej) =>
                   navigator.geolocation.getCurrentPosition(res, rej, { timeout: 12000, maximumAge: 60000 }));
                 const { latitude: lat, longitude: lng } = pos.coords;
-                const nmHeaders = { 'Accept-Language': 'en', 'User-Agent': 'EyeconApp/1.0' };
-                const offGeo = await fetch(
-                  `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(officeAddress)}&format=json&limit=1`,
-                  { headers: nmHeaders }
-                ).then(r => r.json());
-                if (!offGeo.length) throw new Error('Office address not found — try a more specific address');
-                const offLat = parseFloat(offGeo[0].lat), offLng = parseFloat(offGeo[0].lon);
-                const homeRoute = await fetch(
-                  `https://router.project-osrm.org/route/v1/driving/${lng},${lat};${offLng},${offLat}?overview=false`
-                ).then(r => r.json());
-                if (homeRoute.code !== 'Ok') throw new Error('Could not route home→office');
-                updateLeg(jobId, 'homeToOffice', Math.ceil(homeRoute.routes[0].duration / 60));
+                const maps = await loadGoogleMaps();
+                const svc = new maps.DistanceMatrixService();
+                const origins = [`${lat},${lng}`, officeAddress];
+                const destinations = venueStr ? [officeAddress, venueStr] : [officeAddress];
+                const dm = await new Promise((res, rej) =>
+                  svc.getDistanceMatrix({
+                    origins, destinations,
+                    travelMode: maps.TravelMode.DRIVING,
+                    drivingOptions: { departureTime: new Date(), trafficModel: maps.TrafficModel.BEST_GUESS },
+                  }, (data, status) => status === 'OK' ? res(data) : rej(new Error(`Maps error: ${status}`))));
+                const homeEl = dm.rows[0]?.elements[0];
+                if (homeEl?.status === 'OK')
+                  updateLeg(jobId, 'homeToOffice', Math.ceil((homeEl.duration_in_traffic?.value || homeEl.duration.value) / 60));
                 if (venueStr) {
-                  const venGeo = await fetch(
-                    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(venueStr)}&format=json&limit=1`,
-                    { headers: nmHeaders }
-                  ).then(r => r.json());
-                  if (venGeo.length) {
-                    const venLat = parseFloat(venGeo[0].lat), venLng = parseFloat(venGeo[0].lon);
-                    const venRoute = await fetch(
-                      `https://router.project-osrm.org/route/v1/driving/${offLng},${offLat};${venLng},${venLat}?overview=false`
-                    ).then(r => r.json());
-                    if (venRoute.code === 'Ok') updateLeg(jobId, 'officeToVenue', Math.ceil(venRoute.routes[0].duration / 60));
-                  }
+                  const venEl = dm.rows[1]?.elements[1];
+                  if (venEl?.status === 'OK')
+                    updateLeg(jobId, 'officeToVenue', Math.ceil((venEl.duration_in_traffic?.value || venEl.duration.value) / 60));
                 }
                 setRouteStatus(p => ({ ...p, [jobId]: 'done' }));
               } catch (err) {
@@ -7461,25 +7470,46 @@ Notes: ${j.notes || 'none'}`;
                   <p className="font-semibold text-blue-400">Set-off times — {soonJobs.length} shoot{soonJobs.length!==1?'s':''} coming up</p>
                 </div>
 
-                {/* Office address setting */}
-                <div className="mb-3 rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                  <span className="text-sm shrink-0">🏢</span>
-                  {editingOfficeAddr || !officeAddress ? (
-                    <>
-                      <input type="text" value={officeAddress}
-                        onChange={e => setOfficeAddress(e.target.value)}
-                        placeholder="Enter office address for live routing…"
-                        className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
-                        onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}} />
-                      <button onClick={() => { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}
-                        className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className={`flex-1 text-xs truncate ${darkMode?'text-gray-300':'text-gray-600'}`}>{officeAddress}</span>
-                      <button onClick={() => setEditingOfficeAddr(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
-                    </>
-                  )}
+                {/* Office address + Maps key settings */}
+                <div className="mb-3 space-y-1.5">
+                  <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                    <span className="text-sm shrink-0">🏢</span>
+                    {editingOfficeAddr || !officeAddress ? (
+                      <>
+                        <input type="text" value={officeAddress}
+                          onChange={e => setOfficeAddress(e.target.value)}
+                          placeholder="Office address…"
+                          className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}} />
+                        <button onClick={() => { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}
+                          className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`flex-1 text-xs truncate ${darkMode?'text-gray-300':'text-gray-600'}`}>{officeAddress}</span>
+                        <button onClick={() => setEditingOfficeAddr(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                    <span className="text-sm shrink-0">🗝️</span>
+                    {editingGmapsKey || !gmapsKey ? (
+                      <>
+                        <input type="text" value={gmapsKey}
+                          onChange={e => setGmapsKey(e.target.value)}
+                          placeholder="Google Maps API key…"
+                          className={`flex-1 text-xs rounded px-2 py-1 border font-mono ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(false); }}} />
+                        <button onClick={() => { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(false); }}
+                          className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Google Maps key set</span>
+                        <button onClick={() => setEditingGmapsKey(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -7519,21 +7549,23 @@ Notes: ${j.notes || 'none'}`;
                         </div>
 
                         {/* Live route button */}
-                        {officeAddress && (
+                        {(officeAddress || gmapsKey) && (
                           <button
                             onClick={() => calcRoutes(j.id, venue)}
-                            disabled={rStatus === 'loading'}
+                            disabled={rStatus === 'loading' || !officeAddress || !gmapsKey}
                             className="w-full mb-2.5 text-xs py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium"
                             style={{
-                              background: rStatus==='done' ? 'rgba(34,197,94,0.12)' : rStatus?.startsWith('error:') ? 'rgba(239,68,68,0.1)' : 'rgba(96,165,250,0.13)',
-                              color: rStatus==='done' ? '#86efac' : rStatus?.startsWith('error:') ? '#fca5a5' : '#93c5fd',
-                              border: `1px solid ${rStatus==='done' ? 'rgba(34,197,94,0.25)' : rStatus?.startsWith('error:') ? 'rgba(239,68,68,0.25)' : 'rgba(96,165,250,0.25)'}`,
+                              background: (!officeAddress||!gmapsKey) ? 'rgba(255,255,255,0.05)' : rStatus==='done' ? 'rgba(34,197,94,0.12)' : rStatus?.startsWith('error:') ? 'rgba(239,68,68,0.1)' : 'rgba(96,165,250,0.13)',
+                              color: (!officeAddress||!gmapsKey) ? 'rgba(255,255,255,0.3)' : rStatus==='done' ? '#86efac' : rStatus?.startsWith('error:') ? '#fca5a5' : '#93c5fd',
+                              border: `1px solid ${(!officeAddress||!gmapsKey) ? 'rgba(255,255,255,0.08)' : rStatus==='done' ? 'rgba(34,197,94,0.25)' : rStatus?.startsWith('error:') ? 'rgba(239,68,68,0.25)' : 'rgba(96,165,250,0.25)'}`,
                               opacity: rStatus==='loading' ? 0.7 : 1,
                             }}>
-                            {rStatus==='loading' ? '⏳ Calculating routes…'
-                              : rStatus==='done' ? '✓ Route times updated — adjust below if needed'
+                            {!officeAddress ? '⚠ Set your office address above first'
+                              : !gmapsKey ? '⚠ Add your Google Maps API key above'
+                              : rStatus==='loading' ? '⏳ Fetching live route times…'
+                              : rStatus==='done' ? '✓ Route times updated (traffic-aware) — adjust if needed'
                               : rStatus?.startsWith('error:') ? `⚠ ${rStatus.slice(6)}`
-                              : '📍 Calculate from my current location'}
+                              : '📍 Get live route times from my location'}
                           </button>
                         )}
 
