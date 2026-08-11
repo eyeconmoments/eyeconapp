@@ -1119,6 +1119,7 @@ function EyeconMoments() {
   const [gmapsKey, setGmapsKey] = useState(() => localStorage.getItem('eyecon_gmaps_key') || '');
   const [editingGmapsKey, setEditingGmapsKey] = useState(false);
   const [routeStatus, setRouteStatus] = useState({});
+  const [homePanel, setHomePanel] = useState(null);
   const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
     const entry = { id: Date.now(), ts: new Date().toISOString(), action, jobName, details };
@@ -7185,8 +7186,49 @@ Notes: ${j.notes || 'none'}`;
         })()}
 
         <div className="p-4 space-y-4">
+          {/* Quick-access alert grid */}
+          {(() => {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const todayS = today.toDateString();
+            const tomorrowS = new Date(today.getTime()+86400000).toDateString();
+            const counts = {
+              setoff:    editingJobs.filter(j => !archivedJobIds.includes(j.id) && j.shootDate && (new Date(j.shootDate).toDateString()===todayS||new Date(j.shootDate).toDateString()===tomorrowS)).length,
+              payment:   editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||j.finalPaymentReceived||!j.shootDate)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const d60=new Date(today);d60.setDate(today.getDate()-60);const d3=new Date(today);d3.setDate(today.getDate()+3);return s>=d60&&s<=d3; }).length,
+              itinerary: editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||!j.shootDate||j.itinerary?.preItinerarySent)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const c=new Date(today);c.setDate(today.getDate()+18);return s>today&&s<=c; }).length,
+              backup:    editingJobs.filter(j => { if(j.archived||!j.shootDate)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);if(s>today)return false;return !(j.fileLocations||[]).some(l=>l.isBackup||l.drive); }).length,
+              deadline:  revisions.filter(r => { if(r.completed)return false; const dl=new Date(r.date);dl.setDate(dl.getDate()+30+(r.extensions||0)*7);dl.setHours(0,0,0,0);return Math.floor((dl-today)/86400000)<=7; }).length,
+            };
+            const PANELS = [
+              {key:'setoff',   icon:'🚗', label:'Today',       color:'#60a5fa', bg:'rgba(96,165,250,0.12)'},
+              {key:'payment',  icon:'💷', label:'Payments',    color:'#4ade80', bg:'rgba(74,222,128,0.12)'},
+              {key:'itinerary',icon:'📋', label:'Itineraries', color:'#c1a76a', bg:'rgba(193,167,106,0.12)'},
+              {key:'backup',   icon:'💾', label:'Backups',     color:'#60a5fa', bg:'rgba(96,165,250,0.12)'},
+              {key:'deadline', icon:'⏰', label:'Deadlines',   color:'#f97316', bg:'rgba(249,115,22,0.12)'},
+            ];
+            if (Object.values(counts).every(c=>c===0)) return null;
+            return (
+              <div className="grid grid-cols-5 gap-2">
+                {PANELS.map(p => {
+                  const count = counts[p.key];
+                  const active = homePanel === p.key;
+                  return (
+                    <button key={p.key}
+                      onClick={() => count>0 && setHomePanel(hp => hp===p.key ? null : p.key)}
+                      className="rounded-xl py-3 px-1 flex flex-col items-center gap-1 transition-all"
+                      style={{background:active?p.bg:'rgba(255,255,255,0.04)',border:`1px solid ${active?p.color:count>0?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.05)'}`,opacity:count>0?1:0.3,cursor:count>0?'pointer':'default'}}>
+                      <span className="text-xl leading-none">{p.icon}</span>
+                      <span className="text-sm font-bold leading-none mt-0.5" style={{color:count>0?p.color:'rgba(255,255,255,0.2)'}}>{count}</span>
+                      <span style={{color:'rgba(255,255,255,0.4)',fontSize:'0.6rem',textAlign:'center',lineHeight:1.2}}>{p.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {/* Backup prompts — lapsed jobs with no backup logged */}
           {(() => {
+            if (homePanel !== 'backup') return null;
             const today = new Date(); today.setHours(0,0,0,0);
             const needsBackup = editingJobs.filter(j => {
               if (j.archived) return false;
@@ -7222,6 +7264,7 @@ Notes: ${j.notes || 'none'}`;
           })()}
           {/* Revision deadline reminders */}
           {(() => {
+            if (homePanel !== 'deadline') return null;
             const today = new Date(); today.setHours(0,0,0,0);
             const urgent = revisions.filter(r => {
               if (r.completed) return false;
@@ -7257,6 +7300,7 @@ Notes: ${j.notes || 'none'}`;
 
           {/* Final Payment Due — jobs within 3 days ahead or up to 60 days past, no final payment */}
           {(() => {
+            if (homePanel !== 'payment') return null;
             const today = new Date(); today.setHours(0,0,0,0);
             const sixtyDaysAgo = new Date(today); sixtyDaysAgo.setDate(today.getDate() - 60);
             const threeDaysAhead = new Date(today); threeDaysAhead.setDate(today.getDate() + 3);
@@ -7335,6 +7379,7 @@ Notes: ${j.notes || 'none'}`;
 
           {/* Pre-Itinerary Prompts — jobs shooting within 18 days, portal email not yet sent */}
           {(() => {
+            if (homePanel !== 'itinerary') return null;
             const today = new Date(); today.setHours(0,0,0,0);
             const cutoff = new Date(today); cutoff.setDate(today.getDate() + 18);
             const needsItin = editingJobs.filter(j => {
@@ -7395,6 +7440,7 @@ Notes: ${j.notes || 'none'}`;
 
           {/* 🚗 Set-off calculator — jobs today or tomorrow */}
           {(() => {
+            if (homePanel !== 'setoff') return null;
             const todayStr = new Date().toDateString();
             const tomorrowStr = new Date(Date.now() + 86400000).toDateString();
             const soonJobs = editingJobs.filter(j => {
