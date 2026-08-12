@@ -7229,8 +7229,19 @@ Notes: ${j.notes || 'none'}`;
 
           const saveBackup = async () => {
             if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
-            const newLoc = { drive: backupForm.drive, path: backupForm.path, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true, fileCheck: backupForm.fileCheck || null };
-            const newLocs = [...(job.fileLocations || []), newLoc];
+            const fc = backupForm.fileCheck;
+            const organised = fc?.organiseResult && !fc.organiseResult.error;
+            const base = { drive: backupForm.drive, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true };
+            const basePath = backupForm.path || '';
+            let newLocs = [...(job.fileLocations || [])];
+            if (organised) {
+              if (fc.organiseResult.movedPhotos > 0)
+                newLocs.push({ ...base, path: basePath ? `${basePath}/Photos` : 'Photos', mediaType: 'photo', fileCheck: fc });
+              if (fc.organiseResult.movedVideos > 0)
+                newLocs.push({ ...base, path: basePath ? `${basePath}/Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
+            } else {
+              newLocs.push({ ...base, path: basePath, fileCheck: fc || null });
+            }
             await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
             setEditingJobs(prev => prev.map(j => String(j.id) === String(backupModal.jobId) ? { ...j, fileLocations: newLocs } : j));
             setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null });
@@ -7296,6 +7307,27 @@ Notes: ${j.notes || 'none'}`;
                           <span className="text-purple-300">🎬 {backupForm.fileCheck.videos} videos</span>
                           {backupForm.fileCheck.other > 0 && <span className="text-gray-400">+{backupForm.fileCheck.other} other</span>}
                         </div>
+                        {(() => {
+                          const ph = backupForm.fileCheck.photos; const vi = backupForm.fileCheck.videos;
+                          const detected = ph > 0 && vi > 0 ? 'photo-video' : ph > 0 ? 'photo' : vi > 0 ? 'video' : null;
+                          if (!detected) return null;
+                          const current = job.jobType || 'photo-video';
+                          const matches = detected === current;
+                          const label = detected === 'photo-video' ? '📷🎬 Photo & Video' : detected === 'photo' ? '📷 Photo only' : '🎬 Video only';
+                          return (
+                            <div className="flex items-center justify-between gap-2 pt-0.5">
+                              <span className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>Detected: {label}</span>
+                              {matches
+                                ? <span className="text-xs text-green-400">✓ matches job</span>
+                                : <button onClick={() => updateJobType(job.id, detected)}
+                                    className="text-xs px-2 py-0.5 rounded font-bold"
+                                    style={{background:'rgba(193,167,106,0.2)',color:'var(--gold)'}}>
+                                    Update job type →
+                                  </button>
+                              }
+                            </div>
+                          );
+                        })()}
                         {backupForm.fileCheck.anomalies?.length > 0 ? (
                           <div className="space-y-0.5 pt-0.5">
                             {backupForm.fileCheck.anomalies.map((a,i) => <p key={i} className="text-xs text-amber-400">⚠ {a}</p>)}
