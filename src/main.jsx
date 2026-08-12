@@ -852,6 +852,7 @@ function EyeconMoments() {
   const voiceTranscriptRef = React.useRef('');
   const voiceIsListeningRef = React.useRef(false);
   const helpBottomRef = React.useRef(null);
+  const backupDirHandleRef = React.useRef(null);
   React.useEffect(() => { helpBottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
   const [showingModal, setShowingModal] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -7139,7 +7140,8 @@ Notes: ${j.notes || 'none'}`;
           const scanFolder = async () => {
             if (!window.showDirectoryPicker) { alert('Folder scanning is not supported in this browser. Use Chrome or Edge on desktop.'); return; }
             try {
-              const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+              const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+              backupDirHandleRef.current = dirHandle;
               setBackupForm(p => ({...p, fileCheck: { scanning: true }}));
               const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
               const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
@@ -7187,6 +7189,40 @@ Notes: ${j.notes || 'none'}`;
               setBackupForm(p => ({...p, fileCheck, path: p.path || dirHandle.name}));
             } catch(err) {
               if (err.name !== 'AbortError') setBackupForm(p => ({...p, fileCheck: { error: err.message || 'Could not read folder' }}));
+            }
+          };
+
+          const organiseFiles = async () => {
+            const dirHandle = backupDirHandleRef.current;
+            if (!dirHandle) { alert('Please scan the folder first.'); return; }
+            setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: true, organiseResult: null}}));
+            try {
+              const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
+              const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
+              const photosDir = await dirHandle.getDirectoryHandle('Photos', { create: true });
+              const videosDir = await dirHandle.getDirectoryHandle('Videos', { create: true });
+              let movedPhotos = 0, movedVideos = 0, skipped = 0;
+              const moveFilesFrom = async (handle) => {
+                for await (const [name, h] of handle.entries()) {
+                  if (h.kind === 'directory') {
+                    if (name !== 'Photos' && name !== 'Videos') await moveFilesFrom(h);
+                    continue;
+                  }
+                  const ext = (name.split('.').pop() || '').toLowerCase();
+                  const targetDir = PHOTO_EXTS.has(ext) ? photosDir : VIDEO_EXTS.has(ext) ? videosDir : null;
+                  if (!targetDir || handle === photosDir || handle === videosDir) { skipped++; continue; }
+                  const file = await h.getFile();
+                  const newHandle = await targetDir.getFileHandle(name, { create: true });
+                  const writable = await newHandle.createWritable();
+                  await file.stream().pipeTo(writable);
+                  await handle.removeEntry(name);
+                  if (targetDir === photosDir) movedPhotos++; else movedVideos++;
+                }
+              };
+              await moveFilesFrom(dirHandle);
+              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseResult: { movedPhotos, movedVideos, skipped }}}));
+            } catch(err) {
+              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseResult: { error: err.message || 'Could not organise files' }}}));
             }
           };
 
@@ -7265,6 +7301,27 @@ Notes: ${j.notes || 'none'}`;
                           </div>
                         ) : (
                           <p className="text-xs text-green-400 pt-0.5">✓ No missing files detected</p>
+                        )}
+                        {backupForm.fileCheck.photos > 0 && backupForm.fileCheck.videos > 0 && !backupForm.fileCheck.organiseResult && (
+                          <div className="pt-1">
+                            {backupForm.fileCheck.organising ? (
+                              <p className="text-xs text-blue-300 text-center py-1">⏳ Moving files…</p>
+                            ) : (
+                              <button onClick={organiseFiles}
+                                className="w-full text-xs py-1.5 rounded-lg font-semibold"
+                                style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.3)',color:'#93c5fd'}}>
+                                📁 Sort into Photos &amp; Videos folders
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {backupForm.fileCheck.organiseResult && (
+                          <div className="pt-1 rounded-lg p-2" style={{background: backupForm.fileCheck.organiseResult.error ? 'rgba(239,68,68,0.1)' : 'rgba(52,211,153,0.1)'}}>
+                            {backupForm.fileCheck.organiseResult.error
+                              ? <p className="text-xs text-red-300">⚠ {backupForm.fileCheck.organiseResult.error}</p>
+                              : <p className="text-xs text-green-300">✓ Moved {backupForm.fileCheck.organiseResult.movedPhotos} photos → Photos/ · {backupForm.fileCheck.organiseResult.movedVideos} videos → Videos/{backupForm.fileCheck.organiseResult.skipped > 0 ? ` · ${backupForm.fileCheck.organiseResult.skipped} other skipped` : ''}</p>
+                            }
+                          </div>
                         )}
                       </div>
                     )}
