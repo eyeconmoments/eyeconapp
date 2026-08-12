@@ -888,8 +888,9 @@ function EyeconMoments() {
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [expandedAvailableJobs, setExpandedAvailableJobs] = useState({});
   const [stageFileModal, setStageFileModal] = useState(null); // { jobId, stageId, stageName, isPhoto }
-  const [backupModal, setBackupModal] = useState(null); // { jobId }
-  const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null });
+  const [backupModal, setBackupModal] = useState(null); // { jobId } or { standalone: true }
+  const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null, jobName: '', importedJob: null });
+  const [importEditModal, setImportEditModal] = useState(null); // { jobId, jobName, customerName, shootDate, deadline, jobType, hasPhotos, hasVideo, notes }
   const [stageFileForm, setStageFileForm] = useState({ hardware: '', drive: '', path: '', notes: '', filename: '' });
   const [assignedJobsCollapsed, setAssignedJobsCollapsed] = useState(false);
   const [addPhotoModal, setAddPhotoModal] = useState(null); // jobId to add photo editing to
@@ -966,6 +967,7 @@ function EyeconMoments() {
   const [overdueJobsOpen, setOverdueJobsOpen] = useState(false);
   const [dueSoonOpen, setDueSoonOpen] = useState(false);
   const [overdueFollowUpsOpen, setOverdueFollowUpsOpen] = useState(false);
+  const [knownDrives, setKnownDrives] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_known_drives') || '[]'); } catch { return []; } });
   const [parkedItineraries, setParkedItineraries] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_parked_itins') || '[]'); } catch(e) { return []; } });
   const [showParkedItins, setShowParkedItins] = useState(false);
   const [fileOverrideModal, setFileOverrideModal] = useState(null); // { jobId, locationIndex, drive, path, notes }
@@ -7134,15 +7136,92 @@ Notes: ${j.notes || 'none'}`;
           </div>
         )}
 
+        {/* Import Edit Modal — shown after a standalone job import to fill in details */}
+        {importEditModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+              <div className="p-4 border-b border-gray-700">
+                <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>✏️ Edit Job Details</h3>
+                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{importEditModal.jobName}</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name</label>
+                  <input type="text" value={importEditModal.jobName}
+                    onChange={e => setImportEditModal(p => ({...p, jobName: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Customer Name</label>
+                  <input type="text" placeholder="e.g. Aisha Khan" value={importEditModal.customerName}
+                    onChange={e => setImportEditModal(p => ({...p, customerName: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Shoot Date</label>
+                    <input type="date" value={importEditModal.shootDate}
+                      onChange={e => setImportEditModal(p => ({...p, shootDate: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Deadline</label>
+                    <input type="date" value={importEditModal.deadline}
+                      onChange={e => setImportEditModal(p => ({...p, deadline: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Type</label>
+                  <select value={importEditModal.jobType}
+                    onChange={e => setImportEditModal(p => ({...p, jobType: e.target.value, hasPhotos: e.target.value !== 'video', hasVideo: e.target.value !== 'photo'}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                    <option value="photo-video">Photo + Video</option>
+                    <option value="photo">Photo Only</option>
+                    <option value="video">Video Only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes / Location</label>
+                  <textarea rows={2} placeholder="Location, notes…" value={importEditModal.notes}
+                    onChange={e => setImportEditModal(p => ({...p, notes: e.target.value}))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button onClick={() => setImportEditModal(null)}
+                    className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Done</button>
+                  <button onClick={async () => {
+                    const { jobId, jobName, customerName, shootDate, deadline, jobType, hasPhotos, hasVideo, notes } = importEditModal;
+                    const { error } = await db.from('jobs').update({
+                      job_name: jobName, customer_name: customerName,
+                      shoot_date: shootDate || null, deadline: deadline || null,
+                      job_type: jobType, has_photos: hasPhotos, has_video: hasVideo, notes
+                    }).eq('id', jobId);
+                    if (error) { alert('Could not save: ' + error.message); return; }
+                    setEditingJobs(prev => prev.map(j => j.id === jobId ? {
+                      ...j, jobName, customerName,
+                      shootDate: shootDate ? new Date(shootDate) : null,
+                      deadline: deadline ? new Date(deadline) : null,
+                      jobType, hasPhotos, hasVideo, notes
+                    } : j));
+                    setImportEditModal(null);
+                  }} className="py-2 rounded-lg font-semibold bg-green-500 text-white">✅ Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Backup Modal */}
         {backupModal && (() => {
-          const job = editingJobs.find(j => String(j.id) === String(backupModal.jobId));
+          const isStandalone = backupModal.standalone === true;
+          const job = isStandalone ? null : editingJobs.find(j => String(j.id) === String(backupModal.jobId));
           const scanFolder = async () => {
             if (!window.showDirectoryPicker) { alert('Folder scanning is not supported in this browser. Use Chrome or Edge on desktop.'); return; }
             try {
               const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
               backupDirHandleRef.current = dirHandle;
-              setBackupForm(p => ({...p, fileCheck: { scanning: true }}));
+              setBackupForm(p => ({...p, fileCheck: { scanning: true }, jobName: p.jobName || (isStandalone ? dirHandle.name : p.jobName) }));
               const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
               const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
               const collectFiles = async (handle, list = []) => {
@@ -7228,11 +7307,61 @@ Notes: ${j.notes || 'none'}`;
           };
 
           const saveBackup = async () => {
-            if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
             const fc = backupForm.fileCheck;
             const organised = fc?.organiseResult && !fc.organiseResult.error;
             const base = { drive: backupForm.drive, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true };
             const basePath = backupForm.path || '';
+
+            // Persist drive to known list
+            if (backupForm.drive) {
+              const trimmed = backupForm.drive.trim();
+              if (trimmed && !knownDrives.includes(trimmed)) {
+                const updated = [...knownDrives, trimmed];
+                setKnownDrives(updated);
+                localStorage.setItem('eyecon_known_drives', JSON.stringify(updated));
+              }
+            }
+
+            if (isStandalone) {
+              if (!backupForm.jobName?.trim()) { alert('Please enter a job name.'); return; }
+              if (!backupForm.drive) { alert('Please enter the drive name.'); return; }
+              const ph = fc?.photos || 0; const vi = fc?.videos || 0;
+              const detectedType = ph > 0 && vi > 0 ? 'photo-video' : ph > 0 ? 'photo' : vi > 0 ? 'video' : 'photo-video';
+              let fileLocs = [];
+              if (organised) {
+                if (fc.organiseResult.movedPhotos > 0) fileLocs.push({ ...base, path: basePath ? `${basePath}/Photos` : 'Photos', mediaType: 'photo', fileCheck: fc });
+                if (fc.organiseResult.movedVideos > 0) fileLocs.push({ ...base, path: basePath ? `${basePath}/Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
+              } else if (fc) {
+                fileLocs.push({ ...base, path: basePath, fileCheck: fc });
+              }
+              const newId = 'job_' + Date.now();
+              const stages = detectedType !== 'photo' ? [
+                {id:1,name:'Cutting, Syncing & Organising',status:'not-started',assignedTo:0},
+                {id:2,name:'Music, Nesting & Sorting',status:'not-started',assignedTo:0},
+                {id:3,name:'Colouring & Checking',status:'not-started',assignedTo:0},
+                {id:4,name:'Highlights Trailer & Intro',status:'not-started',assignedTo:0}
+              ] : [];
+              const { data, error } = await db.from('jobs').insert([{
+                id: newId, job_name: backupForm.jobName.trim(), customer_name: '',
+                shoot_date: null, deadline: null,
+                job_type: detectedType, has_photos: detectedType !== 'video', has_video: detectedType !== 'photo',
+                photo_status: 'not-started', photo_assigned_to: null,
+                notes: '', shoot_hours: 0, num_videographers: detectedType !== 'photo' ? 1 : 0,
+                num_photographers: detectedType !== 'video' ? 1 : 0,
+                video_edit_hours: 0, photo_edit_hours: 0,
+                file_locations: fileLocs, stages, archived: false
+              }]).select();
+              if (error) { alert('Could not create job: ' + error.message); return; }
+              if (data && data[0]) {
+                const created = rowToJob(data[0]);
+                setEditingJobs(prev => [...prev, created]);
+                setBackupForm(p => ({...p, importedJob: created}));
+              }
+              return;
+            }
+
+            // Regular save for existing job
+            if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
             let newLocs = [...(job.fileLocations || [])];
             if (organised) {
               if (fc.organiseResult.movedPhotos > 0)
@@ -7244,23 +7373,76 @@ Notes: ${j.notes || 'none'}`;
             }
             await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
             setEditingJobs(prev => prev.map(j => String(j.id) === String(backupModal.jobId) ? { ...j, fileLocations: newLocs } : j));
-            setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null });
+            setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
           };
+          if (backupForm.importedJob) {
+            const imp = backupForm.importedJob;
+            return (
+              <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                  <div className="p-4 border-b border-gray-700">
+                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>✅ Job Imported</h3>
+                    <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{imp.jobName}</p>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="rounded-lg p-3 text-sm" style={{background:'rgba(52,211,153,0.1)',border:'1px solid rgba(52,211,153,0.2)'}}>
+                      <p className="text-green-400 font-semibold mb-1">Job created successfully</p>
+                      <p className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>
+                        {imp.jobType === 'photo-video' ? '📷🎬 Photo & Video' : imp.jobType === 'photo' ? '📷 Photo only' : '🎬 Video only'}
+                        {' · '}Drive: {imp.fileLocations?.[0]?.drive || backupForm.drive || '—'}
+                      </p>
+                    </div>
+                    <p className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>Would you like to add customer details, shoot date, and deadline?</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                        className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Done</button>
+                      <button onClick={() => {
+                        setImportEditModal({ jobId: imp.id, jobName: imp.jobName, customerName: imp.customerName || '', shootDate: '', deadline: '', jobType: imp.jobType, hasPhotos: imp.hasPhotos, hasVideo: imp.hasVideo, notes: imp.notes || '' });
+                        setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
+                      }} className="py-2 rounded-lg font-semibold bg-blue-500 text-white">✏️ Edit details</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
                 <div className="p-4 border-b border-gray-700">
-                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>💾 Log Backup</h3>
-                  <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job?.jobName} — {job?.customerName}</p>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>{isStandalone ? '📥 Scan & Import Job' : '💾 Log Backup'}</h3>
+                  {isStandalone
+                    ? <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Scan a drive to create a new job record</p>
+                    : <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job?.jobName} — {job?.customerName}</p>
+                  }
                 </div>
                 <div className="p-4 space-y-3">
+                  {isStandalone && (
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name *</label>
+                      <input type="text" placeholder="e.g. Smith Wedding 2026" value={backupForm.jobName}
+                        onChange={e => setBackupForm(p => ({...p, jobName: e.target.value}))}
+                        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    </div>
+                  )}
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive *</label>
-                    <select value={backupForm.drive} onChange={e => setBackupForm(p => ({...p, drive: e.target.value}))}
-                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
-                      <option value="">Select drive...</option>
-                      {allDrives.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
+                    <input type="text" placeholder="e.g. HD1, Large 2…" value={backupForm.drive}
+                      onChange={e => setBackupForm(p => ({...p, drive: e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                    {knownDrives.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {knownDrives.map(d => (
+                          <button key={d} onClick={() => setBackupForm(p => ({...p, drive: d}))}
+                            className="text-xs px-2 py-0.5 rounded-full font-medium"
+                            style={backupForm.drive === d
+                              ? {background:'var(--gold)',color:'#1a1a1a'}
+                              : {background:'rgba(193,167,106,0.12)',color:'var(--gold)',border:'1px solid rgba(193,167,106,0.25)'}}>
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Folder Path (optional)</label>
@@ -7311,9 +7493,16 @@ Notes: ${j.notes || 'none'}`;
                           const ph = backupForm.fileCheck.photos; const vi = backupForm.fileCheck.videos;
                           const detected = ph > 0 && vi > 0 ? 'photo-video' : ph > 0 ? 'photo' : vi > 0 ? 'video' : null;
                           if (!detected) return null;
+                          const label = detected === 'photo-video' ? '📷🎬 Photo & Video' : detected === 'photo' ? '📷 Photo only' : '🎬 Video only';
+                          if (isStandalone) {
+                            return (
+                              <div className="pt-0.5">
+                                <span className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>Detected: {label} — will be set on import</span>
+                              </div>
+                            );
+                          }
                           const current = job.jobType || 'photo-video';
                           const matches = detected === current;
-                          const label = detected === 'photo-video' ? '📷🎬 Photo & Video' : detected === 'photo' ? '📷 Photo only' : '🎬 Video only';
                           return (
                             <div className="flex items-center justify-between gap-2 pt-0.5">
                               <span className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>Detected: {label}</span>
@@ -7361,9 +7550,9 @@ Notes: ${j.notes || 'none'}`;
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pt-1">
-                    <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null }); }}
-                      className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Skip</button>
-                    <button onClick={saveBackup} className="py-2 rounded-lg font-semibold bg-blue-500 text-white">💾 Save Backup</button>
+                    <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                      className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>{isStandalone ? 'Cancel' : 'Skip'}</button>
+                    <button onClick={saveBackup} className="py-2 rounded-lg font-semibold bg-blue-500 text-white">{isStandalone ? '📥 Import Job' : '💾 Save Backup'}</button>
                   </div>
                 </div>
               </div>
@@ -7488,6 +7677,17 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
+          {/* Scan & Import Job entry point */}
+          {homePanel === 'backup' && (
+            <div className="flex justify-end">
+              <button onClick={() => { setBackupModal({ standalone: true }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                className="text-sm px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5"
+                style={{background:'rgba(193,167,106,0.12)',color:'var(--gold)',border:'1px solid rgba(193,167,106,0.25)'}}>
+                📥 Scan &amp; Import Job
+              </button>
+            </div>
+          )}
+
           {/* Backup prompts — lapsed jobs with no backup logged */}
           {(() => {
             if (homePanel !== 'backup') return null;
@@ -7514,7 +7714,7 @@ Notes: ${j.notes || 'none'}`;
                         <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{j.jobName}</p>
                         <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : ''}</p>
                       </div>
-                      <button onClick={() => { setBackupModal({ jobId: j.id }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '' }); }}
+                      <button onClick={() => { setBackupModal({ jobId: j.id }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
                         className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg font-semibold shrink-0">
                         💾 Log Backup
                       </button>
