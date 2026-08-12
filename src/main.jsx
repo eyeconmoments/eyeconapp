@@ -7699,16 +7699,32 @@ Notes: ${j.notes || 'none'}`;
                     </button>
                   );
                 })}
-                <button
-                  onClick={() => setCurrentView('upcoming')}
-                  className="col-span-2 rounded-xl p-3 text-left transition-all flex items-center justify-between"
-                  style={{background:'rgba(193,167,106,0.08)',border:'1px solid rgba(193,167,106,0.25)'}}>
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{color:'var(--gold)'}}>Open editor</p>
-                    <p className="text-xs leading-tight" style={{color:'rgba(255,255,255,0.3)'}}>View &amp; edit all jobs</p>
-                  </div>
-                  <span className="text-2xl">✏️</span>
-                </button>
+                {(() => {
+                  const editorUrl = localStorage.getItem('eyecon_editor_url') || '';
+                  let pressTimer = null;
+                  return (
+                    <button
+                      onPointerDown={() => { pressTimer = setTimeout(() => { pressTimer = null; const url = prompt('Update editor URL:', editorUrl); if (url !== null) localStorage.setItem('eyecon_editor_url', url.trim()); }, 700); }}
+                      onPointerUp={() => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }}
+                      onPointerLeave={() => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }}
+                      onClick={() => {
+                        if (editorUrl) {
+                          window.open(editorUrl, '_blank');
+                        } else {
+                          const url = prompt('Enter the editor URL (e.g. http://localhost:3000):');
+                          if (url && url.trim()) { localStorage.setItem('eyecon_editor_url', url.trim()); window.open(url.trim(), '_blank'); }
+                        }
+                      }}
+                      className="col-span-2 rounded-xl p-3 text-left transition-all flex items-center justify-between"
+                      style={{background:'rgba(193,167,106,0.08)',border:'1px solid rgba(193,167,106,0.25)'}}>
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{color:'var(--gold)'}}>Open editor</p>
+                        <p className="text-xs leading-tight" style={{color:'rgba(255,255,255,0.3)'}}>{editorUrl || 'Tap to set editor URL'}</p>
+                      </div>
+                      <span className="text-2xl">✏️</span>
+                    </button>
+                  );
+                })()}
               </div>
             );
           })()}
