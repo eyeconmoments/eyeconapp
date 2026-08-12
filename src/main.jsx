@@ -7674,7 +7674,7 @@ Notes: ${j.notes || 'none'}`;
               {key:'backup',   icon:'💾', label:'Backups',     color:'#60a5fa', dim:'rgba(96,165,250,0.12)',   detail: n => n ? `${n} unlogged` : 'All backed up'},
               {key:'deadline', icon:'⏰', label:'Deadlines',   color:'#f97316', dim:'rgba(249,115,22,0.12)',   detail: n => n ? `${n} this week` : 'Nothing due'},
             ];
-            if (Object.values(counts).every(c=>c===0)) return null;
+            // Always show grid — backup card is always tappable for Scan & Import
             return (
               <div className="grid grid-cols-2 gap-3">
                 {CARDS.map(card => {
@@ -7682,13 +7682,13 @@ Notes: ${j.notes || 'none'}`;
                   const active = homePanel === card.key;
                   return (
                     <button key={card.key}
-                      onClick={() => n > 0 && setHomePanel(hp => hp === card.key ? null : card.key)}
+                      onClick={() => (n > 0 || card.key === 'backup') && setHomePanel(hp => hp === card.key ? null : card.key)}
                       className="rounded-xl p-3 text-left transition-all"
                       style={{
                         background: active ? card.dim : 'rgba(255,255,255,0.04)',
-                        border: `1px solid ${active ? card.color : n > 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
-                        opacity: n > 0 ? 1 : 0.35,
-                        cursor: n > 0 ? 'pointer' : 'default',
+                        border: `1px solid ${active ? card.color : (n > 0 || card.key === 'backup') ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
+                        opacity: (n > 0 || card.key === 'backup') ? 1 : 0.35,
+                        cursor: (n > 0 || card.key === 'backup') ? 'pointer' : 'default',
                       }}>
                       <div className="flex items-baseline gap-2 mb-1">
                         <span className="text-base">{card.icon}</span>
