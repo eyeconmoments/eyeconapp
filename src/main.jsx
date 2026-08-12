@@ -968,6 +968,7 @@ function EyeconMoments() {
   const [dueSoonOpen, setDueSoonOpen] = useState(false);
   const [overdueFollowUpsOpen, setOverdueFollowUpsOpen] = useState(false);
   const [knownDrives, setKnownDrives] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_known_drives') || '[]'); } catch { return []; } });
+  const [spotlightJobId, setSpotlightJobId] = useState(null);
   const [parkedItineraries, setParkedItineraries] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_parked_itins') || '[]'); } catch(e) { return []; } });
   const [showParkedItins, setShowParkedItins] = useState(false);
   const [fileOverrideModal, setFileOverrideModal] = useState(null); // { jobId, locationIndex, drive, path, notes }
@@ -7412,15 +7413,15 @@ Notes: ${j.notes || 'none'}`;
                         {' · '}Drive: {imp.fileLocations?.[0]?.drive || backupForm.drive || '—'}
                       </p>
                     </div>
-                    <p className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>Would you like to add customer details, shoot date, and deadline?</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
-                        className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Done</button>
-                      <button onClick={() => {
-                        setImportEditModal({ jobId: imp.id, jobName: imp.jobName, customerName: imp.customerName || '', shootDate: '', deadline: '', jobType: imp.jobType, hasPhotos: imp.hasPhotos, hasVideo: imp.hasVideo, notes: imp.notes || '' });
-                        setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
-                      }} className="py-2 rounded-lg font-semibold bg-blue-500 text-white">✏️ Edit details</button>
-                    </div>
+                    <p className="text-xs mb-1" style={{color:'rgba(255,255,255,0.4)'}}>Would you like to start editing this job now?</p>
+                    <button onClick={() => {
+                      setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
+                      setCurrentView('upcoming');
+                      setSpotlightJobId(imp.id);
+                      setTimeout(() => setSpotlightJobId(null), 4000);
+                    }} className="w-full py-2 rounded-lg font-semibold bg-blue-500 text-white mb-2">✏️ Open in editor →</button>
+                    <button onClick={() => { setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                      className={`w-full py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>Done</button>
                   </div>
                 </div>
               </div>
@@ -10599,7 +10600,10 @@ Capturing Your Special Day
                   });
 
                   return (
-                    <div key={job.id} className={`border-2 rounded-lg overflow-hidden ${isToday ? 'border-red-500' : isTomorrow ? 'border-orange-500' : 'border-gray-300'}`}>
+                    <div key={job.id}
+                      ref={el => { if (el && spotlightJobId === job.id) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }}
+                      className={`border-2 rounded-lg overflow-hidden transition-shadow ${isToday ? 'border-red-500' : isTomorrow ? 'border-orange-500' : 'border-gray-300'}`}
+                      style={spotlightJobId === job.id ? {boxShadow:'0 0 0 3px var(--gold), 0 0 24px rgba(193,167,106,0.4)'} : {}}>
                       {/* Header */}
                       <div className={`p-4 ${isToday ? 'bg-red-500' : isTomorrow ? 'bg-orange-500' : 'bg-blue-500'} text-white`}>
                         <div className="flex justify-between items-center">
