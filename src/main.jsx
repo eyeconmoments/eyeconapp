@@ -7274,35 +7274,50 @@ Notes: ${j.notes || 'none'}`;
           const organiseFiles = async () => {
             const dirHandle = backupDirHandleRef.current;
             if (!dirHandle) { alert('Please scan the folder first.'); return; }
-            setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: true, organiseResult: null}}));
+            const fc = backupForm.fileCheck;
+            const total = (fc?.photos || 0) + (fc?.videos || 0);
+            setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: true, organiseResult: null, organiseProgress: null}}));
             try {
               const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
               const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
-              const fc = backupForm.fileCheck;
               const photosDir = fc.photos > 0 ? await dirHandle.getDirectoryHandle('Photos', { create: true }) : null;
               const videosDir = fc.videos > 0 ? await dirHandle.getDirectoryHandle('Videos', { create: true }) : null;
               let movedPhotos = 0, movedVideos = 0, skipped = 0;
-              const moveFilesFrom = async (handle) => {
-                for await (const [name, h] of handle.entries()) {
+
+              // Collect all file entries first (snapshot) before mutating the directory —
+              // the live entries() iterator can stall when files are deleted mid-iteration
+              const collectEntries = async (handle, list = []) => {
+                const entries = [];
+                for await (const entry of handle.entries()) entries.push(entry);
+                for (const [name, h] of entries) {
                   if (h.kind === 'directory') {
-                    if (name !== 'Photos' && name !== 'Videos') await moveFilesFrom(h);
-                    continue;
+                    if (name !== 'Photos' && name !== 'Videos') await collectEntries(h, list);
+                  } else {
+                    list.push({ name, h, parentHandle: handle });
                   }
-                  const ext = (name.split('.').pop() || '').toLowerCase();
-                  const targetDir = PHOTO_EXTS.has(ext) ? photosDir : VIDEO_EXTS.has(ext) ? videosDir : null;
-                  if (!targetDir || handle === photosDir || handle === videosDir || (targetDir && handle === targetDir)) { skipped++; continue; }
-                  const file = await h.getFile();
-                  const newHandle = await targetDir.getFileHandle(name, { create: true });
-                  const writable = await newHandle.createWritable();
-                  await file.stream().pipeTo(writable);
-                  await handle.removeEntry(name);
-                  if (targetDir === photosDir) movedPhotos++; else movedVideos++;
                 }
+                return list;
               };
-              await moveFilesFrom(dirHandle);
-              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseResult: { movedPhotos, movedVideos, skipped }}}));
+
+              const allFiles = await collectEntries(dirHandle);
+              let done = 0;
+              for (const { name, h, parentHandle } of allFiles) {
+                const ext = (name.split('.').pop() || '').toLowerCase();
+                const targetDir = PHOTO_EXTS.has(ext) ? photosDir : VIDEO_EXTS.has(ext) ? videosDir : null;
+                if (!targetDir) { skipped++; continue; }
+                // Show progress before the potentially slow copy
+                setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organiseProgress: `${done + 1} / ${total} — ${name}`}}));
+                const file = await h.getFile();
+                const newHandle = await targetDir.getFileHandle(name, { create: true });
+                const writable = await newHandle.createWritable();
+                await file.stream().pipeTo(writable);
+                await parentHandle.removeEntry(name);
+                done++;
+                if (targetDir === photosDir) movedPhotos++; else movedVideos++;
+              }
+              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseProgress: null, organiseResult: { movedPhotos, movedVideos, skipped }}}));
             } catch(err) {
-              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseResult: { error: err.message || 'Could not organise files' }}}));
+              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseProgress: null, organiseResult: { error: err.message || 'Could not organise files' }}}));
             }
           };
 
@@ -7527,7 +7542,12 @@ Notes: ${j.notes || 'none'}`;
                         {(backupForm.fileCheck.photos > 0 || backupForm.fileCheck.videos > 0) && !backupForm.fileCheck.organiseResult && (
                           <div className="pt-1">
                             {backupForm.fileCheck.organising ? (
-                              <p className="text-xs text-blue-300 text-center py-1">⏳ Moving files…</p>
+                              <div className="text-center py-1">
+                                <p className="text-xs text-blue-300">⏳ Moving files…</p>
+                                {backupForm.fileCheck.organiseProgress && (
+                                  <p className="text-xs mt-0.5 truncate" style={{color:'rgba(255,255,255,0.35)'}}>{backupForm.fileCheck.organiseProgress}</p>
+                                )}
+                              </div>
                             ) : (
                               <button onClick={organiseFiles}
                                 className="w-full text-xs py-1.5 rounded-lg font-semibold"
