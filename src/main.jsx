@@ -7699,20 +7699,19 @@ Notes: ${j.notes || 'none'}`;
                     </button>
                   );
                 })}
+                <button
+                  onClick={() => { setBackupModal({ standalone: true }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                  className="col-span-2 rounded-xl p-3 text-left transition-all flex items-center justify-between"
+                  style={{background:'rgba(193,167,106,0.08)',border:'1px solid rgba(193,167,106,0.25)'}}>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{color:'var(--gold)'}}>Import from drive</p>
+                    <p className="text-xs leading-tight" style={{color:'rgba(255,255,255,0.3)'}}>Scan a folder &amp; create a job</p>
+                  </div>
+                  <span className="text-2xl">📥</span>
+                </button>
               </div>
             );
           })()}
-
-          {/* Scan & Import Job entry point */}
-          {homePanel === 'backup' && (
-            <div className="flex justify-end">
-              <button onClick={() => { setBackupModal({ standalone: true }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
-                className="text-sm px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5"
-                style={{background:'rgba(193,167,106,0.12)',color:'var(--gold)',border:'1px solid rgba(193,167,106,0.25)'}}>
-                📥 Scan &amp; Import Job
-              </button>
-            </div>
-          )}
 
           {/* Backup prompts — lapsed jobs with no backup logged */}
           {(() => {
