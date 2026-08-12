@@ -7700,14 +7700,14 @@ Notes: ${j.notes || 'none'}`;
                   );
                 })}
                 <button
-                  onClick={() => { setBackupModal({ standalone: true }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                  onClick={() => setCurrentView('upcoming')}
                   className="col-span-2 rounded-xl p-3 text-left transition-all flex items-center justify-between"
                   style={{background:'rgba(193,167,106,0.08)',border:'1px solid rgba(193,167,106,0.25)'}}>
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{color:'var(--gold)'}}>Import from drive</p>
-                    <p className="text-xs leading-tight" style={{color:'rgba(255,255,255,0.3)'}}>Scan a folder &amp; create a job</p>
+                    <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{color:'var(--gold)'}}>Open editor</p>
+                    <p className="text-xs leading-tight" style={{color:'rgba(255,255,255,0.3)'}}>View &amp; edit all jobs</p>
                   </div>
-                  <span className="text-2xl">📥</span>
+                  <span className="text-2xl">✏️</span>
                 </button>
               </div>
             );
