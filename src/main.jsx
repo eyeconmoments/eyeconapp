@@ -7305,13 +7305,18 @@ Notes: ${j.notes || 'none'}`;
                 const ext = (name.split('.').pop() || '').toLowerCase();
                 const targetDir = PHOTO_EXTS.has(ext) ? photosDir : VIDEO_EXTS.has(ext) ? videosDir : null;
                 if (!targetDir) { skipped++; continue; }
-                // Show progress before the potentially slow copy
                 setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organiseProgress: `${done + 1} / ${total} — ${name}`}}));
-                const file = await h.getFile();
-                const newHandle = await targetDir.getFileHandle(name, { create: true });
-                const writable = await newHandle.createWritable();
-                await file.stream().pipeTo(writable);
-                await parentHandle.removeEntry(name);
+                // Use native move() (Chrome 116+) — instant rename on same drive.
+                // Fall back to stream copy + delete for older browsers.
+                if (typeof h.move === 'function') {
+                  await h.move(targetDir);
+                } else {
+                  const file = await h.getFile();
+                  const newHandle = await targetDir.getFileHandle(name, { create: true });
+                  const writable = await newHandle.createWritable();
+                  await file.stream().pipeTo(writable);
+                  await parentHandle.removeEntry(name);
+                }
                 done++;
                 if (targetDir === photosDir) movedPhotos++; else movedVideos++;
               }
