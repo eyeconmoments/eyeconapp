@@ -7199,8 +7199,9 @@ Notes: ${j.notes || 'none'}`;
             try {
               const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
               const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
-              const photosDir = await dirHandle.getDirectoryHandle('Photos', { create: true });
-              const videosDir = await dirHandle.getDirectoryHandle('Videos', { create: true });
+              const fc = backupForm.fileCheck;
+              const photosDir = fc.photos > 0 ? await dirHandle.getDirectoryHandle('Photos', { create: true }) : null;
+              const videosDir = fc.videos > 0 ? await dirHandle.getDirectoryHandle('Videos', { create: true }) : null;
               let movedPhotos = 0, movedVideos = 0, skipped = 0;
               const moveFilesFrom = async (handle) => {
                 for await (const [name, h] of handle.entries()) {
@@ -7210,7 +7211,7 @@ Notes: ${j.notes || 'none'}`;
                   }
                   const ext = (name.split('.').pop() || '').toLowerCase();
                   const targetDir = PHOTO_EXTS.has(ext) ? photosDir : VIDEO_EXTS.has(ext) ? videosDir : null;
-                  if (!targetDir || handle === photosDir || handle === videosDir) { skipped++; continue; }
+                  if (!targetDir || handle === photosDir || handle === videosDir || (targetDir && handle === targetDir)) { skipped++; continue; }
                   const file = await h.getFile();
                   const newHandle = await targetDir.getFileHandle(name, { create: true });
                   const writable = await newHandle.createWritable();
@@ -7302,7 +7303,7 @@ Notes: ${j.notes || 'none'}`;
                         ) : (
                           <p className="text-xs text-green-400 pt-0.5">✓ No missing files detected</p>
                         )}
-                        {backupForm.fileCheck.photos > 0 && backupForm.fileCheck.videos > 0 && !backupForm.fileCheck.organiseResult && (
+                        {(backupForm.fileCheck.photos > 0 || backupForm.fileCheck.videos > 0) && !backupForm.fileCheck.organiseResult && (
                           <div className="pt-1">
                             {backupForm.fileCheck.organising ? (
                               <p className="text-xs text-blue-300 text-center py-1">⏳ Moving files…</p>
