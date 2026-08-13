@@ -9990,14 +9990,24 @@ Notes: ${j.notes || 'none'}`;
       const scheduleItems = itinerary.scheduleItems || [];
       let currentTime = itinerary.startTime || '10:00';
       let lastGroupId = null;
-      
+
+      // Pre-compute max duration for each concurrent group so the block uses the longest item
+      const groupMaxDuration = {};
+      scheduleItems.forEach(item => {
+        if (item.groupId) {
+          groupMaxDuration[item.groupId] = Math.max(groupMaxDuration[item.groupId] || 0, item.duration || 2);
+        }
+      });
+
       doc.setFontSize(10);
       scheduleItems.forEach((item, idx) => {
         const duration = item.duration || 2;
         const isNewGroup = !item.groupId || item.groupId !== lastGroupId;
 
         if (isNewGroup) {
-          const endTime = addMinsToTime(currentTime, duration * 15);
+          // Use the longest duration in this concurrent group
+          const blockDuration = item.groupId ? (groupMaxDuration[item.groupId] || duration) : duration;
+          const endTime = addMinsToTime(currentTime, blockDuration * 15);
           // Pre-compute wrapped lines so we know actual row height
           const nameLines = doc.splitTextToSize(item.name, 115); // x=45..x=165, minus ~10 pad
           const noteLines = item.notes ? doc.splitTextToSize(item.notes, 115) : [];
@@ -10031,10 +10041,10 @@ Notes: ${j.notes || 'none'}`;
           doc.setFont('helvetica', 'normal');
           doc.text(nameLines, 45, yPos);
 
-          // Duration on right — aligned to first line
+          // Duration on right — use longest concurrent item's duration
           doc.setTextColor(120, 120, 120);
           doc.setFontSize(9);
-          doc.text(`${duration * 15}m`, 175, yPos, { align: 'right' });
+          doc.text(`${blockDuration * 15}m`, 175, yPos, { align: 'right' });
           doc.setFontSize(10);
 
           if (noteLines.length > 0) {
