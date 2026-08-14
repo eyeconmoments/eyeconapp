@@ -3336,7 +3336,7 @@ function EyeconMoments() {
                           eventType === 'mehndi'     ? mehndiItems     :
                           eventType === 'engagement' ? engagementItems : genericItems;
 
-    const itinerary = { startTime, endTime, scheduleItems, customItems: [], notes: event.description || '', nextOfKin: { name:'', phone:'' } };
+    const itinerary = { startTime, endTime, scheduleItems, customItems: [], notes: event.description || '', venue: event.location || '', nextOfKin: { name:'', phone:'' } };
 
     const newJob = {
       id: String(Date.now()),
