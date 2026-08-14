@@ -11130,18 +11130,25 @@ Capturing Your Special Day
                         <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                           <div className="flex items-center justify-between mb-2">
                             <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 Venue / Location</p>
-                            {job.calendarEventId && (
-                              <button type="button" onClick={async () => {
-                                try {
+                            <button type="button" onClick={async () => {
+                              try {
+                                let loc = null;
+                                if (job.calendarEventId) {
                                   const res = await window.gapi.client.calendar.events.get({ calendarId: 'primary', eventId: job.calendarEventId });
-                                  const loc = res.result.location;
-                                  if (loc) { updateItineraryVenue(job.id, loc); }
-                                  else { alert('No location set on the calendar event.'); }
-                                } catch(e) { alert('Could not fetch calendar event — make sure you are signed in to Google.'); }
-                              }} className="text-xs px-2 py-0.5 rounded font-medium" style={{background:'rgba(99,102,241,0.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.3)'}}>
-                                📅 Pull from calendar
-                              </button>
-                            )}
+                                  loc = res.result.location;
+                                } else {
+                                  const dayStart = new Date(job.shootDate); dayStart.setHours(0,0,0,0);
+                                  const dayEnd = new Date(job.shootDate); dayEnd.setHours(23,59,59,999);
+                                  const res = await window.gapi.client.calendar.events.list({ calendarId: 'primary', timeMin: dayStart.toISOString(), timeMax: dayEnd.toISOString(), singleEvents: true });
+                                  const match = (res.result.items || []).find(e => e.location && (e.summary || '').toLowerCase().includes((job.jobName || '').toLowerCase().split(' ')[0]));
+                                  loc = match?.location || (res.result.items || []).find(e => e.location)?.location;
+                                }
+                                if (loc) { updateItineraryVenue(job.id, loc); }
+                                else { alert('No location found on the calendar event for this date.'); }
+                              } catch(e) { alert('Could not fetch — make sure you are signed in to Google.'); }
+                            }} className="text-xs px-2 py-0.5 rounded font-medium" style={{background:'rgba(99,102,241,0.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.3)'}}>
+                              📅 Pull from calendar
+                            </button>
                           </div>
                           <input type="text" value={itinerary.venue || ''} placeholder="e.g. The Grand Hotel, Blackburn"
                             onChange={(e) => updateItineraryVenue(job.id, e.target.value)}
