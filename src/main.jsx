@@ -11240,7 +11240,7 @@ Capturing Your Special Day
             reader.onload = ev => setItinScanModal(p => ({...p, image: ev.target.result, result: null}));
             reader.readAsDataURL(file);
           };
-          const EXTRACT_PROMPT = `Extract the event schedule. Return ONLY a JSON object, no other text:\n{\n  "startTime": "HH:MM",\n  "items": [\n    { "name": "Item name", "duration": 2, "notes": "optional" }\n  ]\n}\nDuration is in 15-minute blocks: 15min=1, 30min=2, 45min=3, 60min=4, 90min=6, 120min=8.\nstartTime is the first item's time in 24-hour format. Include every item in order. Return ONLY valid JSON.`;
+          const EXTRACT_PROMPT = `Extract the event schedule. The text contains real start times for each item (e.g. "09:30 Bride Prep"). Calculate each item's duration from the difference between its start time and the next item's start time. Do NOT guess durations from item names — use the actual times. Return ONLY a JSON object, no other text:\n{\n  "startTime": "HH:MM",\n  "items": [\n    { "name": "Item name", "duration": 2, "notes": "optional" }\n  ]\n}\nDuration is in 15-minute blocks: 15min=1, 30min=2, 45min=3, 60min=4, 90min=6, 120min=8. Round to the nearest 15 min block.\nstartTime is the first item's time in 24-hour format.\nFor the last item with no following time, use duration 2 (30 min) as default.\nIgnore blank lines — they are not time slots.\nInclude every schedule item in order. Return ONLY valid JSON.`;
           const extract = async () => {
             setItinScanModal(p => ({...p, scanning: true, result: null}));
             try {
