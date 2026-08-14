@@ -11266,7 +11266,7 @@ Capturing Your Special Day
               }
               const response = await fetch('/.netlify/functions/claude-chat', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', max_tokens: 2000, messages: [{ role: 'user', content }] })
+                body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content }] })
               });
               const data = await response.json();
               if (!response.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${response.status}`);
