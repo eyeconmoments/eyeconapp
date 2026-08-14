@@ -8028,9 +8028,10 @@ Notes: ${j.notes || 'none'}`;
                     {editingOfficeAddr || !officeAddress ? (
                       <>
                         <input type="text" value={officeAddress}
-                          onChange={e => setOfficeAddress(e.target.value)}
+                          onChange={e => { setOfficeAddress(e.target.value); localStorage.setItem('eyecon_office_address', e.target.value); }}
                           placeholder="Office address…"
                           className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          onBlur={() => { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(!!officeAddress); }}
                           onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}} />
                         <button onClick={() => { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}
                           className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
@@ -8047,9 +8048,10 @@ Notes: ${j.notes || 'none'}`;
                     {editingGmapsKey || !gmapsKey ? (
                       <>
                         <input type="text" value={gmapsKey}
-                          onChange={e => setGmapsKey(e.target.value)}
+                          onChange={e => { setGmapsKey(e.target.value); localStorage.setItem('eyecon_gmaps_key', e.target.value); }}
                           placeholder="Google Maps API key…"
                           className={`flex-1 text-xs rounded px-2 py-1 border font-mono ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          onBlur={() => { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(!!gmapsKey); }}
                           onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(false); }}} />
                         <button onClick={() => { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(false); }}
                           className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
@@ -11131,6 +11133,7 @@ Capturing Your Special Day
                           <div className="flex items-center justify-between mb-2">
                             <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 Venue / Location</p>
                             <button type="button" onClick={async () => {
+                              if (!isGoogleSignedIn) { handleGoogleSignIn(); return; }
                               try {
                                 let loc = null;
                                 if (job.calendarEventId) {
@@ -11145,9 +11148,9 @@ Capturing Your Special Day
                                 }
                                 if (loc) { updateItineraryVenue(job.id, loc); }
                                 else { alert('No location found on the calendar event for this date.'); }
-                              } catch(e) { alert('Could not fetch — make sure you are signed in to Google.'); }
+                              } catch(e) { alert('Error: ' + e.message); }
                             }} className="text-xs px-2 py-0.5 rounded font-medium" style={{background:'rgba(99,102,241,0.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.3)'}}>
-                              📅 Pull from calendar
+                              {isGoogleSignedIn ? '📅 Pull from calendar' : '🔗 Connect Google'}
                             </button>
                           </div>
                           <input type="text" value={itinerary.venue || ''} placeholder="e.g. The Grand Hotel, Blackburn"
