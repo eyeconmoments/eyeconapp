@@ -11392,9 +11392,11 @@ Capturing Your Special Day
                             📧 Email to Client
                           </button>
                         </div>
-                        <button onClick={() => setItinScanModal({ jobId: job.id, mode: null, image: null, text: '', scanning: false, result: null })}
-                          className="mt-3 w-full py-2 rounded-lg font-semibold text-sm"
-                          style={{background:'rgba(193,167,106,0.1)',color:'var(--gold)',border:'1px solid rgba(193,167,106,0.3)'}}>
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); setItinScanModal({ jobId: job.id, mode: null, image: null, text: '', scanning: false, result: null }); }}
+                          onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); setItinScanModal({ jobId: job.id, mode: null, image: null, text: '', scanning: false, result: null }); }}
+                          className="mt-3 w-full py-3 rounded-lg font-semibold text-sm"
+                          style={{background:'rgba(193,167,106,0.1)',color:'var(--gold)',border:'1px solid rgba(193,167,106,0.3)',cursor:'pointer',WebkitTapHighlightColor:'rgba(193,167,106,0.3)',touchAction:'manipulation'}}>
                           📸 Build from screenshot or text
                         </button>
                         <button onClick={async () => {
