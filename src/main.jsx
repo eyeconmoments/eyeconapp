@@ -7138,196 +7138,6 @@ Notes: ${j.notes || 'none'}`;
           </div>
         )}
 
-        {/* Itinerary Screenshot Scan Modal */}
-        {itinScanModal && (() => {
-          const job = editingJobs.find(j => j.id === itinScanModal.jobId);
-          const { mode, image, text, scanning, result } = itinScanModal;
-          const hasInput = mode === 'image' ? !!image : (text || '').trim().length > 0;
-
-          const handleImage = (e) => {
-            const file = e.target.files?.[0]; if (!file) return;
-            const reader = new FileReader();
-            reader.onload = ev => setItinScanModal(p => ({...p, image: ev.target.result, result: null}));
-            reader.readAsDataURL(file);
-          };
-
-          const EXTRACT_PROMPT = `Extract the event schedule. Return ONLY a JSON object, no other text:\n{\n  "startTime": "HH:MM",\n  "items": [\n    { "name": "Item name", "duration": 2, "notes": "optional" }\n  ]\n}\nDuration is in 15-minute blocks: 15min=1, 30min=2, 45min=3, 60min=4, 90min=6, 120min=8.\nstartTime is the first item's time in 24-hour format. Include every item in order. Return ONLY valid JSON.`;
-
-          const extract = async () => {
-            setItinScanModal(p => ({...p, scanning: true, result: null}));
-            try {
-              let content;
-              if (mode === 'image') {
-                const compressed = await new Promise(res => {
-                  const img = new Image(); img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const max = 1200; const scale = Math.min(1, max / Math.max(img.width, img.height));
-                    canvas.width = img.width * scale; canvas.height = img.height * scale;
-                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    res(canvas.toDataURL('image/jpeg', 0.85));
-                  }; img.src = image;
-                });
-                const base64 = compressed.split(',')[1];
-                const mediaType = compressed.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-                content = [
-                  { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-                  { type: 'text', text: EXTRACT_PROMPT }
-                ];
-              } else {
-                content = [{ type: 'text', text: `${EXTRACT_PROMPT}\n\nItinerary text:\n${text}` }];
-              }
-              const response = await fetch('/.netlify/functions/claude-chat', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 2000, messages: [{ role: 'user', content }] })
-              });
-              if (!response.ok) throw new Error(`HTTP ${response.status}`);
-              const data = await response.json();
-              const raw = data.content?.[0]?.text || '';
-              const match = raw.match(/\{[\s\S]*\}/);
-              if (!match) throw new Error('Could not read response');
-              const parsed = JSON.parse(match[0]);
-              if (!parsed.items?.length) throw new Error('No schedule items found');
-              setItinScanModal(p => ({...p, scanning: false, result: parsed}));
-            } catch(err) {
-              setItinScanModal(p => ({...p, scanning: false, result: { error: err.message }}));
-            }
-          };
-
-          const applyItems = async (replace) => {
-            if (!result?.items?.length) return;
-            const newItems = result.items.map((item, i) => ({
-              id: Date.now() + i, name: item.name, duration: item.duration || 2, notes: item.notes || '', color: '#6366f1'
-            }));
-            const updatedJob = editingJobs.find(j => j.id === itinScanModal.jobId);
-            if (!updatedJob) return;
-            const itin = { ...(updatedJob.itinerary || {}), scheduleItems: updatedJob.itinerary?.scheduleItems || [], startTime: updatedJob.itinerary?.startTime || '10:00' };
-            const startTime = result.startTime || itin.startTime;
-            const updatedItinerary = { ...itin, startTime, scheduleItems: replace ? newItems : [...itin.scheduleItems, ...newItems] };
-            await db.from('jobs').update({ itinerary: updatedItinerary }).eq('id', itinScanModal.jobId);
-            setEditingJobs(prev => prev.map(j => j.id === itinScanModal.jobId ? {...j, itinerary: updatedItinerary} : j));
-            setItinScanModal(null);
-          };
-
-          const goBack = () => {
-            if (result) { setItinScanModal(p => ({...p, result: null})); return; }
-            if (mode) { setItinScanModal(p => ({...p, mode: null, image: null, text: '', result: null})); return; }
-            setItinScanModal(null);
-          };
-
-          return (
-            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto`}>
-                <div className="p-4 border-b" style={{borderColor:'rgba(255,255,255,0.08)'}}>
-                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>📸 Build Itinerary</h3>
-                  <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job?.jobName}</p>
-                </div>
-                <div className="p-4 space-y-3">
-
-                  {/* Mode selector */}
-                  {!mode && !result && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <button onClick={() => setItinScanModal(p => ({...p, mode: 'image'}))}
-                        className="flex flex-col items-center justify-center py-6 rounded-xl gap-2 transition-all hover:scale-[1.02]"
-                        style={{border:'2px dashed rgba(193,167,106,0.4)',background:'rgba(193,167,106,0.05)'}}>
-                        <span className="text-3xl">📷</span>
-                        <span className="text-sm font-semibold" style={{color:'var(--gold)'}}>Screenshot</span>
-                        <span className="text-xs text-center px-1" style={{color:'rgba(255,255,255,0.35)'}}>Photo, WhatsApp, document</span>
-                      </button>
-                      <button onClick={() => setItinScanModal(p => ({...p, mode: 'text'}))}
-                        className="flex flex-col items-center justify-center py-6 rounded-xl gap-2 transition-all hover:scale-[1.02]"
-                        style={{border:'2px dashed rgba(99,102,241,0.4)',background:'rgba(99,102,241,0.05)'}}>
-                        <span className="text-3xl">✏️</span>
-                        <span className="text-sm font-semibold" style={{color:'#818cf8'}}>Paste text</span>
-                        <span className="text-xs text-center px-1" style={{color:'rgba(255,255,255,0.35)'}}>Type or paste itinerary</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Image mode */}
-                  {mode === 'image' && !result && (
-                    <>
-                      {!image ? (
-                        <label className="flex flex-col items-center justify-center w-full py-8 rounded-xl cursor-pointer gap-2"
-                          style={{border:'2px dashed rgba(193,167,106,0.4)',background:'rgba(193,167,106,0.05)'}}>
-                          <span className="text-3xl">📷</span>
-                          <span className="text-sm font-medium" style={{color:'var(--gold)'}}>Upload screenshot</span>
-                          <span className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>Photo of itinerary, WhatsApp message, document…</span>
-                          <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
-                        </label>
-                      ) : (
-                        <img src={image} alt="preview" className="w-full rounded-lg object-contain max-h-48" />
-                      )}
-                      {image && (
-                        <button onClick={extract} disabled={scanning}
-                          className="w-full py-2.5 rounded-lg font-semibold text-white"
-                          style={{background: scanning ? 'rgba(99,102,241,0.5)' : '#6366f1'}}>
-                          {scanning ? '⏳ Reading itinerary…' : '🔍 Extract schedule items'}
-                        </button>
-                      )}
-                    </>
-                  )}
-
-                  {/* Text mode */}
-                  {mode === 'text' && !result && (
-                    <>
-                      <textarea
-                        value={text || ''}
-                        onChange={e => setItinScanModal(p => ({...p, text: e.target.value}))}
-                        placeholder={"Paste or type the itinerary here…\n\nExamples:\n09:30 Bride getting ready\n10:00 Groom prep\n12:00 Ceremony (30 min)\n13:30 Confetti & photos"}
-                        rows={9}
-                        className={`w-full px-3 py-2.5 text-sm border rounded-xl resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-200 placeholder-gray-400'}`}
-                        style={{fontFamily:'monospace'}}
-                      />
-                      <button onClick={extract} disabled={scanning || !hasInput}
-                        className="w-full py-2.5 rounded-lg font-semibold text-white"
-                        style={{background: (!hasInput || scanning) ? 'rgba(99,102,241,0.4)' : '#6366f1'}}>
-                        {scanning ? '⏳ Building schedule…' : '🔍 Extract schedule items'}
-                      </button>
-                    </>
-                  )}
-
-                  {/* Error */}
-                  {result?.error && (
-                    <div className="rounded-lg p-2.5" style={{background:'rgba(239,68,68,0.1)'}}>
-                      <p className="text-xs text-red-400">⚠ {result.error}</p>
-                    </div>
-                  )}
-
-                  {/* Results */}
-                  {result?.items && (
-                    <div>
-                      <p className="text-sm font-semibold mb-2" style={{color:'#4ade80'}}>
-                        ✓ Found {result.items.length} items{result.startTime ? ` · starts ${result.startTime}` : ''}
-                      </p>
-                      <div className="space-y-1.5 max-h-52 overflow-y-auto rounded-lg p-2" style={{background:'rgba(255,255,255,0.04)'}}>
-                        {result.items.map((item, i) => (
-                          <div key={i} className="flex items-baseline gap-2 text-xs">
-                            <span className="font-semibold text-white">{item.name}</span>
-                            <span style={{color:'rgba(255,255,255,0.35)'}}>{item.duration * 15}m</span>
-                            {item.notes && <span style={{color:'rgba(255,255,255,0.35)'}}>— {item.notes}</span>}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mt-3">
-                        <button onClick={() => applyItems(false)} className="py-2 rounded-lg bg-blue-500 text-white text-sm font-semibold">➕ Add to schedule</button>
-                        <button onClick={() => applyItems(true)} className="py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold">↩ Replace schedule</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Back / Cancel */}
-                  <div className="pt-1">
-                    <button onClick={goBack}
-                      className={`w-full py-2 rounded-lg text-sm font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>
-                      {(mode || result) ? '← Back' : 'Cancel'}
-                    </button>
-                  </div>
-
-                </div>
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Import Edit Modal — shown after a standalone job import to fill in details */}
         {importEditModal && (
@@ -11418,6 +11228,177 @@ Capturing Your Special Day
             )}
           </div>
         </div>
+
+        {/* Itinerary Screenshot / Text Scan Modal */}
+        {itinScanModal && (() => {
+          const _scanJob = editingJobs.find(j => j.id === itinScanModal.jobId);
+          const { mode, image, text, scanning, result } = itinScanModal;
+          const hasInput = mode === 'image' ? !!image : (text || '').trim().length > 0;
+          const handleImage = (e) => {
+            const file = e.target.files?.[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => setItinScanModal(p => ({...p, image: ev.target.result, result: null}));
+            reader.readAsDataURL(file);
+          };
+          const EXTRACT_PROMPT = `Extract the event schedule. Return ONLY a JSON object, no other text:\n{\n  "startTime": "HH:MM",\n  "items": [\n    { "name": "Item name", "duration": 2, "notes": "optional" }\n  ]\n}\nDuration is in 15-minute blocks: 15min=1, 30min=2, 45min=3, 60min=4, 90min=6, 120min=8.\nstartTime is the first item's time in 24-hour format. Include every item in order. Return ONLY valid JSON.`;
+          const extract = async () => {
+            setItinScanModal(p => ({...p, scanning: true, result: null}));
+            try {
+              let content;
+              if (mode === 'image') {
+                const compressed = await new Promise(res => {
+                  const img = new Image(); img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const max = 1200; const scale = Math.min(1, max / Math.max(img.width, img.height));
+                    canvas.width = img.width * scale; canvas.height = img.height * scale;
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    res(canvas.toDataURL('image/jpeg', 0.85));
+                  }; img.src = image;
+                });
+                const base64 = compressed.split(',')[1];
+                const mediaType = compressed.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+                content = [
+                  { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+                  { type: 'text', text: EXTRACT_PROMPT }
+                ];
+              } else {
+                content = [{ type: 'text', text: `${EXTRACT_PROMPT}\n\nItinerary text:\n${text}` }];
+              }
+              const response = await fetch('/.netlify/functions/claude-chat', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 2000, messages: [{ role: 'user', content }] })
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const data = await response.json();
+              const raw = data.content?.[0]?.text || '';
+              const match = raw.match(/\{[\s\S]*\}/);
+              if (!match) throw new Error('Could not read response');
+              const parsed = JSON.parse(match[0]);
+              if (!parsed.items?.length) throw new Error('No schedule items found');
+              setItinScanModal(p => ({...p, scanning: false, result: parsed}));
+            } catch(err) {
+              setItinScanModal(p => ({...p, scanning: false, result: { error: err.message }}));
+            }
+          };
+          const applyItems = async (replace) => {
+            if (!result?.items?.length) return;
+            const newItems = result.items.map((item, i) => ({
+              id: Date.now() + i, name: item.name, duration: item.duration || 2, notes: item.notes || '', color: '#6366f1'
+            }));
+            const updatedJob = editingJobs.find(j => j.id === itinScanModal.jobId);
+            if (!updatedJob) return;
+            const itin = { ...(updatedJob.itinerary || {}), scheduleItems: updatedJob.itinerary?.scheduleItems || [], startTime: updatedJob.itinerary?.startTime || '10:00' };
+            const startTime = result.startTime || itin.startTime;
+            const updatedItinerary = { ...itin, startTime, scheduleItems: replace ? newItems : [...itin.scheduleItems, ...newItems] };
+            await db.from('jobs').update({ itinerary: updatedItinerary }).eq('id', itinScanModal.jobId);
+            setEditingJobs(prev => prev.map(j => j.id === itinScanModal.jobId ? {...j, itinerary: updatedItinerary} : j));
+            setItinScanModal(null);
+          };
+          const goBack = () => {
+            if (result) { setItinScanModal(p => ({...p, result: null})); return; }
+            if (mode) { setItinScanModal(p => ({...p, mode: null, image: null, text: '', result: null})); return; }
+            setItinScanModal(null);
+          };
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto`}>
+                <div className="p-4 border-b" style={{borderColor:'rgba(255,255,255,0.08)'}}>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>📸 Build Itinerary</h3>
+                  <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{_scanJob?.jobName}</p>
+                </div>
+                <div className="p-4 space-y-3">
+                  {!mode && !result && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => setItinScanModal(p => ({...p, mode: 'image'}))}
+                        className="flex flex-col items-center justify-center py-6 rounded-xl gap-2"
+                        style={{border:'2px dashed rgba(193,167,106,0.4)',background:'rgba(193,167,106,0.05)'}}>
+                        <span className="text-3xl">📷</span>
+                        <span className="text-sm font-semibold" style={{color:'var(--gold)'}}>Screenshot</span>
+                        <span className="text-xs text-center px-1" style={{color:'rgba(255,255,255,0.35)'}}>Photo, WhatsApp, document</span>
+                      </button>
+                      <button onClick={() => setItinScanModal(p => ({...p, mode: 'text'}))}
+                        className="flex flex-col items-center justify-center py-6 rounded-xl gap-2"
+                        style={{border:'2px dashed rgba(99,102,241,0.4)',background:'rgba(99,102,241,0.05)'}}>
+                        <span className="text-3xl">✏️</span>
+                        <span className="text-sm font-semibold" style={{color:'#818cf8'}}>Paste text</span>
+                        <span className="text-xs text-center px-1" style={{color:'rgba(255,255,255,0.35)'}}>Type or paste itinerary</span>
+                      </button>
+                    </div>
+                  )}
+                  {mode === 'image' && !result && (
+                    <>
+                      {!image ? (
+                        <label className="flex flex-col items-center justify-center w-full py-8 rounded-xl cursor-pointer gap-2"
+                          style={{border:'2px dashed rgba(193,167,106,0.4)',background:'rgba(193,167,106,0.05)'}}>
+                          <span className="text-3xl">📷</span>
+                          <span className="text-sm font-medium" style={{color:'var(--gold)'}}>Upload screenshot</span>
+                          <span className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>Photo, WhatsApp message, document…</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
+                        </label>
+                      ) : (
+                        <img src={image} alt="preview" className="w-full rounded-lg object-contain max-h-48" />
+                      )}
+                      {image && (
+                        <button onClick={extract} disabled={scanning}
+                          className="w-full py-2.5 rounded-lg font-semibold text-white"
+                          style={{background: scanning ? 'rgba(99,102,241,0.5)' : '#6366f1'}}>
+                          {scanning ? '⏳ Reading itinerary…' : '🔍 Extract schedule items'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {mode === 'text' && !result && (
+                    <>
+                      <textarea value={text || ''}
+                        onChange={e => setItinScanModal(p => ({...p, text: e.target.value}))}
+                        placeholder={"Paste or type the itinerary here…\n\nExamples:\n09:30 Bride getting ready\n10:00 Groom prep\n12:00 Ceremony (30 min)\n13:30 Confetti & photos"}
+                        rows={9}
+                        className={`w-full px-3 py-2.5 text-sm border rounded-xl resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'border-gray-200 placeholder-gray-400'}`}
+                        style={{fontFamily:'monospace'}} />
+                      <button onClick={extract} disabled={scanning || !hasInput}
+                        className="w-full py-2.5 rounded-lg font-semibold text-white"
+                        style={{background: (!hasInput || scanning) ? 'rgba(99,102,241,0.4)' : '#6366f1'}}>
+                        {scanning ? '⏳ Building schedule…' : '🔍 Extract schedule items'}
+                      </button>
+                    </>
+                  )}
+                  {result?.error && (
+                    <div className="rounded-lg p-2.5" style={{background:'rgba(239,68,68,0.1)'}}>
+                      <p className="text-xs text-red-400">⚠ {result.error}</p>
+                    </div>
+                  )}
+                  {result?.items && (
+                    <div>
+                      <p className="text-sm font-semibold mb-2" style={{color:'#4ade80'}}>
+                        ✓ Found {result.items.length} items{result.startTime ? ` · starts ${result.startTime}` : ''}
+                      </p>
+                      <div className="space-y-1.5 max-h-52 overflow-y-auto rounded-lg p-2" style={{background:'rgba(255,255,255,0.04)'}}>
+                        {result.items.map((item, i) => (
+                          <div key={i} className="flex items-baseline gap-2 text-xs">
+                            <span className="font-semibold text-white">{item.name}</span>
+                            <span style={{color:'rgba(255,255,255,0.35)'}}>{item.duration * 15}m</span>
+                            {item.notes && <span style={{color:'rgba(255,255,255,0.35)'}}>— {item.notes}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        <button onClick={() => applyItems(false)} className="py-2 rounded-lg bg-blue-500 text-white text-sm font-semibold">➕ Add to schedule</button>
+                        <button onClick={() => applyItems(true)} className="py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold">↩ Replace schedule</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="pt-1">
+                    <button onClick={goBack}
+                      className={`w-full py-2 rounded-lg text-sm font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100'}`}>
+                      {(mode || result) ? '← Back' : 'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
     );
   }
