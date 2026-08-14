@@ -11128,7 +11128,21 @@ Capturing Your Special Day
                         
                         {/* Venue */}
                         <div className={`mt-4 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                          <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 Venue / Location</p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📍 Venue / Location</p>
+                            {job.calendarEventId && (
+                              <button type="button" onClick={async () => {
+                                try {
+                                  const res = await window.gapi.client.calendar.events.get({ calendarId: 'primary', eventId: job.calendarEventId });
+                                  const loc = res.result.location;
+                                  if (loc) { updateItineraryVenue(job.id, loc); }
+                                  else { alert('No location set on the calendar event.'); }
+                                } catch(e) { alert('Could not fetch calendar event — make sure you are signed in to Google.'); }
+                              }} className="text-xs px-2 py-0.5 rounded font-medium" style={{background:'rgba(99,102,241,0.15)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.3)'}}>
+                                📅 Pull from calendar
+                              </button>
+                            )}
+                          </div>
                           <input type="text" value={itinerary.venue || ''} placeholder="e.g. The Grand Hotel, Blackburn"
                             onChange={(e) => updateItineraryVenue(job.id, e.target.value)}
                             className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : ''}`} />
