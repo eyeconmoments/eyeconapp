@@ -7984,33 +7984,53 @@ Notes: ${j.notes || 'none'}`;
               try {
                 if (!officeAddress.trim()) throw new Error('Set your office address first');
                 if (!gmapsKey.trim()) throw new Error('Add your Google Maps API key above');
-                const pos = await new Promise((res, rej) =>
-                  navigator.geolocation.getCurrentPosition(res, rej, { timeout: 12000, maximumAge: 60000 }));
-                const { latitude: lat, longitude: lng } = pos.coords;
+
+                // Try to get current location; fall back gracefully if denied/unavailable
+                let currentPos = null;
+                try {
+                  currentPos = await new Promise((res, rej) =>
+                    navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 60000 }));
+                } catch (_) {
+                  // Location denied or unavailable — skip home→office leg, still calc office→venue
+                }
+
                 const maps = await loadGoogleMaps();
                 const svc = new maps.DistanceMatrixService();
-                const origins = [`${lat},${lng}`, officeAddress];
-                const destinations = venueStr ? [officeAddress, venueStr] : [officeAddress];
-                const dm = await new Promise((res, rej) =>
-                  svc.getDistanceMatrix({
-                    origins, destinations,
-                    travelMode: maps.TravelMode.DRIVING,
-                    drivingOptions: { departureTime: new Date(), trafficModel: maps.TrafficModel.BEST_GUESS },
-                  }, (data, status) => status === 'OK' ? res(data) : rej(new Error(`Maps error: ${status}`))));
-                const homeEl = dm.rows[0]?.elements[0];
-                if (homeEl?.status === 'OK')
-                  updateLeg(jobId, 'homeToOffice', Math.ceil((homeEl.duration_in_traffic?.value || homeEl.duration.value) / 60));
-                if (venueStr) {
-                  const venEl = dm.rows[1]?.elements[1];
+
+                if (currentPos) {
+                  const { latitude: lat, longitude: lng } = currentPos.coords;
+                  const origins = [`${lat},${lng}`, officeAddress];
+                  const destinations = venueStr ? [officeAddress, venueStr] : [officeAddress];
+                  const dm = await new Promise((res, rej) =>
+                    svc.getDistanceMatrix({
+                      origins, destinations,
+                      travelMode: maps.TravelMode.DRIVING,
+                      drivingOptions: { departureTime: new Date(), trafficModel: maps.TrafficModel.BEST_GUESS },
+                    }, (data, status) => status === 'OK' ? res(data) : rej(new Error(`Maps error: ${status}`))));
+                  const homeEl = dm.rows[0]?.elements[0];
+                  if (homeEl?.status === 'OK')
+                    updateLeg(jobId, 'homeToOffice', Math.ceil((homeEl.duration_in_traffic?.value || homeEl.duration.value) / 60));
+                  if (venueStr) {
+                    const venEl = dm.rows[1]?.elements[1];
+                    if (venEl?.status === 'OK')
+                      updateLeg(jobId, 'officeToVenue', Math.ceil((venEl.duration_in_traffic?.value || venEl.duration.value) / 60));
+                  }
+                } else if (venueStr) {
+                  // No location access — only calculate office → venue
+                  const dm = await new Promise((res, rej) =>
+                    svc.getDistanceMatrix({
+                      origins: [officeAddress], destinations: [venueStr],
+                      travelMode: maps.TravelMode.DRIVING,
+                      drivingOptions: { departureTime: new Date(), trafficModel: maps.TrafficModel.BEST_GUESS },
+                    }, (data, status) => status === 'OK' ? res(data) : rej(new Error(`Maps error: ${status}`))));
+                  const venEl = dm.rows[0]?.elements[0];
                   if (venEl?.status === 'OK')
                     updateLeg(jobId, 'officeToVenue', Math.ceil((venEl.duration_in_traffic?.value || venEl.duration.value) / 60));
                 }
+
                 setRouteStatus(p => ({ ...p, [jobId]: 'done' }));
               } catch (err) {
-                const msg = err.code === 1 ? 'Location access denied — check browser settings'
-                  : err.code === 3 ? 'Location timed out — try again'
-                  : err.message || 'Route calculation failed';
-                setRouteStatus(p => ({ ...p, [jobId]: 'error:' + msg }));
+                setRouteStatus(p => ({ ...p, [jobId]: 'error:' + (err.message || 'Route calculation failed') }));
               }
             };
 
