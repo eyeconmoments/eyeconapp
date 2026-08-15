@@ -7657,7 +7657,7 @@ Notes: ${j.notes || 'none'}`;
                     </button>
                   )}
                   {isToday && (
-                    <button onClick={() => toggleLiveJob(todayJob.id)}
+                    <button onClick={async () => { await toggleLiveJob(todayJob.id); setCurrentView('upcoming'); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
                       style={liveItineraryJob === todayJob.id
                         ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)'}
