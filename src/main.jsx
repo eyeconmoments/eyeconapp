@@ -1479,12 +1479,19 @@ function EyeconMoments() {
     const job = editingJobs.find(j => j.id === jobId);
     if (!job) return;
     const isCurrentlyLive = job.itinerary?.isLive === true;
-    // Clear isLive from any other jobs
+    const newIsLive = !isCurrentlyLive;
+    // Update local state immediately so UI responds without waiting for realtime
+    setEditingJobs(prev => prev.map(j => {
+      if (j.id === jobId) return { ...j, itinerary: { ...(j.itinerary || {}), isLive: newIsLive } };
+      if (j.itinerary?.isLive) return { ...j, itinerary: { ...j.itinerary, isLive: false } };
+      return j;
+    }));
+    // Persist to DB
     const otherLive = editingJobs.filter(j => j.itinerary?.isLive === true && j.id !== jobId);
     for (const lj of otherLive) {
       await db.from('jobs').update({ itinerary: { ...lj.itinerary, isLive: false } }).eq('id', lj.id);
     }
-    await db.from('jobs').update({ itinerary: { ...(job.itinerary || {}), isLive: !isCurrentlyLive } }).eq('id', jobId);
+    await db.from('jobs').update({ itinerary: { ...(job.itinerary || {}), isLive: newIsLive } }).eq('id', jobId);
   };
 
   const handleLogin = async () => {
