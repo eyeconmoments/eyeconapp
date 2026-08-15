@@ -7665,7 +7665,7 @@ Notes: ${j.notes || 'none'}`;
                   )}
                   {isToday && (
                     <button type="button"
-                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setTimeout(() => document.getElementById('home-live-section')?.scrollIntoView({behavior:'smooth',block:'start'}), 600); }}
+                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
                       style={liveItineraryJob === todayJob.id
                         ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}
@@ -7674,6 +7674,77 @@ Notes: ${j.notes || 'none'}`;
                     </button>
                   )}
                 </div>
+                {isToday && liveItineraryJob === todayJob.id && (() => {
+                  const _itin = todayJob.itinerary || {};
+                  const _items = _itin.scheduleItems || [];
+                  const _toMins = t => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
+                  let _cum = _toMins(_itin.startTime || '10:00');
+                  const _withTime = [];
+                  let _si = 0;
+                  while (_si < _items.length) {
+                    const _it = _items[_si];
+                    if (_it.groupId) {
+                      const _grp = [];
+                      let _gj = _si;
+                      while (_gj < _items.length && _items[_gj].groupId === _it.groupId) { _grp.push(_items[_gj]); _gj++; }
+                      const _maxD = Math.max(..._grp.map(g => g.duration || 2));
+                      const _ct = `${String(Math.floor(_cum/60)%24).padStart(2,'0')}:${String(_cum%60).padStart(2,'0')}`;
+                      _grp.forEach(g => _withTime.push({ ...g, computedTime: _ct, computedMins: _cum }));
+                      _cum += _maxD * 15; _si = _gj;
+                    } else {
+                      const _im = _it.time ? _toMins(_it.time) : _cum;
+                      if (!_it.time) _cum += (_it.duration || 2) * 15; else _cum = _im + (_it.duration || 2) * 15;
+                      _withTime.push({ ..._it, computedTime: `${String(Math.floor(_im/60)%24).padStart(2,'0')}:${String(_im%60).padStart(2,'0')}`, computedMins: _im });
+                      _si++;
+                    }
+                  }
+                  const _nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+                  let _curIdx = -1;
+                  for (let i = 0; i < _withTime.length; i++) {
+                    const _m = _withTime[i].computedMins;
+                    let ni = i + 1;
+                    while (ni < _withTime.length && _withTime[ni].computedMins === _m) ni++;
+                    const _nxt = ni < _withTime.length ? _withTime[ni].computedMins : 24*60;
+                    if (_nowMins >= _m && _nowMins < _nxt) { _curIdx = i; break; }
+                  }
+                  const _curMins = _curIdx >= 0 ? _withTime[_curIdx].computedMins : -1;
+                  const _nextMins = _withTime.find(it => it.computedMins > _curMins)?.computedMins ?? Infinity;
+                  return (
+                    <div className="mt-3 -mx-4 -mb-4 rounded-b-2xl overflow-hidden" style={{background:'rgba(0,0,0,0.25)'}}>
+                      {_withTime.length === 0 && (
+                        <p className="text-xs text-center py-3" style={{color:'rgba(255,255,255,0.4)'}}>No itinerary items yet</p>
+                      )}
+                      {_curIdx === -1 && _withTime.length > 0 && (
+                        <div className="px-4 py-2 border-b" style={{borderColor:'rgba(255,255,255,0.08)'}}>
+                          <p className="text-xs font-semibold text-white">⏳ Not started · First: {_withTime[0]?.computedTime} — {_withTime[0]?.name}</p>
+                        </div>
+                      )}
+                      <div className="overflow-y-auto px-4 py-2 space-y-1" style={{maxHeight:'45vh'}}>
+                        {_withTime.map((item, idx) => {
+                          const isCur = _curMins >= 0 && item.computedMins === _curMins;
+                          const isPst = !isCur && _curMins >= 0 && item.computedMins < _curMins;
+                          const isNxt = !isCur && !isPst && item.computedMins === _nextMins;
+                          return (
+                            <div key={idx} className={`rounded-xl flex items-center gap-3 ${isCur ? 'p-3' : 'p-2'}`}
+                              style={{background: isCur ? 'rgba(255,255,255,0.12)' : isPst ? 'rgba(255,255,255,0.03)' : isNxt ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.05)',
+                                      border: isCur ? `2px solid ${item.color||'var(--gold)'}` : isNxt ? '1px solid rgba(96,165,250,0.3)' : 'none',
+                                      opacity: isPst ? 0.45 : 1}}>
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}/>
+                              <div className="flex-1 min-w-0">
+                                <p className={`font-bold truncate ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
+                                <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>{item.computedTime}{isCur ? <span style={{color:'#fb923c'}}> · NOW</span> : isNxt ? <span style={{color:'#93c5fd'}}> · NEXT</span> : ''}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2 px-4 py-3" style={{borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+                        <button onClick={() => openLiveLogModal(todayJob)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-blue-500">📝 Log Shoot</button>
+                        <button onClick={() => openLiveGearModal(todayJob)} className={`px-3 py-2 rounded-xl text-xs font-bold ${jobGearCheckedToday(todayJob) ? 'bg-green-500 text-white' : 'text-yellow-300 border border-yellow-600'}`} style={{background: jobGearCheckedToday(todayJob) ? '' : 'rgba(255,255,255,0.05)'}}>🎒</button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
