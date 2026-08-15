@@ -7658,8 +7658,7 @@ Notes: ${j.notes || 'none'}`;
                   )}
                   {isToday && (
                     <button type="button"
-                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setTimeout(() => document.getElementById('home-live-section')?.scrollIntoView({behavior:'smooth',block:'start'}), 300); }}
-                      onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleLiveJob(todayJob.id).then(() => setTimeout(() => document.getElementById('home-live-section')?.scrollIntoView({behavior:'smooth',block:'start'}), 300)); }}
+                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setTimeout(() => document.getElementById('home-live-section')?.scrollIntoView({behavior:'smooth',block:'start'}), 600); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
                       style={liveItineraryJob === todayJob.id
                         ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}
