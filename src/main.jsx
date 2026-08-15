@@ -7658,8 +7658,8 @@ Notes: ${j.notes || 'none'}`;
                   )}
                   {isToday && (
                     <button type="button"
-                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setCurrentView('upcoming'); }}
-                      onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleLiveJob(todayJob.id).then(() => setCurrentView('upcoming')); }}
+                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setCurrentView('upcoming'); setSpotlightJobId(todayJob.id); setTimeout(() => setSpotlightJobId(null), 4000); }}
+                      onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleLiveJob(todayJob.id).then(() => { setCurrentView('upcoming'); setSpotlightJobId(todayJob.id); setTimeout(() => setSpotlightJobId(null), 4000); }); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
                       style={liveItineraryJob === todayJob.id
                         ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}
