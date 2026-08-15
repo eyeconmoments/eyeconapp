@@ -7667,14 +7667,14 @@ Notes: ${j.notes || 'none'}`;
                     <button type="button"
                       onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
-                      style={liveItineraryJob === todayJob.id
+                      style={todayJob.itinerary?.isLive === true
                         ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}
                         : {background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.35)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}}>
-                      {liveItineraryJob === todayJob.id ? '🔴 LIVE' : '🔴 Go Live'}
+                      {todayJob.itinerary?.isLive === true ? '🔴 LIVE' : '🔴 Go Live'}
                     </button>
                   )}
                 </div>
-                {isToday && liveItineraryJob === todayJob.id && (() => {
+                {isToday && todayJob.itinerary?.isLive === true && (() => {
                   const _itin = todayJob.itinerary || {};
                   const _items = _itin.scheduleItems || [];
                   const _toMins = t => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
