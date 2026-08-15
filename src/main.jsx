@@ -7656,6 +7656,13 @@ Notes: ${j.notes || 'none'}`;
                       🗺️ Directions
                     </button>
                   )}
+                  {isToday && (
+                    <button onClick={() => openLiveLogModal(todayJob)}
+                      className="text-xs font-bold px-3 py-2 rounded-lg"
+                      style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.35)'}}>
+                      🔴 Go Live
+                    </button>
+                  )}
                 </div>
               </div>
             );
