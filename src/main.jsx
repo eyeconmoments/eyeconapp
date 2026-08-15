@@ -7657,10 +7657,12 @@ Notes: ${j.notes || 'none'}`;
                     </button>
                   )}
                   {isToday && (
-                    <button onClick={() => openLiveLogModal(todayJob)}
+                    <button onClick={() => toggleLiveJob(todayJob.id)}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
-                      style={{background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.35)'}}>
-                      🔴 Go Live
+                      style={liveItineraryJob === todayJob.id
+                        ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)'}
+                        : {background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.35)'}}>
+                      {liveItineraryJob === todayJob.id ? '🔴 LIVE' : '🔴 Go Live'}
                     </button>
                   )}
                 </div>
