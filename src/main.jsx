@@ -5846,14 +5846,14 @@ Notes: ${j.notes || 'none'}`;
                             })}
                           </div>
                           {/* Gear + Log buttons at bottom of top banner live view */}
-                          <div className="px-4 pt-2 pb-3 grid grid-cols-2 gap-2">
-                            <button onClick={() => openLiveGearModal(job)}
-                              className={`py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 ${jobGearCheckedToday(job) ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-yellow-300 border border-yellow-600' : 'bg-yellow-50 text-yellow-700 border border-yellow-300'}`}>
-                              🎒 {jobGearCheckedToday(job) ? 'Gear ✓' : 'Check Gear'}
-                            </button>
+                          <div className="px-4 pt-2 pb-3 flex gap-2">
                             <button onClick={() => openLiveLogModal(job)}
-                              className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 bg-blue-500 text-white hover:bg-blue-600">
+                              className="flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 bg-blue-500 text-white">
                               📝 Log Shoot
+                            </button>
+                            <button onClick={() => openLiveGearModal(job)}
+                              className={`px-3 py-2.5 rounded-xl text-sm font-bold ${jobGearCheckedToday(job) ? 'bg-green-500 text-white' : darkMode ? 'bg-gray-700 text-yellow-300 border border-yellow-600' : 'bg-yellow-50 text-yellow-700 border border-yellow-300'}`}>
+                              🎒
                             </button>
                           </div>
                         </div>
@@ -7658,8 +7658,8 @@ Notes: ${j.notes || 'none'}`;
                   )}
                   {isToday && (
                     <button type="button"
-                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setCurrentView('upcoming'); setSpotlightJobId(todayJob.id); setTimeout(() => setSpotlightJobId(null), 4000); }}
-                      onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleLiveJob(todayJob.id).then(() => { setCurrentView('upcoming'); setSpotlightJobId(todayJob.id); setTimeout(() => setSpotlightJobId(null), 4000); }); }}
+                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); }}
+                      onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleLiveJob(todayJob.id); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
                       style={liveItineraryJob === todayJob.id
                         ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}
