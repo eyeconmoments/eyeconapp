@@ -7657,11 +7657,13 @@ Notes: ${j.notes || 'none'}`;
                     </button>
                   )}
                   {isToday && (
-                    <button onClick={async () => { await toggleLiveJob(todayJob.id); setCurrentView('upcoming'); }}
+                    <button type="button"
+                      onClick={async (e) => { e.stopPropagation(); await toggleLiveJob(todayJob.id); setCurrentView('upcoming'); }}
+                      onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); toggleLiveJob(todayJob.id).then(() => setCurrentView('upcoming')); }}
                       className="text-xs font-bold px-3 py-2 rounded-lg"
                       style={liveItineraryJob === todayJob.id
-                        ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)'}
-                        : {background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.35)'}}>
+                        ? {background:'rgba(239,68,68,0.3)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.6)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}
+                        : {background:'rgba(239,68,68,0.15)',color:'#fca5a5',border:'1px solid rgba(239,68,68,0.35)',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'}}>
                       {liveItineraryJob === todayJob.id ? '🔴 LIVE' : '🔴 Go Live'}
                     </button>
                   )}
