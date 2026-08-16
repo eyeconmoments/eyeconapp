@@ -1015,6 +1015,7 @@ function EyeconMoments() {
   const [wageSubmitModal, setWageSubmitModal] = useState(null);
   const [wageOverrideModal, setWageOverrideModal] = useState(null); // { jobId, entryId, currentAmount }
   const [liveGearModal, setLiveGearModal] = useState(null); // { jobId, jobName, items, notes }
+  const [liveNoteEdit, setLiveNoteEdit] = useState(null); // { jobId, itemIdx, text }
   const [liveGearSaving, setLiveGearSaving] = useState(false);
   const [wageFilter, setWageFilter] = useState({ employee: 'all', status: 'all', type: 'all' });
   const [payScaleOpen, setPayScaleOpen] = useState({}); // { [employeeId]: bool }
@@ -4850,6 +4851,16 @@ Notes: ${j.notes || 'none'}`;
     '10 camera batteries', '9 gimbal batteries', '7 light batteries',
     'Extension', 'Jackery', 'Syncos', 'Grey big light', 'Mics',
   ];
+  const saveLiveNote = async (jobId, itemIdx, text) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const newItems = (job.itinerary?.scheduleItems || []).map((it, i) => i === itemIdx ? { ...it, notes: text } : it);
+    const newItin = { ...(job.itinerary || {}), scheduleItems: newItems };
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, itinerary: newItin } : j));
+    await db.from('jobs').update({ itinerary: newItin }).eq('id', jobId);
+    setLiveNoteEdit(null);
+  };
+
   const openLiveGearModal = (job) => {
     setLiveGearModal({
       jobId: job.id,
@@ -7686,7 +7697,7 @@ Notes: ${j.notes || 'none'}`;
                     if (_it.groupId) {
                       const _grp = [];
                       let _gj = _si;
-                      while (_gj < _items.length && _items[_gj].groupId === _it.groupId) { _grp.push(_items[_gj]); _gj++; }
+                      while (_gj < _items.length && _items[_gj].groupId === _it.groupId) { _grp.push({ ..._items[_gj], _origIdx: _gj }); _gj++; }
                       const _maxD = Math.max(..._grp.map(g => g.duration || 2));
                       const _ct = `${String(Math.floor(_cum/60)%24).padStart(2,'0')}:${String(_cum%60).padStart(2,'0')}`;
                       _grp.forEach(g => _withTime.push({ ...g, computedTime: _ct, computedMins: _cum }));
@@ -7694,7 +7705,7 @@ Notes: ${j.notes || 'none'}`;
                     } else {
                       const _im = _it.time ? _toMins(_it.time) : _cum;
                       if (!_it.time) _cum += (_it.duration || 2) * 15; else _cum = _im + (_it.duration || 2) * 15;
-                      _withTime.push({ ..._it, computedTime: `${String(Math.floor(_im/60)%24).padStart(2,'0')}:${String(_im%60).padStart(2,'0')}`, computedMins: _im });
+                      _withTime.push({ ..._it, _origIdx: _si, computedTime: `${String(Math.floor(_im/60)%24).padStart(2,'0')}:${String(_im%60).padStart(2,'0')}`, computedMins: _im });
                       _si++;
                     }
                   }
@@ -7741,17 +7752,37 @@ Notes: ${j.notes || 'none'}`;
                             const isNxt = !isCur && !isPst && slot.computedMins === _nextMins;
                             if (!slot.concurrent) {
                               const item = slot.items[0];
+                              const _ne = liveNoteEdit && liveNoteEdit.jobId === todayJob.id && liveNoteEdit.itemIdx === item._origIdx;
                               return (
-                                <div key={si} className={`rounded-xl flex items-center gap-3 ${isCur ? 'p-3' : 'p-2'}`}
+                                <div key={si} className={`rounded-xl ${isCur ? 'p-3' : 'p-2'}`}
                                   style={{background: isCur ? 'rgba(255,255,255,0.12)' : isPst ? 'rgba(255,255,255,0.03)' : isNxt ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.05)',
                                           border: isCur ? `2px solid ${item.color||'var(--gold)'}` : isNxt ? '1px solid rgba(96,165,250,0.3)' : 'none',
                                           opacity: isPst ? 0.45 : 1}}>
-                                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}/>
-                                  <div className="flex-1 min-w-0">
-                                    <p className={`font-bold ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
-                                    <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>{item.computedTime}{isCur ? <span style={{color:'#fb923c'}}> · NOW</span> : isNxt ? <span style={{color:'#93c5fd'}}> · NEXT</span> : ''}</p>
-                                    {item.notes && <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.6)'}}>{item.notes}</p>}
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}/>
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`font-bold ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
+                                      <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>{item.computedTime}{isCur ? <span style={{color:'#fb923c'}}> · NOW</span> : isNxt ? <span style={{color:'#93c5fd'}}> · NEXT</span> : ''}</p>
+                                      {!_ne && item.notes && <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.6)'}}>{item.notes}</p>}
+                                    </div>
+                                    <button type="button" onClick={() => setLiveNoteEdit(_ne ? null : { jobId: todayJob.id, itemIdx: item._origIdx, text: item.notes || '' })}
+                                      style={{flexShrink:0,fontSize:'0.7rem',color:'rgba(255,255,255,0.35)',background:'none',border:'none',cursor:'pointer',touchAction:'manipulation',padding:'2px 4px'}}>✏️</button>
                                   </div>
+                                  {_ne && (
+                                    <div className="mt-2 flex gap-2">
+                                      <textarea className="flex-1 text-xs rounded p-1.5 resize-none"
+                                        rows={2}
+                                        style={{background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)'}}
+                                        value={liveNoteEdit.text}
+                                        onChange={e => setLiveNoteEdit(n => ({...n, text: e.target.value}))}/>
+                                      <div className="flex flex-col gap-1">
+                                        <button type="button" onClick={() => saveLiveNote(todayJob.id, item._origIdx, liveNoteEdit.text)}
+                                          className="text-xs px-2 py-1 rounded" style={{background:'rgba(96,165,250,0.5)',color:'white',border:'none',cursor:'pointer'}}>Save</button>
+                                        <button type="button" onClick={() => setLiveNoteEdit(null)}
+                                          className="text-xs px-2 py-1 rounded" style={{background:'rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.6)',border:'none',cursor:'pointer'}}>✕</button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
@@ -7768,14 +7799,36 @@ Notes: ${j.notes || 'none'}`;
                                   {isNxt && <span className="text-xs font-bold" style={{color:'#93c5fd'}}>NEXT</span>}
                                 </div>
                                 <div className="px-3 pb-2 space-y-1.5">
-                                  {slot.items.map((item, ii) => (
-                                    <div key={ii} className="flex items-start gap-2 pl-2 border-l-2" style={{borderColor: item.color || '#888'}}>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-bold text-white">{item.name}</p>
-                                        {item.notes && <p className="text-xs" style={{color:'rgba(255,255,255,0.55)'}}>{item.notes}</p>}
+                                  {slot.items.map((item, ii) => {
+                                    const _ne2 = liveNoteEdit && liveNoteEdit.jobId === todayJob.id && liveNoteEdit.itemIdx === item._origIdx;
+                                    return (
+                                      <div key={ii} className="flex flex-col pl-2 border-l-2" style={{borderColor: item.color || '#888'}}>
+                                        <div className="flex items-start gap-2">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold text-white">{item.name}</p>
+                                            {!_ne2 && item.notes && <p className="text-xs" style={{color:'rgba(255,255,255,0.55)'}}>{item.notes}</p>}
+                                          </div>
+                                          <button type="button" onClick={() => setLiveNoteEdit(_ne2 ? null : { jobId: todayJob.id, itemIdx: item._origIdx, text: item.notes || '' })}
+                                            style={{flexShrink:0,fontSize:'0.7rem',color:'rgba(255,255,255,0.35)',background:'none',border:'none',cursor:'pointer',touchAction:'manipulation',padding:'2px 4px'}}>✏️</button>
+                                        </div>
+                                        {_ne2 && (
+                                          <div className="mt-1.5 flex gap-2">
+                                            <textarea className="flex-1 text-xs rounded p-1.5 resize-none"
+                                              rows={2}
+                                              style={{background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)'}}
+                                              value={liveNoteEdit.text}
+                                              onChange={e => setLiveNoteEdit(n => ({...n, text: e.target.value}))}/>
+                                            <div className="flex flex-col gap-1">
+                                              <button type="button" onClick={() => saveLiveNote(todayJob.id, item._origIdx, liveNoteEdit.text)}
+                                                className="text-xs px-2 py-1 rounded" style={{background:'rgba(96,165,250,0.5)',color:'white',border:'none',cursor:'pointer'}}>Save</button>
+                                              <button type="button" onClick={() => setLiveNoteEdit(null)}
+                                                className="text-xs px-2 py-1 rounded" style={{background:'rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.6)',border:'none',cursor:'pointer'}}>✕</button>
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );
