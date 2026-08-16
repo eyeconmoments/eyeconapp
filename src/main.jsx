@@ -7731,8 +7731,9 @@ Notes: ${j.notes || 'none'}`;
                                       opacity: isPst ? 0.45 : 1}}>
                               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}/>
                               <div className="flex-1 min-w-0">
-                                <p className={`font-bold truncate ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
+                                <p className={`font-bold ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
                                 <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>{item.computedTime}{isCur ? <span style={{color:'#fb923c'}}> · NOW</span> : isNxt ? <span style={{color:'#93c5fd'}}> · NEXT</span> : ''}</p>
+                                {item.notes && (isCur || isNxt) && <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.6)'}}>{item.notes}</p>}
                               </div>
                             </div>
                           );
