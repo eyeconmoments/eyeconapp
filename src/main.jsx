@@ -8180,16 +8180,21 @@ Notes: ${j.notes || 'none'}`;
                     const startTime = itin.startTime || j.calendarStartTime || null;
                     const venue = itin.venue || (j.notes||'').split(/[.\n]/)[0].trim() || '';
                     const legs = setoffLegs[j.id] || {};
-                    const homeToOffice = legs.homeToOffice ?? 20;
-                    const gearLoad    = legs.gearLoad    ?? 15;
+                    const homeToOffice  = legs.homeToOffice  ?? 20;
+                    const gearLoad      = legs.gearLoad      ?? 15;
                     const officeToVenue = legs.officeToVenue ?? '';
+                    const skipOffice    = legs.skipOffice    ?? false;
+                    const homeToVenue   = legs.homeToVenue   ?? '';
                     const isToday = new Date(j.shootDate).toDateString() === todayStr;
                     const rStatus = routeStatus[j.id];
 
                     const shootMins = startTime ? parseMins(startTime) : null;
                     const ovMins = officeToVenue !== '' ? parseInt(officeToVenue) : null;
-                    const leaveOfficeMins = (shootMins !== null && ovMins !== null) ? shootMins - ovMins : null;
-                    const leaveHomeMins   = leaveOfficeMins !== null ? leaveOfficeMins - parseInt(gearLoad) - parseInt(homeToOffice) : null;
+                    const hvMins = homeToVenue !== '' ? parseInt(homeToVenue) : null;
+                    const leaveOfficeMins = (!skipOffice && shootMins !== null && ovMins !== null) ? shootMins - ovMins : null;
+                    const leaveHomeMins   = skipOffice
+                      ? (shootMins !== null && hvMins !== null ? shootMins - hvMins : null)
+                      : (leaveOfficeMins !== null ? leaveOfficeMins - parseInt(gearLoad) - parseInt(homeToOffice) : null);
 
                     return (
                       <div key={j.id}>
@@ -8231,46 +8236,88 @@ Notes: ${j.notes || 'none'}`;
                           </button>
                         )}
 
+                        {/* Route mode toggle */}
+                        <div className="flex gap-2 mb-2">
+                          <button onClick={() => updateLeg(j.id, 'skipOffice', false)}
+                            className="flex-1 text-xs py-1.5 rounded-lg font-semibold"
+                            style={{background: !skipOffice ? 'rgba(193,167,106,0.2)' : 'rgba(255,255,255,0.05)', color: !skipOffice ? 'var(--gold)' : 'rgba(255,255,255,0.4)', border: `1px solid ${!skipOffice ? 'rgba(193,167,106,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
+                            🏢 Via office
+                          </button>
+                          <button onClick={() => updateLeg(j.id, 'skipOffice', true)}
+                            className="flex-1 text-xs py-1.5 rounded-lg font-semibold"
+                            style={{background: skipOffice ? 'rgba(96,165,250,0.2)' : 'rgba(255,255,255,0.05)', color: skipOffice ? '#93c5fd' : 'rgba(255,255,255,0.4)', border: `1px solid ${skipOffice ? 'rgba(96,165,250,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
+                            🏠 Direct to venue
+                          </button>
+                        </div>
+
                         {/* Journey leg inputs */}
-                        <div className="grid grid-cols-3 gap-2 mb-2">
-                          {[
-                            { label: 'Home→Office', field: 'homeToOffice', val: homeToOffice },
-                            { label: 'Load gear', field: 'gearLoad', val: gearLoad },
-                            { label: 'Office→Venue', field: 'officeToVenue', val: officeToVenue, placeholder: '?' },
-                          ].map(({label, field, val, placeholder}) => (
-                            <label key={field} className="flex flex-col gap-0.5">
-                              <span className={`text-xs ${darkMode?'text-gray-400':'text-gray-500'}`}>{label}</span>
+                        {skipOffice ? (
+                          <div className="grid grid-cols-1 gap-2 mb-2">
+                            <label className="flex flex-col gap-0.5">
+                              <span className={`text-xs ${darkMode?'text-gray-400':'text-gray-500'}`}>Home→Venue</span>
                               <div className="flex items-center gap-1">
-                                <input type="number" min="0" value={val} placeholder={placeholder||''}
-                                  onChange={e => updateLeg(j.id, field, e.target.value)}
+                                <input type="number" min="0" value={homeToVenue} placeholder="?"
+                                  onChange={e => updateLeg(j.id, 'homeToVenue', e.target.value)}
                                   className={`w-full text-sm text-center rounded-lg px-1 py-1.5 border ${darkMode?'bg-gray-700 border-gray-600 text-white':'bg-white border-gray-200'}`} />
                                 <span className={`text-xs shrink-0 ${darkMode?'text-gray-500':'text-gray-400'}`}>min</span>
                               </div>
                             </label>
-                          ))}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-3 gap-2 mb-2">
+                            {[
+                              { label: 'Home→Office', field: 'homeToOffice', val: homeToOffice },
+                              { label: 'Load gear', field: 'gearLoad', val: gearLoad },
+                              { label: 'Office→Venue', field: 'officeToVenue', val: officeToVenue, placeholder: '?' },
+                            ].map(({label, field, val, placeholder}) => (
+                              <label key={field} className="flex flex-col gap-0.5">
+                                <span className={`text-xs ${darkMode?'text-gray-400':'text-gray-500'}`}>{label}</span>
+                                <div className="flex items-center gap-1">
+                                  <input type="number" min="0" value={val} placeholder={placeholder||''}
+                                    onChange={e => updateLeg(j.id, field, e.target.value)}
+                                    className={`w-full text-sm text-center rounded-lg px-1 py-1.5 border ${darkMode?'bg-gray-700 border-gray-600 text-white':'bg-white border-gray-200'}`} />
+                                  <span className={`text-xs shrink-0 ${darkMode?'text-gray-500':'text-gray-400'}`}>min</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Result */}
                         {leaveHomeMins !== null ? (
-                          <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{background:'rgba(193,167,106,0.12)',border:'1px solid rgba(193,167,106,0.25)'}}>
-                            <div>
-                              <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave home</p>
-                              <p className="text-xl font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveHomeMins)}</p>
+                          skipOffice ? (
+                            <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{background:'rgba(96,165,250,0.1)',border:'1px solid rgba(96,165,250,0.25)'}}>
+                              <div>
+                                <p className="text-xs" style={{color:'rgba(147,197,253,0.7)'}}>Leave home</p>
+                                <p className="text-xl font-bold" style={{color:'#93c5fd'}}>{fmtTime(leaveHomeMins)}</p>
+                              </div>
+                              <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
+                              <div className="text-right">
+                                <p className="text-xs" style={{color:'rgba(147,197,253,0.7)'}}>Arrive venue</p>
+                                <p className="text-base font-bold" style={{color:'#93c5fd'}}>{fmtTime(shootMins)}</p>
+                              </div>
                             </div>
-                            <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
-                            <div className="text-center">
-                              <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>At office</p>
-                              <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveHomeMins + parseInt(homeToOffice))}</p>
+                          ) : (
+                            <div className="rounded-lg px-3 py-2 flex items-center justify-between" style={{background:'rgba(193,167,106,0.12)',border:'1px solid rgba(193,167,106,0.25)'}}>
+                              <div>
+                                <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave home</p>
+                                <p className="text-xl font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveHomeMins)}</p>
+                              </div>
+                              <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
+                              <div className="text-center">
+                                <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>At office</p>
+                                <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveHomeMins + parseInt(homeToOffice))}</p>
+                              </div>
+                              <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
+                              <div className="text-right">
+                                <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave office</p>
+                                <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveOfficeMins)}</p>
+                              </div>
                             </div>
-                            <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
-                            <div className="text-right">
-                              <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave office</p>
-                              <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveOfficeMins)}</p>
-                            </div>
-                          </div>
+                          )
                         ) : (
                           <p className={`text-xs italic ${darkMode?'text-gray-500':'text-gray-400'}`}>
-                            {!startTime ? 'Add a coverage start time to the itinerary to calculate.' : 'Enter Office→Venue time to calculate.'}
+                            {!startTime ? 'Add a coverage start time to the itinerary to calculate.' : skipOffice ? 'Enter Home→Venue time to calculate.' : 'Enter Office→Venue time to calculate.'}
                           </p>
                         )}
                       </div>
