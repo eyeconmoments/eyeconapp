@@ -8203,9 +8203,10 @@ Notes: ${j.notes || 'none'}`;
                     const shootMins = startTime ? parseMins(startTime) : null;
                     const ovMins = officeToVenue !== '' ? parseInt(officeToVenue) : null;
                     const hvMins = homeToVenue !== '' ? parseInt(homeToVenue) : null;
-                    const leaveOfficeMins = (!skipOffice && shootMins !== null && ovMins !== null) ? shootMins - ovMins : null;
+                    const targetMins = shootMins !== null ? shootMins - 10 : null; // always arrive 10 min early
+                    const leaveOfficeMins = (!skipOffice && targetMins !== null && ovMins !== null) ? targetMins - ovMins : null;
                     const leaveHomeMins   = skipOffice
-                      ? (shootMins !== null && hvMins !== null ? shootMins - hvMins : null)
+                      ? (targetMins !== null && hvMins !== null ? targetMins - hvMins : null)
                       : (leaveOfficeMins !== null ? leaveOfficeMins - parseInt(gearLoad) - parseInt(homeToOffice) : null);
 
                     return (
@@ -8305,8 +8306,8 @@ Notes: ${j.notes || 'none'}`;
                               </div>
                               <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
                               <div className="text-right">
-                                <p className="text-xs" style={{color:'rgba(147,197,253,0.7)'}}>Arrive venue</p>
-                                <p className="text-base font-bold" style={{color:'#93c5fd'}}>{fmtTime(shootMins)}</p>
+                                <p className="text-xs" style={{color:'rgba(147,197,253,0.7)'}}>Arrive venue <span style={{opacity:0.6}}>(10 min early)</span></p>
+                                <p className="text-base font-bold" style={{color:'#93c5fd'}}>{fmtTime(targetMins)}</p>
                               </div>
                             </div>
                           ) : (
@@ -8322,7 +8323,7 @@ Notes: ${j.notes || 'none'}`;
                               </div>
                               <span style={{color:'rgba(255,255,255,0.2)'}}>→</span>
                               <div className="text-right">
-                                <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave office</p>
+                                <p className="text-xs" style={{color:'rgba(193,167,106,0.7)'}}>Leave office <span style={{opacity:0.6}}>(10 min early)</span></p>
                                 <p className="text-base font-bold" style={{color:'var(--gold)'}}>{fmtTime(leaveOfficeMins)}</p>
                               </div>
                             </div>
