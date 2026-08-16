@@ -8086,26 +8086,38 @@ Notes: ${j.notes || 'none'}`;
                 const maps = await loadGoogleMaps();
                 const svc = new maps.DistanceMatrixService();
 
-                if (currentPos) {
+                if (currentPos && venueStr) {
                   const { latitude: lat, longitude: lng } = currentPos.coords;
-                  const origins = [`${lat},${lng}`, officeAddress];
-                  const destinations = venueStr ? [officeAddress, venueStr] : [officeAddress];
+                  // Three origins: home→office, office→venue, home→venue (direct)
                   const dm = await new Promise((res, rej) =>
                     svc.getDistanceMatrix({
-                      origins, destinations,
+                      origins: [`${lat},${lng}`, officeAddress, `${lat},${lng}`],
+                      destinations: [officeAddress, venueStr, venueStr],
                       travelMode: maps.TravelMode.DRIVING,
                       drivingOptions: { departureTime: new Date(), trafficModel: maps.TrafficModel.BEST_GUESS },
                     }, (data, status) => status === 'OK' ? res(data) : rej(new Error(`Maps error: ${status}`))));
-                  const homeEl = dm.rows[0]?.elements[0];
-                  if (homeEl?.status === 'OK')
-                    updateLeg(jobId, 'homeToOffice', Math.ceil((homeEl.duration_in_traffic?.value || homeEl.duration.value) / 60));
-                  if (venueStr) {
-                    const venEl = dm.rows[1]?.elements[1];
-                    if (venEl?.status === 'OK')
-                      updateLeg(jobId, 'officeToVenue', Math.ceil((venEl.duration_in_traffic?.value || venEl.duration.value) / 60));
-                  }
+                  const homeOfficeEl = dm.rows[0]?.elements[0];
+                  const officeVenueEl = dm.rows[1]?.elements[1];
+                  const homeVenueEl = dm.rows[2]?.elements[2];
+                  if (homeOfficeEl?.status === 'OK')
+                    updateLeg(jobId, 'homeToOffice', Math.ceil((homeOfficeEl.duration_in_traffic?.value || homeOfficeEl.duration.value) / 60));
+                  if (officeVenueEl?.status === 'OK')
+                    updateLeg(jobId, 'officeToVenue', Math.ceil((officeVenueEl.duration_in_traffic?.value || officeVenueEl.duration.value) / 60));
+                  if (homeVenueEl?.status === 'OK')
+                    updateLeg(jobId, 'homeToVenue', Math.ceil((homeVenueEl.duration_in_traffic?.value || homeVenueEl.duration.value) / 60));
+                } else if (currentPos) {
+                  const { latitude: lat, longitude: lng } = currentPos.coords;
+                  const dm = await new Promise((res, rej) =>
+                    svc.getDistanceMatrix({
+                      origins: [`${lat},${lng}`], destinations: [officeAddress],
+                      travelMode: maps.TravelMode.DRIVING,
+                      drivingOptions: { departureTime: new Date(), trafficModel: maps.TrafficModel.BEST_GUESS },
+                    }, (data, status) => status === 'OK' ? res(data) : rej(new Error(`Maps error: ${status}`))));
+                  const homeOfficeEl = dm.rows[0]?.elements[0];
+                  if (homeOfficeEl?.status === 'OK')
+                    updateLeg(jobId, 'homeToOffice', Math.ceil((homeOfficeEl.duration_in_traffic?.value || homeOfficeEl.duration.value) / 60));
                 } else if (venueStr) {
-                  // No location access — only calculate office → venue
+                  // No location — only calculate office → venue
                   const dm = await new Promise((res, rej) =>
                     svc.getDistanceMatrix({
                       origins: [officeAddress], destinations: [venueStr],
