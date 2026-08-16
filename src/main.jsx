@@ -7720,24 +7720,67 @@ Notes: ${j.notes || 'none'}`;
                         </div>
                       )}
                       <div className="overflow-y-auto px-4 py-2 space-y-1" style={{maxHeight:'45vh'}}>
-                        {_withTime.map((item, idx) => {
-                          const isCur = _curMins >= 0 && item.computedMins === _curMins;
-                          const isPst = !isCur && _curMins >= 0 && item.computedMins < _curMins;
-                          const isNxt = !isCur && !isPst && item.computedMins === _nextMins;
-                          return (
-                            <div key={idx} className={`rounded-xl flex items-center gap-3 ${isCur ? 'p-3' : 'p-2'}`}
-                              style={{background: isCur ? 'rgba(255,255,255,0.12)' : isPst ? 'rgba(255,255,255,0.03)' : isNxt ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.05)',
-                                      border: isCur ? `2px solid ${item.color||'var(--gold)'}` : isNxt ? '1px solid rgba(96,165,250,0.3)' : 'none',
-                                      opacity: isPst ? 0.45 : 1}}>
-                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}/>
-                              <div className="flex-1 min-w-0">
-                                <p className={`font-bold ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
-                                <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>{item.computedTime}{isCur ? <span style={{color:'#fb923c'}}> · NOW</span> : isNxt ? <span style={{color:'#93c5fd'}}> · NEXT</span> : ''}</p>
-                                {item.notes && <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.6)'}}>{item.notes}</p>}
+                        {(() => {
+                          // Group concurrent items (same groupId or same computedMins with groupId set)
+                          const slots = [];
+                          let i = 0;
+                          while (i < _withTime.length) {
+                            const item = _withTime[i];
+                            if (item.groupId) {
+                              const grp = [];
+                              while (i < _withTime.length && _withTime[i].groupId === item.groupId) { grp.push(_withTime[i]); i++; }
+                              slots.push({ concurrent: true, items: grp, computedMins: item.computedMins, computedTime: item.computedTime });
+                            } else {
+                              slots.push({ concurrent: false, items: [item], computedMins: item.computedMins, computedTime: item.computedTime });
+                              i++;
+                            }
+                          }
+                          return slots.map((slot, si) => {
+                            const isCur = _curMins >= 0 && slot.computedMins === _curMins;
+                            const isPst = !isCur && _curMins >= 0 && slot.computedMins < _curMins;
+                            const isNxt = !isCur && !isPst && slot.computedMins === _nextMins;
+                            if (!slot.concurrent) {
+                              const item = slot.items[0];
+                              return (
+                                <div key={si} className={`rounded-xl flex items-center gap-3 ${isCur ? 'p-3' : 'p-2'}`}
+                                  style={{background: isCur ? 'rgba(255,255,255,0.12)' : isPst ? 'rgba(255,255,255,0.03)' : isNxt ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.05)',
+                                          border: isCur ? `2px solid ${item.color||'var(--gold)'}` : isNxt ? '1px solid rgba(96,165,250,0.3)' : 'none',
+                                          opacity: isPst ? 0.45 : 1}}>
+                                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: item.color || '#888'}}/>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`font-bold ${isCur ? 'text-white text-sm' : 'text-xs'}`} style={{color: isPst ? 'rgba(255,255,255,0.5)' : 'white'}}>{item.name}</p>
+                                    <p className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>{item.computedTime}{isCur ? <span style={{color:'#fb923c'}}> · NOW</span> : isNxt ? <span style={{color:'#93c5fd'}}> · NEXT</span> : ''}</p>
+                                    {item.notes && <p className="text-xs mt-0.5" style={{color:'rgba(255,255,255,0.6)'}}>{item.notes}</p>}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            // Concurrent group — one outer box, indented sub-items
+                            return (
+                              <div key={si} className="rounded-xl overflow-hidden"
+                                style={{background: isCur ? 'rgba(255,255,255,0.12)' : isPst ? 'rgba(255,255,255,0.03)' : isNxt ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.05)',
+                                        border: isCur ? `2px solid rgba(255,255,255,0.3)` : isNxt ? '1px solid rgba(96,165,250,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                                        opacity: isPst ? 0.45 : 1}}>
+                                <div className="px-3 pt-2 pb-1 flex items-center gap-2">
+                                  <span className="text-xs font-bold" style={{color:'rgba(255,255,255,0.5)'}}>{slot.computedTime}</span>
+                                  <span className="text-xs" style={{color:'rgba(255,255,255,0.3)'}}>· concurrent</span>
+                                  {isCur && <span className="text-xs font-bold" style={{color:'#fb923c'}}>NOW</span>}
+                                  {isNxt && <span className="text-xs font-bold" style={{color:'#93c5fd'}}>NEXT</span>}
+                                </div>
+                                <div className="px-3 pb-2 space-y-1.5">
+                                  {slot.items.map((item, ii) => (
+                                    <div key={ii} className="flex items-start gap-2 pl-2 border-l-2" style={{borderColor: item.color || '#888'}}>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-white">{item.name}</p>
+                                        {item.notes && <p className="text-xs" style={{color:'rgba(255,255,255,0.55)'}}>{item.notes}</p>}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          });
+                        })()}
                       </div>
                       <div className="flex gap-2 px-4 py-3" style={{borderTop:'1px solid rgba(255,255,255,0.08)'}}>
                         <button onClick={() => openLiveLogModal(todayJob)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-blue-500">📝 Log Shoot</button>
