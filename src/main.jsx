@@ -14532,6 +14532,13 @@ www.eyeconmoments.co.uk`,
                       const body = _bodies[Math.min(_fn2, 3)];
                       openMail(`mailto:${encodeURIComponent(followUpInquiry.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
                       logActivity(`Follow-up #${_fn2} email sent`, followUpInquiry.customerName, 'Email');
+                      const _ordinal = _fn2 === 1 ? '1st' : _fn2 === 2 ? '2nd' : '3rd';
+                      const _stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                      const _noteEntry = `[${_ordinal} follow-up sent — ${_stamp}]`;
+                      const _prevNotes = followUpInquiry.notes || '';
+                      const _newNotes = [_prevNotes, _noteEntry].filter(Boolean).join('\n');
+                      db.from('inquiries').update({ notes: _newNotes }).eq('id', followUpInquiry.id);
+                      setInquiries(prev => prev.map(i => i.id === followUpInquiry.id ? { ...i, notes: _newNotes } : i));
                     }}
                     className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600"
                   >
