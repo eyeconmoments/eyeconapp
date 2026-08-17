@@ -1147,6 +1147,7 @@ function EyeconMoments() {
   const [gmailScanResults, setGmailScanResults] = useState([]);
   const [gmailScanning, setGmailScanning] = useState(false);
   const [gmailSaveEmail, setGmailSaveEmail] = useState({});
+  const [gmailExpandedBody, setGmailExpandedBody] = useState({});
   const DEPOSIT_IMPORTS = [
     { customer: 'Rania', event: 'Nikkah', amount: '475.00', date: '2026-07-28', paid: true, note: 'Deposit' },
     { customer: 'Sadiyah', event: 'Wedding', amount: '412.15', date: '2026-07-24', paid: true, note: 'Deposit' },
@@ -3132,35 +3133,45 @@ function EyeconMoments() {
           if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
           const tok = response.access_token;
           try {
-            const q = encodeURIComponent('(subject:(payment received) OR subject:(you\'ve received) OR subject:(money received) OR "deposit received" OR "payment of £" OR "paid you" OR "bank transfer") newer_than:120d');
-            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=40`, { headers: { Authorization: `Bearer ${tok}` } });
+            // Broad search — code filters by £ amount; broader query catches more payment types
+            const q = encodeURIComponent('(payment OR deposit OR received OR transfer OR paid) newer_than:120d');
+            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=50`, { headers: { Authorization: `Bearer ${tok}` } });
             const listData = await listRes.json();
-            if (listData.error) throw new Error(listData.error.message);
+            if (listData.error) throw new Error(`Gmail API error ${listData.error.code}: ${listData.error.message}.\n\nMake sure the Gmail API is enabled in your Google Cloud Console project.`);
             const messages = listData.messages || [];
+            // Helper: recursively decode email body parts
+            const getBodyText = (payload) => {
+              if (!payload) return '';
+              if (payload.body?.data) { try { return atob(payload.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } }
+              for (const p of (payload.parts || [])) { if (p.mimeType === 'text/plain' && p.body?.data) { try { return atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } } }
+              for (const p of (payload.parts || [])) { const t = getBodyText(p); if (t) return t; }
+              return '';
+            };
             const results = [];
-            for (const msg of messages.slice(0, 40)) {
-              const msgRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Subject`, { headers: { Authorization: `Bearer ${tok}` } });
+            for (const msg of messages.slice(0, 50)) {
+              const msgRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } });
               const msgData = await msgRes.json();
-              const headers = msgData.payload?.headers || [];
-              const from    = headers.find(h => h.name === 'From')?.value || '';
-              const dateStr = headers.find(h => h.name === 'Date')?.value || '';
-              const subject = headers.find(h => h.name === 'Subject')?.value || '';
+              const hdrs    = msgData.payload?.headers || [];
+              const from    = hdrs.find(h => h.name === 'From')?.value || '';
+              const dateStr = hdrs.find(h => h.name === 'Date')?.value || '';
+              const subject = hdrs.find(h => h.name === 'Subject')?.value || '';
               const snippet = msgData.snippet || '';
-              const combined = snippet + ' ' + subject;
-              // Must contain a £ amount to be a payment email
+              const body    = getBodyText(msgData.payload);
+              const combined = snippet + ' ' + subject + ' ' + body;
+              // Must contain a £ amount
               const amountMatch = combined.match(/£\s*([\d,]+\.?\d*)/);
               if (!amountMatch) continue;
               const amount = amountMatch[1].replace(/,/g, '');
-              if (parseFloat(amount) < 10) continue; // skip tiny amounts (e.g. £0.01 promo emails)
+              if (parseFloat(amount) < 10) continue;
               const emailMatch = from.match(/<([^>]+@[^>]+)>/) || from.match(/([^\s<]+@[^\s>]+)/);
               const senderEmail = emailMatch?.[1]?.trim() || '';
               const senderName  = from.replace(/<[^>]+>/, '').replace(/"/g, '').trim() || senderEmail;
               const parsedDate  = new Date(dateStr);
               const isoDate     = isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
-              results.push({ customer: senderName, email: senderEmail, amount, date: isoDate, paid: true, note: subject.slice(0, 60), snippet: snippet.slice(0, 140) });
+              results.push({ customer: senderName, email: senderEmail, amount, date: isoDate, paid: true, note: subject.slice(0, 80), snippet: snippet.slice(0, 160), body: body.replace(/\s+/g,' ').trim().slice(0, 800) });
             }
             setGmailScanResults(results);
-            // Auto-match to jobs by name
+            setGmailExpandedBody({});
             const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
             const init = {}, emailInit = {};
             results.forEach((imp, i) => {
@@ -3173,7 +3184,7 @@ function EyeconMoments() {
             setDepositImportMatches(init);
             setGmailSaveEmail(emailInit);
             setDepositImportOpen(true);
-          } catch(e) { console.error('Gmail scan error', e); alert('Error scanning Gmail: ' + e.message); }
+          } catch(e) { console.error('Gmail scan error', e); alert('Error scanning Gmail:\n\n' + e.message); }
           setGmailScanning(false);
         }
       });
@@ -13870,6 +13881,15 @@ The Eyecon Moments Team
                               </p>
                               {imp.email && <p className={`text-xs mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>✉ {imp.email}</p>}
                               {imp.snippet && <p className={`text-xs mt-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'} truncate`}>{imp.snippet}</p>}
+                              {imp.body && (
+                                <button onClick={() => setGmailExpandedBody(p => ({...p, [i]: !p[i]}))}
+                                  className={`text-xs mt-1 underline ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {gmailExpandedBody[i] ? '▲ Hide email' : '▼ Read email'}
+                                </button>
+                              )}
+                              {gmailExpandedBody[i] && imp.body && (
+                                <pre className={`text-xs mt-2 p-2 rounded whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border border-gray-200'}`}>{imp.body}</pre>
+                              )}
                             </div>
                             {alreadyDone && <span className="text-xs text-green-500 font-bold whitespace-nowrap shrink-0">✓ Done</span>}
                           </div>
