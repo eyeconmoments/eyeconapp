@@ -3101,18 +3101,34 @@ function EyeconMoments() {
     setIsDriveSignedIn(false);
   };
 
-  const scanGmailForDeposits = async () => {
+  const scanGmailForDeposits = () => {
+    // Google APIs must already be on the page — no await before requestAccessToken
+    // or mobile browsers block the popup silently
+    if (!window.google?.accounts?.oauth2) {
+      alert('Google services not loaded yet. Please connect Google Calendar first (use the Sync button), then try Scan Gmail.');
+      return;
+    }
     setGmailScanning(true);
+    // Safety reset — if the callback never fires (popup blocked without error_callback), reset after 45s
+    const scanTimeout = setTimeout(() => {
+      setGmailScanning(false);
+      alert('No response from Google. Your browser may have blocked the popup — please allow popups for this site and try again.');
+    }, 45000);
     try {
-      await window._loadGoogleAPIs();
       const client = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
         error_callback: (err) => {
+          clearTimeout(scanTimeout);
           setGmailScanning(false);
-          if (err.type !== 'popup_closed') alert('Google sign-in error: ' + err.type);
+          if (err.type === 'popup_failed_to_open') {
+            alert('Popup was blocked. Allow popups for this site in your browser settings, then try again.');
+          } else if (err.type !== 'popup_closed') {
+            alert('Google sign-in error: ' + err.type);
+          }
         },
         callback: async (response) => {
+          clearTimeout(scanTimeout);
           if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
           const tok = response.access_token;
           try {
@@ -3162,7 +3178,7 @@ function EyeconMoments() {
         }
       });
       client.requestAccessToken();
-    } catch(e) { console.error(e); setGmailScanning(false); alert('Could not load Google APIs.'); }
+    } catch(e) { clearTimeout(scanTimeout); console.error(e); setGmailScanning(false); alert('Error: ' + e.message); }
   };
 
   // ── Google Drive Upload ────────────────────────────────────────────────────
