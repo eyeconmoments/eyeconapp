@@ -156,6 +156,7 @@ function ClientPortalView({ token, readOnly }) {
   const [wizardStep, setWizardStep] = React.useState(null); // null | 'name' | 'duration'
   const [wizardMoment, setWizardMoment] = React.useState('');
   const [wizardInsertIdx, setWizardInsertIdx] = React.useState(null);
+  const [expandedItems, setExpandedItems] = React.useState({});
 
   // Load job once
   React.useEffect(() => {
@@ -272,11 +273,12 @@ function ClientPortalView({ token, readOnly }) {
       (itin.scheduleItems || []).forEach(it => {
         times.push(cur);
         const [h, m] = cur.split(':').map(Number);
-        const tot = h * 60 + m + (it.duration || 2) * 15;
+        const tot = h * 60 + m + getItemMins(it);
         cur = `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`;
       });
       return times;
     })();
+    const toggleExpand = (idx) => setExpandedItems(prev => ({ ...prev, [idx]: !prev[idx] }));
     return (
       <div style={{minHeight:'100vh',background:navy,fontFamily:'system-ui,-apple-system,sans-serif'}}>
       <div style={{maxWidth:520,margin:'0 auto',padding:'24px 16px 48px'}}>
@@ -298,13 +300,31 @@ function ClientPortalView({ token, readOnly }) {
         )}
         {itin.scheduleItems?.length > 0 && (
           <div style={{background:'rgba(255,255,255,0.05)',borderRadius:16,overflow:'hidden',marginBottom:14}}>
-            {itin.scheduleItems.map((item, idx) => (
-              <div key={idx} style={{padding:'11px 20px',borderBottom:'1px solid rgba(255,255,255,0.04)',display:'flex',alignItems:'center',gap:14}}>
-                <span style={{color:gold,fontSize:12,fontFamily:'monospace',fontWeight:700,flexShrink:0,width:40}}>{roTimes[idx]}</span>
-                <span style={{color:'#f0f0f0',fontSize:14,flex:1}}>{item.name || item.label}</span>
-                {item.notes && <span style={{color:'rgba(255,255,255,0.35)',fontSize:12}}>{item.notes}</span>}
-              </div>
-            ))}
+            {itin.scheduleItems.map((item, idx) => {
+              const isOpen = !!expandedItems[idx];
+              const mins = getItemMins(item);
+              const hasDetails = item.notes || mins;
+              return (
+                <div key={idx} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                  <div
+                    onClick={() => hasDetails && toggleExpand(idx)}
+                    style={{padding:'12px 20px',display:'flex',alignItems:'center',gap:14,cursor:hasDetails?'pointer':'default',userSelect:'none'}}
+                  >
+                    <span style={{color:gold,fontSize:12,fontFamily:'monospace',fontWeight:700,flexShrink:0,width:40}}>{roTimes[idx]}</span>
+                    <span style={{color:'#f0f0f0',fontSize:14,flex:1}}>{item.name || item.label}</span>
+                    {hasDetails && (
+                      <span style={{color:'rgba(255,255,255,0.3)',fontSize:13,flexShrink:0,transition:'transform 0.2s',display:'inline-block',transform:isOpen?'rotate(90deg)':'rotate(0deg)'}}>›</span>
+                    )}
+                  </div>
+                  {isOpen && (
+                    <div style={{padding:'0 20px 14px 74px'}}>
+                      {mins && <div style={{color:'rgba(193,167,106,0.6)',fontSize:12,marginBottom:item.notes?6:0}}>⏱ {mins} min</div>}
+                      {item.notes && <div style={{color:'rgba(255,255,255,0.55)',fontSize:13,lineHeight:1.5,whiteSpace:'pre-wrap'}}>{item.notes}</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         {itin.notes ? (
@@ -10497,26 +10517,23 @@ Notes: ${j.notes || 'none'}`;
       const inquiry = inquiries.find(i => i.name === job.customerName || job.jobName.includes(i.name));
       const clientEmail = inquiry?.email || '';
       
-      const subject = `Your Event Itinerary - ${job.jobName} | Eyecon Moments`;
+      const subject = `Your Itinerary is Ready! – ${job.jobName} | Eyecon Moments`;
+      const firstName = (job.customerName || '').split(' ')[0] || 'there';
 
       const body =
-`Dear ${job.customerName},
+`Hi ${firstName}!
 
-Thank you for choosing Eyecon Moments to cover your upcoming event. Please find attached the detailed itinerary for ${formattedDate}.
+We are SO excited to be part of your big day and we just wanted to say — it's going to be absolutely amazing. We've put together your personalised itinerary (attached) so every moment of ${formattedDate} flows beautifully from start to finish.
 
-We have carefully planned each moment to ensure we capture all the special parts of your day. Please review the schedule and let us know if there are any changes or additions you would like to make.
+Have a read through when you get a chance. If anything needs tweaking — timings, the running order, any special moments you want to make sure we don't miss — just let us know and we'll get it sorted for you.
 
-EVENT DETAILS:
-• Event: ${job.jobName}
-• Date: ${formattedDate}
-• Coverage: ${itinerary.startTime} - ${itinerary.endTime}
-${job.notes ? `• Venue: ${job.notes.split('.')[0]}` : ''}
+Event: ${job.jobName}
+Date: ${formattedDate}
+Coverage: ${itinerary.startTime} – ${itinerary.endTime}
 
-If you have any questions or need to make any adjustments, please don't hesitate to contact us. We're here to ensure everything runs smoothly on your big day.
+We genuinely cannot wait to be there with you. Let's make it one to remember!
 
-We are truly looking forward to capturing your special moments!
-
-Warm regards,
+Lots of love,
 
 The Eyecon Moments Team
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -10525,11 +10542,10 @@ The Eyecon Moments Team
 🌐 ${COMPANY.website}
 📸 ${COMPANY.instagram}
 ━━━━━━━━━━━━━━━━━━━━━━
-Capturing Your Special Day
 `;
 
       // Open Gmail compose with pre-filled content
-      const gmailUrl = `mailto:${clientEmail}?subject=${subject}&body=${body}`;
+      const gmailUrl = `mailto:${clientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       openMail(gmailUrl);
       
       // Also generate the PDF so user can attach it
