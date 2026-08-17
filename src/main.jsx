@@ -3135,31 +3135,6 @@ function EyeconMoments() {
           if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
           const tok = response.access_token;
           try {
-            // Load saved state from localStorage
-            const SEEN_KEY = 'eyecon_gmail_seen_ids';
-            const DATE_KEY = 'eyecon_gmail_last_scan';
-            const seenIds  = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'));
-            const lastScan = localStorage.getItem(DATE_KEY); // ISO date string or null
-            // First scan ever → last 120 days. Subsequent → only since last scan date
-            const daysAgo  = lastScan
-              ? Math.ceil((Date.now() - new Date(lastScan).getTime()) / 86400000) + 1
-              : 120;
-            const isFirstScan = !lastScan;
-            setGmailScanStatus(isFirstScan ? 'First scan — checking last 120 days…' : `Checking emails since last scan…`);
-            const q = encodeURIComponent(`(payment OR deposit OR received OR transfer OR paid) newer_than:${daysAgo}d`);
-            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=50`, { headers: { Authorization: `Bearer ${tok}` } });
-            const listData = await listRes.json();
-            if (listData.error) throw new Error(`Gmail API error ${listData.error.code}: ${listData.error.message}.\n\nMake sure the Gmail API is enabled in Google Cloud Console (APIs & Services → Library → Gmail API → Enable).`);
-            const allMessages = listData.messages || [];
-            // Skip messages we've already processed
-            const newMessages = allMessages.filter(m => !seenIds.has(m.id));
-            if (newMessages.length === 0) {
-              setGmailScanResults([]);
-              setDepositImportOpen(true);
-              localStorage.setItem(DATE_KEY, new Date().toISOString());
-              return;
-            }
-            setGmailScanStatus(`${newMessages.length} new email${newMessages.length !== 1 ? 's' : ''} to check…`);
             // Helper: decode base64url body, strip HTML
             const getBodyText = (payload) => {
               if (!payload) return '';
@@ -3171,50 +3146,61 @@ function EyeconMoments() {
               for (const p of (payload.parts || [])) { const t = getBodyText(p); if (t) return t; }
               return '';
             };
-            // Fetch new messages in parallel
-            const msgDatas = await Promise.all(
-              newMessages.slice(0, 50).map(msg =>
-                fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.json())
-              )
-            );
-            setGmailScanStatus('Processing…');
-            const results = [];
-            const nowSeenIds = [];
-            for (const msgData of msgDatas) {
-              if (msgData.id) nowSeenIds.push(msgData.id);
-              const hdrs    = msgData.payload?.headers || [];
-              const from    = hdrs.find(h => h.name === 'From')?.value || '';
-              const dateStr = hdrs.find(h => h.name === 'Date')?.value || '';
-              const subject = hdrs.find(h => h.name === 'Subject')?.value || '';
-              const snippet = msgData.snippet || '';
-              const body    = getBodyText(msgData.payload);
-              const combined = snippet + ' ' + subject + ' ' + body;
-              const amountMatch = combined.match(/£\s*([\d,]+\.?\d*)/);
-              if (!amountMatch) continue;
-              const amount = amountMatch[1].replace(/,/g, '');
-              if (parseFloat(amount) < 10) continue;
-              const emailMatch = from.match(/<([^>]+@[^>]+)>/) || from.match(/([^\s<]+@[^\s>]+)/);
-              const senderEmail = emailMatch?.[1]?.trim() || '';
-              const senderName  = from.replace(/<[^>]+>/, '').replace(/"/g, '').trim() || senderEmail;
-              const parsedDate  = new Date(dateStr);
-              const isoDate     = isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
-              results.push({ customer: senderName, email: senderEmail, amount, date: isoDate, paid: true, note: subject.slice(0, 80), snippet: snippet.slice(0, 160), body: body.replace(/\s+/g,' ').trim().slice(0, 800) });
+            // Find jobs that have no deposit yet and have a known client email
+            const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+            const jobsNeedingDeposit = allJ.filter(j => !(j.wageEntries || []).some(e => e.type === 'deposit'));
+            const jobsWithEmail = jobsNeedingDeposit.map(j => {
+              const inq = inquiries.find(i => (i.customerName || '').toLowerCase() === (j.customerName || '').toLowerCase());
+              return inq?.email ? { job: j, email: inq.email } : null;
+            }).filter(Boolean);
+            if (jobsWithEmail.length === 0) {
+              alert('No jobs are missing a deposit, or none of your clients have an email address saved in CRM.\n\nAdd client emails via the CRM tab first.');
+              setGmailScanning(false); setGmailScanStatus(''); return;
             }
-            // Save seen IDs and scan date to localStorage
-            const updatedSeen = [...seenIds, ...nowSeenIds].slice(-500); // keep last 500 max
-            localStorage.setItem(SEEN_KEY, JSON.stringify(updatedSeen));
-            localStorage.setItem(DATE_KEY, new Date().toISOString());
+            setGmailScanStatus(`Checking ${jobsWithEmail.length} client${jobsWithEmail.length !== 1 ? 's' : ''}…`);
+            // For each client, search Gmail from:their-email — tiny targeted search
+            const gmailSearch = async (email) => {
+              const q = encodeURIComponent(`from:${email} newer_than:180d`);
+              const r = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=10`, { headers: { Authorization: `Bearer ${tok}` } });
+              const d = await r.json();
+              if (d.error) throw new Error(`Gmail API error ${d.error.code}: ${d.error.message}.\n\nEnsure Gmail API is enabled in Google Cloud Console.`);
+              return d.messages || [];
+            };
+            const results = [];
+            for (let ci = 0; ci < jobsWithEmail.length; ci++) {
+              const { job, email } = jobsWithEmail[ci];
+              setGmailScanStatus(`Checking ${ci + 1}/${jobsWithEmail.length}: ${job.customerName}…`);
+              const msgs = await gmailSearch(email);
+              if (!msgs.length) continue;
+              // Fetch those messages in parallel
+              const msgDatas = await Promise.all(
+                msgs.map(m => fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.json()))
+              );
+              // Find the email with the highest £ amount (most likely the deposit)
+              let best = null;
+              for (const msgData of msgDatas) {
+                const hdrs    = msgData.payload?.headers || [];
+                const dateStr = hdrs.find(h => h.name === 'Date')?.value || '';
+                const subject = hdrs.find(h => h.name === 'Subject')?.value || '';
+                const snippet = msgData.snippet || '';
+                const body    = getBodyText(msgData.payload);
+                const combined = snippet + ' ' + subject + ' ' + body;
+                const allAmounts = [...combined.matchAll(/£\s*([\d,]+\.?\d*)/g)].map(m => parseFloat(m[1].replace(/,/g,'')));
+                const amount = allAmounts.length ? Math.max(...allAmounts) : 0;
+                if (amount < 10) continue;
+                const parsedDate = new Date(dateStr);
+                const isoDate = isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
+                if (!best || amount > best.amount) {
+                  best = { amount: amount.toFixed(2), date: isoDate, subject: subject.slice(0, 80), snippet: snippet.slice(0, 160), body: body.replace(/\s+/g,' ').trim().slice(0, 800) };
+                }
+              }
+              if (best) results.push({ jobId: job.id, customer: job.customerName, email, ...best, paid: true });
+            }
             setGmailScanResults(results);
             setGmailExpandedBody({});
-            const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+            // Results are pre-matched to jobs — no dropdown needed
             const init = {}, emailInit = {};
-            results.forEach((imp, i) => {
-              const needle = imp.customer.toLowerCase();
-              const parts  = needle.split(/\s+/).filter(p => p.length > 2);
-              const match  = allJ.find(j => { const cn = (j.customerName || '').toLowerCase(); return cn.includes(needle) || parts.some(p => cn.includes(p)); });
-              init[i]      = match?.id || '';
-              emailInit[i] = !!imp.email;
-            });
+            results.forEach((r, i) => { init[i] = r.jobId; emailInit[i] = false; });
             setDepositImportMatches(init);
             setGmailSaveEmail(emailInit);
             setDepositImportOpen(true);
@@ -11052,7 +11038,7 @@ The Eyecon Moments Team
                     })?.id || '';
                   };
                   scanGmailForDeposits();
-                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : (() => { const d = localStorage.getItem('eyecon_gmail_last_scan'); return d ? `📥 Scan Gmail · last ${new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : '📥 Scan Gmail'; })()}</button>
+                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
               </div>
@@ -13907,15 +13893,15 @@ The Eyecon Moments Team
                       const saveThisEmail = gmailSaveEmail[i] ?? !!imp.email;
                       return (
                         <div key={i} className={`p-3 rounded-lg border ${alreadyDone ? 'opacity-50' : ''} ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <div className="min-w-0">
-                              <p className={`text-sm font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{imp.customer}</p>
-                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                <span className="font-semibold text-green-500">£{imp.amount}</span>
-                                {' · '}{new Date(imp.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}
-                              </p>
-                              {imp.email && <p className={`text-xs mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>✉ {imp.email}</p>}
-                              {imp.snippet && <p className={`text-xs mt-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'} truncate`}>{imp.snippet}</p>}
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{imp.customer}</p>
+                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-1`}>✉ {imp.email}</p>
+                              <div className="flex items-center gap-3">
+                                <span className="text-base font-bold text-green-500">£{imp.amount}</span>
+                                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(imp.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</span>
+                              </div>
+                              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} truncate`}>{imp.subject}</p>
                               {imp.body && (
                                 <button onClick={() => setGmailExpandedBody(p => ({...p, [i]: !p[i]}))}
                                   className={`text-xs mt-1 underline ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -13928,25 +13914,10 @@ The Eyecon Moments Team
                             </div>
                             {alreadyDone && <span className="text-xs text-green-500 font-bold whitespace-nowrap shrink-0">✓ Done</span>}
                           </div>
-                          <select
-                            value={selectedJobId}
-                            onChange={e => setDepositImportMatches(prev => ({...prev, [i]: e.target.value}))}
-                            disabled={alreadyDone}
-                            className={`w-full px-2 py-1.5 rounded border text-xs mb-1.5 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`}
-                          >
-                            <option value="">— Skip / no match —</option>
-                            {allJ.map(j => (
-                              <option key={j.id} value={j.id}>{j.customerName ? `${j.customerName} · ` : ''}{j.jobName}{j.shootDate ? ` (${new Date(j.shootDate + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})})` : ''}</option>
-                            ))}
-                          </select>
-                          {imp.email && selectedJobId && !alreadyDone && (
-                            <label className={`flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                              <input type="checkbox" checked={saveThisEmail}
-                                onChange={e => setGmailSaveEmail(prev => ({...prev, [i]: e.target.checked}))}
-                                className="rounded" />
-                              Save their email ({imp.email}) to this job
-                            </label>
-                          )}
+                          {/* Job is pre-matched — show as a fixed label, not a dropdown */}
+                          <div className={`text-xs px-2 py-1.5 rounded mb-1.5 ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                            📋 {selectedJob?.jobName || 'Job'}{selectedJob?.shootDate ? ` · ${new Date(selectedJob.shootDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : ''}
+                          </div>
                         </div>
                       );
                     })}
@@ -13964,16 +13935,8 @@ The Eyecon Moments Team
                       const job = allJ.find(j => j.id === jobId);
                       if (!job) continue;
                       if ((job.wageEntries || []).some(e => e.type === 'deposit')) continue;
-                      await saveDeposit(jobId, imp.amount, imp.date, imp.paid);
+                      await saveDeposit(jobId, imp.amount, imp.date, true);
                       logActivity('Deposit imported', job.jobName || '', `£${imp.amount} from ${imp.customer}`);
-                      // Save email to linked inquiry if ticked
-                      if (gmailSaveEmail[i] && imp.email) {
-                        const inq = inquiries.find(q => (q.customerName || '').toLowerCase() === (job.customerName || '').toLowerCase());
-                        if (inq && !inq.email) {
-                          await db.from('inquiries').update({ email: imp.email }).eq('id', inq.id);
-                          setInquiries(prev => prev.map(q => q.id === inq.id ? { ...q, email: imp.email } : q));
-                        }
-                      }
                       saved++;
                     }
                     alert(`✅ ${saved} deposit${saved !== 1 ? 's' : ''} imported.`);
