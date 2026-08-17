@@ -3135,15 +3135,32 @@ function EyeconMoments() {
           if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
           const tok = response.access_token;
           try {
-            // Step 1: search inbox
-            setGmailScanStatus('Searching inbox…');
-            const q = encodeURIComponent('(payment OR deposit OR received OR transfer OR paid) newer_than:120d');
-            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=30`, { headers: { Authorization: `Bearer ${tok}` } });
+            // Load saved state from localStorage
+            const SEEN_KEY = 'eyecon_gmail_seen_ids';
+            const DATE_KEY = 'eyecon_gmail_last_scan';
+            const seenIds  = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'));
+            const lastScan = localStorage.getItem(DATE_KEY); // ISO date string or null
+            // First scan ever → last 120 days. Subsequent → only since last scan date
+            const daysAgo  = lastScan
+              ? Math.ceil((Date.now() - new Date(lastScan).getTime()) / 86400000) + 1
+              : 120;
+            const isFirstScan = !lastScan;
+            setGmailScanStatus(isFirstScan ? 'First scan — checking last 120 days…' : `Checking emails since last scan…`);
+            const q = encodeURIComponent(`(payment OR deposit OR received OR transfer OR paid) newer_than:${daysAgo}d`);
+            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=50`, { headers: { Authorization: `Bearer ${tok}` } });
             const listData = await listRes.json();
             if (listData.error) throw new Error(`Gmail API error ${listData.error.code}: ${listData.error.message}.\n\nMake sure the Gmail API is enabled in Google Cloud Console (APIs & Services → Library → Gmail API → Enable).`);
-            const messages = listData.messages || [];
-            setGmailScanStatus(`Found ${messages.length} emails — reading…`);
-            // Helper: decode base64url email body, strip HTML tags & entities
+            const allMessages = listData.messages || [];
+            // Skip messages we've already processed
+            const newMessages = allMessages.filter(m => !seenIds.has(m.id));
+            if (newMessages.length === 0) {
+              setGmailScanResults([]);
+              setDepositImportOpen(true);
+              localStorage.setItem(DATE_KEY, new Date().toISOString());
+              return;
+            }
+            setGmailScanStatus(`${newMessages.length} new email${newMessages.length !== 1 ? 's' : ''} to check…`);
+            // Helper: decode base64url body, strip HTML
             const getBodyText = (payload) => {
               if (!payload) return '';
               const decode = (data) => { try { return atob(data.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } };
@@ -3154,15 +3171,17 @@ function EyeconMoments() {
               for (const p of (payload.parts || [])) { const t = getBodyText(p); if (t) return t; }
               return '';
             };
-            // Step 2: fetch all messages in parallel (much faster than sequential)
+            // Fetch new messages in parallel
             const msgDatas = await Promise.all(
-              messages.slice(0, 30).map(msg =>
+              newMessages.slice(0, 50).map(msg =>
                 fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.json())
               )
             );
             setGmailScanStatus('Processing…');
             const results = [];
+            const nowSeenIds = [];
             for (const msgData of msgDatas) {
+              if (msgData.id) nowSeenIds.push(msgData.id);
               const hdrs    = msgData.payload?.headers || [];
               const from    = hdrs.find(h => h.name === 'From')?.value || '';
               const dateStr = hdrs.find(h => h.name === 'Date')?.value || '';
@@ -3181,6 +3200,10 @@ function EyeconMoments() {
               const isoDate     = isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
               results.push({ customer: senderName, email: senderEmail, amount, date: isoDate, paid: true, note: subject.slice(0, 80), snippet: snippet.slice(0, 160), body: body.replace(/\s+/g,' ').trim().slice(0, 800) });
             }
+            // Save seen IDs and scan date to localStorage
+            const updatedSeen = [...seenIds, ...nowSeenIds].slice(-500); // keep last 500 max
+            localStorage.setItem(SEEN_KEY, JSON.stringify(updatedSeen));
+            localStorage.setItem(DATE_KEY, new Date().toISOString());
             setGmailScanResults(results);
             setGmailExpandedBody({});
             const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
@@ -11029,7 +11052,7 @@ The Eyecon Moments Team
                     })?.id || '';
                   };
                   scanGmailForDeposits();
-                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
+                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : (() => { const d = localStorage.getItem('eyecon_gmail_last_scan'); return d ? `📥 Scan Gmail · last ${new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : '📥 Scan Gmail'; })()}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
               </div>
