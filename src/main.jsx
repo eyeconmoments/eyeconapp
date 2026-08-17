@@ -14966,13 +14966,22 @@ www.eyeconmoments.co.uk`;
                 {(inquiry.status === 'contacted' || inquiry.status === 'quoted' || inquiry.status === 'booked') && (
                   <button onClick={() => {
                     const snap = inquiry.quoteSnapshot || (() => { try { const s = localStorage.getItem(`quote_snap_${inquiry.id}`); return s ? JSON.parse(s) : null; } catch { return null; } })();
-                    setQuoteData(snap ? { ...snap } : {
+                    if (snap) { setQuoteData({ ...snap }); setCrmQuoteInquiry(inquiry); setShowCRMQuoteModal(true); return; }
+                    // Extract times + location from the auto-generated details text
+                    const _src = [inquiry.details, inquiry.notes].filter(Boolean).join(' ');
+                    const _tr = _src.match(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/);
+                    const _startTime = _tr ? _tr[1] : '10:00';
+                    const _endTime   = _tr ? _tr[2] : '22:00';
+                    const _locMatch  = _src.match(/@\s*([^@\n]+?)(?:\s+Quote|\s+Estimated|\s*$)/);
+                    const _location  = _locMatch ? _locMatch[1].trim() : '';
+                    const _dateISO   = inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '';
+                    setQuoteData({
                       clientName: inquiry.customerName,
                       clientEmail: inquiry.email || '',
                       clientPhone: inquiry.phone || '',
                       eventType: inquiry.eventType || 'wedding',
                       numDays: 1,
-                      dates: [{ date: inquiry.eventDate ? new Date(inquiry.eventDate).toISOString().split('T')[0] : '', startTime: '10:00', endTime: '22:00', location: '', postcode: '', distance: 0, photo: true, video: true, numPhotographers: 1, videoType: 'dual' }],
+                      dates: [{ date: _dateISO, startTime: _startTime, endTime: _endTime, location: _location, postcode: '', distance: 0, photo: true, video: true, numPhotographers: 1, videoType: 'dual' }],
                       wantPhoto: true,
                       wantVideo: true,
                       numPhotographers: 1,
