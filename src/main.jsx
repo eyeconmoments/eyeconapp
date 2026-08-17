@@ -1146,6 +1146,7 @@ function EyeconMoments() {
   const [depositImportMatches, setDepositImportMatches] = useState({});
   const [gmailScanResults, setGmailScanResults] = useState([]);
   const [gmailScanning, setGmailScanning] = useState(false);
+  const [gmailScanStatus, setGmailScanStatus] = useState('');
   const [gmailSaveEmail, setGmailSaveEmail] = useState({});
   const [gmailExpandedBody, setGmailExpandedBody] = useState({});
   const DEPOSIT_IMPORTS = [
@@ -3110,11 +3111,12 @@ function EyeconMoments() {
       return;
     }
     setGmailScanning(true);
-    // Safety reset — if the callback never fires (popup blocked without error_callback), reset after 45s
+    // Safety reset — if the callback never fires (popup blocked without error_callback), reset after 90s
     const scanTimeout = setTimeout(() => {
       setGmailScanning(false);
-      alert('No response from Google. Your browser may have blocked the popup — please allow popups for this site and try again.');
-    }, 45000);
+      setGmailScanStatus('');
+      alert('Scan timed out. Your browser may have blocked the popup — please allow popups for this site and try again.');
+    }, 90000);
     try {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
@@ -3133,24 +3135,34 @@ function EyeconMoments() {
           if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
           const tok = response.access_token;
           try {
-            // Broad search — code filters by £ amount; broader query catches more payment types
+            // Step 1: search inbox
+            setGmailScanStatus('Searching inbox…');
             const q = encodeURIComponent('(payment OR deposit OR received OR transfer OR paid) newer_than:120d');
-            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=50`, { headers: { Authorization: `Bearer ${tok}` } });
+            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=30`, { headers: { Authorization: `Bearer ${tok}` } });
             const listData = await listRes.json();
-            if (listData.error) throw new Error(`Gmail API error ${listData.error.code}: ${listData.error.message}.\n\nMake sure the Gmail API is enabled in your Google Cloud Console project.`);
+            if (listData.error) throw new Error(`Gmail API error ${listData.error.code}: ${listData.error.message}.\n\nMake sure the Gmail API is enabled in Google Cloud Console (APIs & Services → Library → Gmail API → Enable).`);
             const messages = listData.messages || [];
-            // Helper: recursively decode email body parts
+            setGmailScanStatus(`Found ${messages.length} emails — reading…`);
+            // Helper: decode base64url email body, strip HTML tags & entities
             const getBodyText = (payload) => {
               if (!payload) return '';
-              if (payload.body?.data) { try { return atob(payload.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } }
-              for (const p of (payload.parts || [])) { if (p.mimeType === 'text/plain' && p.body?.data) { try { return atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } } }
+              const decode = (data) => { try { return atob(data.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } };
+              const stripHtml = (s) => s.replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&pound;/g,'£').replace(/&#163;/g,'£').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
+              if (payload.body?.data) { const t = decode(payload.body.data); return payload.mimeType === 'text/html' ? stripHtml(t) : t; }
+              for (const p of (payload.parts || [])) { if (p.mimeType === 'text/plain' && p.body?.data) return decode(p.body.data); }
+              for (const p of (payload.parts || [])) { if (p.mimeType === 'text/html' && p.body?.data) return stripHtml(decode(p.body.data)); }
               for (const p of (payload.parts || [])) { const t = getBodyText(p); if (t) return t; }
               return '';
             };
+            // Step 2: fetch all messages in parallel (much faster than sequential)
+            const msgDatas = await Promise.all(
+              messages.slice(0, 30).map(msg =>
+                fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.json())
+              )
+            );
+            setGmailScanStatus('Processing…');
             const results = [];
-            for (const msg of messages.slice(0, 50)) {
-              const msgRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } });
-              const msgData = await msgRes.json();
+            for (const msgData of msgDatas) {
               const hdrs    = msgData.payload?.headers || [];
               const from    = hdrs.find(h => h.name === 'From')?.value || '';
               const dateStr = hdrs.find(h => h.name === 'Date')?.value || '';
@@ -3158,7 +3170,6 @@ function EyeconMoments() {
               const snippet = msgData.snippet || '';
               const body    = getBodyText(msgData.payload);
               const combined = snippet + ' ' + subject + ' ' + body;
-              // Must contain a £ amount
               const amountMatch = combined.match(/£\s*([\d,]+\.?\d*)/);
               if (!amountMatch) continue;
               const amount = amountMatch[1].replace(/,/g, '');
@@ -3186,10 +3197,11 @@ function EyeconMoments() {
             setDepositImportOpen(true);
           } catch(e) { console.error('Gmail scan error', e); alert('Error scanning Gmail:\n\n' + e.message); }
           setGmailScanning(false);
+          setGmailScanStatus('');
         }
       });
       client.requestAccessToken();
-    } catch(e) { clearTimeout(scanTimeout); console.error(e); setGmailScanning(false); alert('Error: ' + e.message); }
+    } catch(e) { clearTimeout(scanTimeout); console.error(e); setGmailScanning(false); setGmailScanStatus(''); alert('Error: ' + e.message); }
   };
 
   // ── Google Drive Upload ────────────────────────────────────────────────────
@@ -11017,7 +11029,7 @@ The Eyecon Moments Team
                     })?.id || '';
                   };
                   scanGmailForDeposits();
-                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? '⏳ Scanning…' : '📥 Scan Gmail'}</button>
+                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
               </div>
