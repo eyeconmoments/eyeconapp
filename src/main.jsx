@@ -1128,6 +1128,9 @@ function EyeconMoments() {
   const [depositFormDate, setDepositFormDate] = useState(() => new Date().toISOString().slice(0,10));
   const [depositImportOpen, setDepositImportOpen] = useState(false);
   const [depositImportMatches, setDepositImportMatches] = useState({});
+  const [gmailScanResults, setGmailScanResults] = useState([]);
+  const [gmailScanning, setGmailScanning] = useState(false);
+  const [gmailSaveEmail, setGmailSaveEmail] = useState({});
   const DEPOSIT_IMPORTS = [
     { customer: 'Rania', event: 'Nikkah', amount: '475.00', date: '2026-07-28', paid: true, note: 'Deposit' },
     { customer: 'Sadiyah', event: 'Wedding', amount: '412.15', date: '2026-07-24', paid: true, note: 'Deposit' },
@@ -3080,6 +3083,64 @@ function EyeconMoments() {
     window.gapi.client.setToken(null);
     setIsGoogleSignedIn(false);
     setIsDriveSignedIn(false);
+  };
+
+  const scanGmailForDeposits = async () => {
+    setGmailScanning(true);
+    try {
+      await window._loadGoogleAPIs();
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        callback: async (response) => {
+          if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
+          const tok = response.access_token;
+          try {
+            const q = encodeURIComponent('(subject:(payment received) OR subject:(you\'ve received) OR subject:(money received) OR "deposit" OR "payment of £" OR "paid you") newer_than:120d');
+            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=30`, { headers: { Authorization: `Bearer ${tok}` } });
+            const listData = await listRes.json();
+            const messages = listData.messages || [];
+            const results = [];
+            for (const msg of messages.slice(0, 30)) {
+              const msgRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Subject`, { headers: { Authorization: `Bearer ${tok}` } });
+              const msgData = await msgRes.json();
+              const headers = msgData.payload?.headers || [];
+              const from    = headers.find(h => h.name === 'From')?.value || '';
+              const dateStr = headers.find(h => h.name === 'Date')?.value || '';
+              const subject = headers.find(h => h.name === 'Subject')?.value || '';
+              const snippet = msgData.snippet || '';
+              const combined = snippet + ' ' + subject;
+              // Must contain a £ amount
+              const amountMatch = combined.match(/£\s*([\d,]+\.?\d*)/);
+              if (!amountMatch) continue;
+              const amount = amountMatch[1].replace(/,/g, '');
+              const emailMatch = from.match(/<([^>]+@[^>]+)>/) || from.match(/([^\s<]+@[^\s>]+)/);
+              const senderEmail = emailMatch?.[1]?.trim() || '';
+              const senderName  = from.replace(/<[^>]+>/, '').replace(/"/g, '').trim() || senderEmail;
+              const parsedDate  = new Date(dateStr);
+              const isoDate     = isNaN(parsedDate) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
+              results.push({ customer: senderName, email: senderEmail, amount, date: isoDate, paid: true, note: subject.slice(0, 60), snippet: snippet.slice(0, 140) });
+            }
+            setGmailScanResults(results);
+            // Auto-match to jobs by name
+            const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+            const init = {}, emailInit = {};
+            results.forEach((imp, i) => {
+              const needle = imp.customer.toLowerCase();
+              const parts  = needle.split(/\s+/).filter(p => p.length > 2);
+              const match  = allJ.find(j => { const cn = (j.customerName || '').toLowerCase(); return cn.includes(needle) || parts.some(p => cn.includes(p)); });
+              init[i]      = match?.id || '';
+              emailInit[i] = !!imp.email; // default tick "save email" if we found one
+            });
+            setDepositImportMatches(init);
+            setGmailSaveEmail(emailInit);
+            setDepositImportOpen(true);
+          } catch(e) { console.error('Gmail scan error', e); alert('Error scanning Gmail: ' + e.message); }
+          setGmailScanning(false);
+        }
+      });
+      client.requestAccessToken({ prompt: '' });
+    } catch(e) { console.error(e); setGmailScanning(false); alert('Could not load Google APIs.'); }
   };
 
   // ── Google Drive Upload ────────────────────────────────────────────────────
@@ -10906,11 +10967,8 @@ The Eyecon Moments Team
                       return cn.includes(needle) || parts.some(p => cn.includes(p));
                     })?.id || '';
                   };
-                  const init = {};
-                  DEPOSIT_IMPORTS.forEach((imp, i) => { init[i] = autoMatch(imp); });
-                  setDepositImportMatches(init);
-                  setDepositImportOpen(true);
-                }} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold">📥 Import Deposits</button>
+                  scanGmailForDeposits();
+                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? '⏳ Scanning…' : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
               </div>
@@ -13745,47 +13803,69 @@ The Eyecon Moments Team
         {/* Deposit modal is now in helpModalJSX (global) */}
 
         {depositImportOpen && (() => {
-          const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+          const allJ   = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+          const source = gmailScanResults;
           return (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
-                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📥 Import Deposits from Gmail</h2>
-                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Match each payment to a job. Jobs already with a deposit are marked done.</p>
-                <div className="space-y-3">
-                  {DEPOSIT_IMPORTS.map((imp, i) => {
-                    const selectedJobId = depositImportMatches[i] ?? '';
-                    const selectedJob = selectedJobId ? allJ.find(j => j.id === selectedJobId) : null;
-                    const alreadyDone = selectedJob && (selectedJob.wageEntries || []).some(e => e.type === 'deposit');
-                    return (
-                      <div key={i} className={`p-3 rounded-lg border ${alreadyDone ? 'opacity-50' : ''} ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                          <div>
-                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{imp.customer} – {imp.event}</p>
-                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£{imp.amount} · {new Date(imp.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})} · {imp.note}</p>
+                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📥 Gmail Deposits</h2>
+                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {source.length} payment email{source.length !== 1 ? 's' : ''} found · Match each to a job, then Import.
+                </p>
+                {source.length === 0 ? (
+                  <p className={`text-sm text-center py-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No payment emails found in the last 120 days.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {source.map((imp, i) => {
+                      const selectedJobId = depositImportMatches[i] ?? '';
+                      const selectedJob   = selectedJobId ? allJ.find(j => j.id === selectedJobId) : null;
+                      const alreadyDone   = selectedJob && (selectedJob.wageEntries || []).some(e => e.type === 'deposit');
+                      const saveThisEmail = gmailSaveEmail[i] ?? !!imp.email;
+                      return (
+                        <div key={i} className={`p-3 rounded-lg border ${alreadyDone ? 'opacity-50' : ''} ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{imp.customer}</p>
+                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <span className="font-semibold text-green-500">£{imp.amount}</span>
+                                {' · '}{new Date(imp.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}
+                              </p>
+                              {imp.email && <p className={`text-xs mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>✉ {imp.email}</p>}
+                              {imp.snippet && <p className={`text-xs mt-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'} truncate`}>{imp.snippet}</p>}
+                            </div>
+                            {alreadyDone && <span className="text-xs text-green-500 font-bold whitespace-nowrap shrink-0">✓ Done</span>}
                           </div>
-                          {alreadyDone && <span className="text-xs text-green-500 font-bold whitespace-nowrap">✓ Already done</span>}
+                          <select
+                            value={selectedJobId}
+                            onChange={e => setDepositImportMatches(prev => ({...prev, [i]: e.target.value}))}
+                            disabled={alreadyDone}
+                            className={`w-full px-2 py-1.5 rounded border text-xs mb-1.5 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`}
+                          >
+                            <option value="">— Skip / no match —</option>
+                            {allJ.map(j => (
+                              <option key={j.id} value={j.id}>{j.customerName ? `${j.customerName} · ` : ''}{j.jobName}{j.shootDate ? ` (${new Date(j.shootDate + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})})` : ''}</option>
+                            ))}
+                          </select>
+                          {imp.email && selectedJobId && !alreadyDone && (
+                            <label className={`flex items-center gap-2 text-xs cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                              <input type="checkbox" checked={saveThisEmail}
+                                onChange={e => setGmailSaveEmail(prev => ({...prev, [i]: e.target.checked}))}
+                                className="rounded" />
+                              Save their email ({imp.email}) to this job
+                            </label>
+                          )}
                         </div>
-                        <select
-                          value={selectedJobId}
-                          onChange={e => setDepositImportMatches(prev => ({...prev, [i]: e.target.value}))}
-                          disabled={alreadyDone}
-                          className={`w-full px-2 py-1.5 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`}
-                        >
-                          <option value="">— Skip / no match —</option>
-                          {allJ.map(j => (
-                            <option key={j.id} value={j.id}>{j.customerName ? `${j.customerName} · ` : ''}{j.jobName}{j.shootDate ? ` (${new Date(j.shootDate + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})})` : ''}</option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="flex gap-3 mt-5">
-                  <button onClick={() => setDepositImportOpen(false)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button onClick={() => { setDepositImportOpen(false); setGmailScanResults([]); setDepositImportMatches({}); setGmailSaveEmail({}); }}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
                   <button onClick={async () => {
                     let saved = 0;
-                    for (let i = 0; i < DEPOSIT_IMPORTS.length; i++) {
-                      const imp = DEPOSIT_IMPORTS[i];
+                    for (let i = 0; i < source.length; i++) {
+                      const imp   = source[i];
                       const jobId = depositImportMatches[i];
                       if (!jobId) continue;
                       const job = allJ.find(j => j.id === jobId);
@@ -13793,11 +13873,21 @@ The Eyecon Moments Team
                       if ((job.wageEntries || []).some(e => e.type === 'deposit')) continue;
                       await saveDeposit(jobId, imp.amount, imp.date, imp.paid);
                       logActivity('Deposit imported', job.jobName || '', `£${imp.amount} from ${imp.customer}`);
+                      // Save email to linked inquiry if ticked
+                      if (gmailSaveEmail[i] && imp.email) {
+                        const inq = inquiries.find(q => (q.customerName || '').toLowerCase() === (job.customerName || '').toLowerCase());
+                        if (inq && !inq.email) {
+                          await db.from('inquiries').update({ email: imp.email }).eq('id', inq.id);
+                          setInquiries(prev => prev.map(q => q.id === inq.id ? { ...q, email: imp.email } : q));
+                        }
+                      }
                       saved++;
                     }
                     alert(`✅ ${saved} deposit${saved !== 1 ? 's' : ''} imported.`);
                     setDepositImportOpen(false);
+                    setGmailScanResults([]);
                     setDepositImportMatches({});
+                    setGmailSaveEmail({});
                   }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Import Selected</button>
                 </div>
               </div>
