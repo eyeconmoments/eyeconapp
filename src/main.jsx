@@ -1149,6 +1149,7 @@ function EyeconMoments() {
   const [gmailScanStatus, setGmailScanStatus] = useState('');
   const [gmailSaveEmail, setGmailSaveEmail] = useState({});
   const [gmailExpandedBody, setGmailExpandedBody] = useState({});
+  const [gmailEmailPrompt, setGmailEmailPrompt] = useState(null); // [{jobId, jobName, email}]
   const DEPOSIT_IMPORTS = [
     { customer: 'Rania', event: 'Nikkah', amount: '475.00', date: '2026-07-28', paid: true, note: 'Deposit' },
     { customer: 'Sadiyah', event: 'Wedding', amount: '412.15', date: '2026-07-24', paid: true, note: 'Deposit' },
@@ -3103,9 +3104,8 @@ function EyeconMoments() {
     setIsDriveSignedIn(false);
   };
 
-  const scanGmailForDeposits = () => {
-    // Google APIs must already be on the page — no await before requestAccessToken
-    // or mobile browsers block the popup silently
+  const scanGmailForDeposits = (prefillEmails = {}) => {
+    // prefillEmails: {jobId: emailString} for jobs whose email wasn't in CRM yet
     if (!window.google?.accounts?.oauth2) {
       alert('Google services not loaded yet. Please connect Google Calendar first (use the Sync button), then try Scan Gmail.');
       return;
@@ -3146,15 +3146,27 @@ function EyeconMoments() {
               for (const p of (payload.parts || [])) { const t = getBodyText(p); if (t) return t; }
               return '';
             };
-            // Find jobs that have no deposit yet and have a known client email
+            // Save any prefill emails to CRM before scanning
+            for (const [jobId, email] of Object.entries(prefillEmails)) {
+              if (!email) continue;
+              const pJob = editingJobs.find(j => j.id === jobId);
+              if (!pJob) continue;
+              const pInq = inquiries.find(i => (i.customerName||'').toLowerCase() === (pJob.customerName||'').toLowerCase());
+              if (pInq && !pInq.email) {
+                await db.from('inquiries').update({ email }).eq('id', pInq.id);
+                setInquiries(prev => prev.map(q => q.id === pInq.id ? {...q, email} : q));
+              }
+            }
+            // Find jobs that have no deposit yet — use CRM email or prefill email
             const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
             const jobsNeedingDeposit = allJ.filter(j => !(j.wageEntries || []).some(e => e.type === 'deposit'));
             const jobsWithEmail = jobsNeedingDeposit.map(j => {
               const inq = inquiries.find(i => (i.customerName || '').toLowerCase() === (j.customerName || '').toLowerCase());
-              return inq?.email ? { job: j, email: inq.email } : null;
+              const email = inq?.email || prefillEmails[j.id] || '';
+              return email ? { job: j, email } : null;
             }).filter(Boolean);
             if (jobsWithEmail.length === 0) {
-              alert('No jobs are missing a deposit, or none of your clients have an email address saved in CRM.\n\nAdd client emails via the CRM tab first.');
+              alert('No jobs are missing a deposit, or none of your clients have an email address saved.\n\nTry scanning again and enter their email when prompted.');
               setGmailScanning(false); setGmailScanStatus(''); return;
             }
             setGmailScanStatus(`Checking ${jobsWithEmail.length} client${jobsWithEmail.length !== 1 ? 's' : ''}…`);
@@ -11037,7 +11049,15 @@ The Eyecon Moments Team
                       return cn.includes(needle) || parts.some(p => cn.includes(p));
                     })?.id || '';
                   };
-                  scanGmailForDeposits();
+                  // Check which jobs need a deposit but have no email — prompt for them first
+                  const allJ2 = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+                  const needDeposit = allJ2.filter(j => !(j.wageEntries||[]).some(e => e.type==='deposit'));
+                  const missing = needDeposit.filter(j => !inquiries.find(i => (i.customerName||'').toLowerCase()===(j.customerName||'').toLowerCase())?.email);
+                  if (missing.length > 0) {
+                    setGmailEmailPrompt(missing.map(j => ({ jobId: j.id, jobName: j.jobName, customerName: j.customerName, email: '' })));
+                  } else {
+                    scanGmailForDeposits({});
+                  }
                 }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
@@ -13871,6 +13891,43 @@ The Eyecon Moments Team
 
         {/* Deposit Form Modal */}
         {/* Deposit modal is now in helpModalJSX (global) */}
+
+        {/* Gmail email prompt — collect missing emails before scan */}
+        {gmailEmailPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Enter client emails</h2>
+              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>These clients don't have an email saved. Enter them to include in the Gmail scan — they'll be saved to CRM automatically.</p>
+              <div className="space-y-3">
+                {gmailEmailPrompt.map((row, i) => (
+                  <div key={row.jobId}>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{row.customerName} · {row.jobName}</label>
+                    <input
+                      type="email" placeholder="their@email.com"
+                      value={row.email}
+                      onChange={e => setGmailEmailPrompt(prev => prev.map((r, j) => j === i ? {...r, email: e.target.value} : r))}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => { setGmailEmailPrompt(null); scanGmailForDeposits({}); }}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  Skip & scan anyway
+                </button>
+                <button onClick={() => {
+                  const prefill = {};
+                  gmailEmailPrompt.forEach(r => { if (r.email) prefill[r.jobId] = r.email; });
+                  setGmailEmailPrompt(null);
+                  scanGmailForDeposits(prefill);
+                }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
+                  Scan Now
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {depositImportOpen && (() => {
           const allJ   = editingJobs.filter(j => !archivedJobIds.includes(j.id));
