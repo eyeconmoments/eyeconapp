@@ -13373,9 +13373,12 @@ The Eyecon Moments Team
                         <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                           <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>💰 Deposit</p>
                           {dep?.paid ? (
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-1">
                               <span className="text-green-500 text-sm font-semibold">✅ £{dep.amount || '—'} received{dep.date ? ` · ${new Date(dep.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : ''}</span>
-                              <button onClick={() => saveDeposit(job.id, dep.amount, dep.date, false)} className="text-xs text-gray-400 underline ml-2">undo</button>
+                              <div className="flex gap-1">
+                                <button onClick={() => { setDepositFormJobId(job.id); setDepositFormAmt(dep.amount||''); setDepositFormDate(dep.date||new Date().toISOString().slice(0,10)); }} className="px-2 py-0.5 bg-gray-500 text-white rounded text-xs">Edit amount</button>
+                                <button onClick={() => saveDeposit(job.id, dep.amount, dep.date, false)} className="text-xs text-gray-400 underline ml-1">undo</button>
+                              </div>
                             </div>
                           ) : dep?.amount ? (
                             <div className="flex items-center justify-between flex-wrap gap-1">
