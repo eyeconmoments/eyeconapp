@@ -3092,16 +3092,21 @@ function EyeconMoments() {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: 'https://www.googleapis.com/auth/gmail.readonly',
+        error_callback: (err) => {
+          setGmailScanning(false);
+          if (err.type !== 'popup_closed') alert('Google sign-in error: ' + err.type);
+        },
         callback: async (response) => {
           if (response.error) { setGmailScanning(false); alert('Google sign-in failed: ' + response.error); return; }
           const tok = response.access_token;
           try {
-            const q = encodeURIComponent('(subject:(payment received) OR subject:(you\'ve received) OR subject:(money received) OR "deposit" OR "payment of £" OR "paid you") newer_than:120d');
-            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=30`, { headers: { Authorization: `Bearer ${tok}` } });
+            const q = encodeURIComponent('(subject:(payment received) OR subject:(you\'ve received) OR subject:(money received) OR "deposit received" OR "payment of £" OR "paid you" OR "bank transfer") newer_than:120d');
+            const listRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=40`, { headers: { Authorization: `Bearer ${tok}` } });
             const listData = await listRes.json();
+            if (listData.error) throw new Error(listData.error.message);
             const messages = listData.messages || [];
             const results = [];
-            for (const msg of messages.slice(0, 30)) {
+            for (const msg of messages.slice(0, 40)) {
               const msgRes = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Subject`, { headers: { Authorization: `Bearer ${tok}` } });
               const msgData = await msgRes.json();
               const headers = msgData.payload?.headers || [];
@@ -3110,15 +3115,16 @@ function EyeconMoments() {
               const subject = headers.find(h => h.name === 'Subject')?.value || '';
               const snippet = msgData.snippet || '';
               const combined = snippet + ' ' + subject;
-              // Must contain a £ amount
+              // Must contain a £ amount to be a payment email
               const amountMatch = combined.match(/£\s*([\d,]+\.?\d*)/);
               if (!amountMatch) continue;
               const amount = amountMatch[1].replace(/,/g, '');
+              if (parseFloat(amount) < 10) continue; // skip tiny amounts (e.g. £0.01 promo emails)
               const emailMatch = from.match(/<([^>]+@[^>]+)>/) || from.match(/([^\s<]+@[^\s>]+)/);
               const senderEmail = emailMatch?.[1]?.trim() || '';
               const senderName  = from.replace(/<[^>]+>/, '').replace(/"/g, '').trim() || senderEmail;
               const parsedDate  = new Date(dateStr);
-              const isoDate     = isNaN(parsedDate) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
+              const isoDate     = isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
               results.push({ customer: senderName, email: senderEmail, amount, date: isoDate, paid: true, note: subject.slice(0, 60), snippet: snippet.slice(0, 140) });
             }
             setGmailScanResults(results);
@@ -3130,7 +3136,7 @@ function EyeconMoments() {
               const parts  = needle.split(/\s+/).filter(p => p.length > 2);
               const match  = allJ.find(j => { const cn = (j.customerName || '').toLowerCase(); return cn.includes(needle) || parts.some(p => cn.includes(p)); });
               init[i]      = match?.id || '';
-              emailInit[i] = !!imp.email; // default tick "save email" if we found one
+              emailInit[i] = !!imp.email;
             });
             setDepositImportMatches(init);
             setGmailSaveEmail(emailInit);
@@ -3139,7 +3145,7 @@ function EyeconMoments() {
           setGmailScanning(false);
         }
       });
-      client.requestAccessToken({ prompt: '' });
+      client.requestAccessToken();
     } catch(e) { console.error(e); setGmailScanning(false); alert('Could not load Google APIs.'); }
   };
 
