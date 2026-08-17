@@ -10848,19 +10848,15 @@ Capturing Your Special Day
               <div className="flex gap-2 flex-wrap justify-end">
                 <button onClick={() => {
                   const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
-                  const autoMatch = (imp) => {
-                    const needle = imp.customer.toLowerCase();
-                    const parts = needle.split(/[\s&]+/).filter(p => p.length > 2);
-                    return allJ.find(j => {
-                      const cn = (j.customerName || '').toLowerCase();
-                      return cn.includes(needle) || parts.some(p => cn.includes(p));
-                    })?.id || '';
-                  };
-                  const init = {};
-                  DEPOSIT_IMPORTS.forEach((imp, i) => { init[i] = autoMatch(imp); });
-                  setDepositImportMatches(init);
-                  setDepositImportOpen(true);
-                }} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold">📥 Import Deposits</button>
+                  // Show all upcoming jobs in the prompt — already-deposited ones are greyed out
+                  const rows = allJ.map(j => {
+                    const hasDeposit = (j.wageEntries||[]).some(e => e.type==='deposit');
+                    const inq = inquiries.find(i => (i.customerName||'').toLowerCase()===(j.customerName||'').toLowerCase());
+                    return { jobId: j.id, jobName: j.jobName, customerName: j.customerName, email: inq?.email || '', hasDeposit };
+                  });
+                  if (rows.length === 0) { setGmailEmailPrompt([]); return; }
+                  setGmailEmailPrompt(rows);
+                }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
               </div>
@@ -13655,6 +13651,59 @@ Capturing Your Special Day
 
         {/* Deposit Form Modal */}
         {/* Deposit modal is now in helpModalJSX (global) */}
+
+        {/* Gmail email prompt — always shown before scan so OAuth fires from a button click */}
+        {gmailEmailPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Confirm client emails</h2>
+              {gmailEmailPrompt.length === 0 ? (
+                <p className={`text-sm py-4 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No upcoming jobs found.</p>
+              ) : gmailEmailPrompt.every(r => r.hasDeposit) ? (
+                <p className={`text-sm py-4 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>✅ All jobs already have a deposit recorded.</p>
+              ) : (
+                <>
+                  <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Gmail will search each client's emails for a payment. Fill in any missing addresses — they'll be saved to CRM.</p>
+                  <div className="space-y-3">
+                    {gmailEmailPrompt.map((row, i) => (
+                      <div key={row.jobId} className={row.hasDeposit ? 'opacity-40 pointer-events-none' : ''}>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {row.customerName} · <span className="font-normal opacity-70">{row.jobName}</span>
+                          {row.hasDeposit && <span className="ml-2 text-green-500">✓ deposit recorded</span>}
+                        </label>
+                        {!row.hasDeposit && (
+                          <input
+                            type="email"
+                            placeholder="their@email.com"
+                            value={row.email}
+                            onChange={e => setGmailEmailPrompt(prev => prev.map((r, j) => j === i ? {...r, email: e.target.value} : r))}
+                            className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} ${row.email ? 'border-green-400' : 'border-amber-400'}`}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setGmailEmailPrompt(null)}
+                  className={`py-2.5 px-4 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  {gmailEmailPrompt.every(r => r.hasDeposit) ? 'Close' : 'Cancel'}
+                </button>
+                {!gmailEmailPrompt.every(r => r.hasDeposit) && (
+                  <button onClick={() => {
+                    const prefill = {};
+                    gmailEmailPrompt.filter(r => !r.hasDeposit).forEach(r => { if (r.email) prefill[r.jobId] = r.email; });
+                    setGmailEmailPrompt(null);
+                    scanGmailForDeposits(prefill);
+                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
+                    🔍 Scan Gmail
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {depositImportOpen && (() => {
           const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
