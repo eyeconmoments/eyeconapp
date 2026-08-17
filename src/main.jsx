@@ -14455,8 +14455,19 @@ Capturing Your Special Day
           {showFollowUpModal && followUpInquiry && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
               <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full`}>
+                {(() => {
+                  const _fn = followUpInquiry._fuCount;
+                  return _fn ? (
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{background: _fn === 1 ? '#3b82f6' : _fn === 2 ? '#f59e0b' : '#ef4444'}}>
+                        Follow-up #{_fn} of 3
+                      </span>
+                      {_fn === 3 && <span className="text-xs text-red-500 font-semibold">Final attempt</span>}
+                    </div>
+                  ) : null;
+                })()}
                 <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>📞 Follow Up: {followUpInquiry.customerName}</h2>
-                
+
                 <div className={`p-3 rounded-lg mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                   <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     <strong>Event:</strong> {followUpInquiry.eventType} - {formatDate(followUpInquiry.eventDate)}
@@ -14468,23 +14479,59 @@ Capturing Your Special Day
                     <strong>Phone:</strong> {followUpInquiry.phone}
                   </p>
                 </div>
-                
+
                 <div className="space-y-3">
-                  <button 
+                  <button
                     onClick={() => {
-                      const subject = `Following up on your ${followUpInquiry.eventType} quote - Eyecon Moments`;
-                      const body = `Hello ${followUpInquiry.customerName.split(' ')[0]},
+                      const _fn2 = followUpInquiry._fuCount || 1;
+                      const _first = followUpInquiry.customerName.split(' ')[0];
+                      const _evt = followUpInquiry.eventType || 'event';
+                      const _bodies = {
+                        1: `Hi ${_first},
 
-Hope you are well.
+I hope you're well! I just wanted to check in regarding the quote we sent over for your ${_evt}.
 
-I just wanted to follow up on the quote I sent over for your ${followUpInquiry.eventType}. Have you had a chance to review it?
+Have you had a chance to look through everything? We'd love to hear your thoughts — is there anything you'd like to adjust, or any questions we can help with?
 
-If you have any questions or would like to discuss anything further, please don't hesitate to get in touch.
+We're really excited about the possibility of being part of your special day, and we want to make sure everything feels just right for you.
+
+Give us a call or reply to this email — we're always happy to chat!
 
 Kind regards,
-Eyecon Moments`;
+Eyecon Moments
+eyecon.moments@gmail.com
+www.eyeconmoments.co.uk`,
+                        2: `Hi ${_first},
+
+I hope you're keeping well! I wanted to reach out again regarding your ${_evt} quote with Eyecon Moments.
+
+We know these decisions take time, and there's absolutely no pressure — we just want to make sure you have everything you need to feel completely confident.
+
+Is there anything we can clarify, adjust, or discuss? We're flexible and genuinely happy to work with you to make this perfect.
+
+We'd love to hear from you — even if it's just to say hi!
+
+Warm regards,
+Eyecon Moments
+eyecon.moments@gmail.com
+www.eyeconmoments.co.uk`,
+                        3: `Hi ${_first},
+
+I hope all is well with you. This is a gentle final follow-up regarding your ${_evt} quote from Eyecon Moments.
+
+We completely understand if your plans have changed or you've decided to go in a different direction — no hard feelings at all. We just wanted to make sure we hadn't been missed!
+
+If you'd ever like to revisit our services in the future, we'd be absolutely delighted to hear from you. Wishing you all the very best for your special day, whatever you decide.
+
+Warmest regards,
+Eyecon Moments
+eyecon.moments@gmail.com
+www.eyeconmoments.co.uk`,
+                      };
+                      const subject = `Following up on your ${_evt} quote — Eyecon Moments`;
+                      const body = _bodies[Math.min(_fn2, 3)];
                       openMail(`mailto:${encodeURIComponent(followUpInquiry.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-                      logActivity('Follow-up sent', followUpInquiry.customerName, 'Email');
+                      logActivity(`Follow-up #${_fn2} email sent`, followUpInquiry.customerName, 'Email');
                     }}
                     className="w-full bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-600"
                   >
@@ -14836,6 +14883,39 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   })()}
                 </div>
                 
+                {/* Respond Now — for brand new website inquiries */}
+                {inquiry.status === 'new' && (
+                  <button
+                    onClick={() => {
+                      const firstName = inquiry.customerName.split(' ')[0];
+                      const evt = inquiry.eventType || 'event';
+                      const subject = `Re: Your enquiry — ${evt.charAt(0).toUpperCase() + evt.slice(1)} | Eyecon Moments`;
+                      const body = `Hi ${firstName},
+
+Thank you so much for reaching out to Eyecon Moments — we're really excited to hear about your upcoming ${evt}!
+
+We can see you've already had a look at your personalised quote. We'd love to hear your thoughts — does everything feel right, or is there anything you'd like to adjust or discuss?
+
+Most importantly, we want to make this absolutely perfect for you. What matters most to you when it comes to your ${evt} coverage? Whether it's a particular style, specific moments you'd love captured, or any questions about what's included — we're here for you.
+
+We're passionate about creating memories that last a lifetime, and we'd love to make this as smooth and exciting as possible.
+
+Looking forward to hearing from you!
+
+Warm regards,
+Eyecon Moments
+eyecon.moments@gmail.com
+www.eyeconmoments.co.uk`;
+                      openMail(`mailto:${encodeURIComponent(inquiry.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                      updateInquiryStatus(inquiry.id, 'contacted');
+                      logActivity('Initial response sent', inquiry.customerName, 'Email');
+                    }}
+                    className="mt-3 w-full py-2.5 rounded-lg text-sm font-bold text-white"
+                    style={{background:'#16a34a'}}>
+                    ⚡ Respond Now
+                  </button>
+                )}
+
                 {/* Follow-up button for quoted inquiries — RAG coloured */}
                 {inquiry.status === 'quoted' && (() => {
                   const lastDate = inquiry.followUpDate ? new Date(inquiry.followUpDate) : null;
@@ -14857,7 +14937,18 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                     : `Last: ${daysSince} days ago`;
                   return (
                     <button
-                      onClick={() => { setFollowUpInquiry(inquiry); setShowFollowUpModal(true); }}
+                      onClick={() => {
+                        const _key = `eyecon_fu_count_${inquiry.id}`;
+                        const _cur = parseInt(localStorage.getItem(_key) || '0');
+                        const _next = Math.min(_cur + 1, 3);
+                        localStorage.setItem(_key, String(_next));
+                        const _now = new Date().toISOString();
+                        db.from('inquiries').update({ followed_up: true, follow_up_date: _now }).eq('id', inquiry.id);
+                        setInquiries(prev => prev.map(i => i.id === inquiry.id ? {...i, followedUp: true, followUpDate: new Date(_now)} : i));
+                        logActivity(`Follow-up #${_next} logged`, inquiry.customerName, '');
+                        setFollowUpInquiry({...inquiry, _fuCount: _next});
+                        setShowFollowUpModal(true);
+                      }}
                       className={`mt-3 w-full ${bgClass} text-white py-2 px-3 rounded-lg text-sm font-semibold flex flex-col items-center leading-tight`}
                     >
                       <span>📞 Follow Up</span>
