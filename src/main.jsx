@@ -11049,15 +11049,14 @@ The Eyecon Moments Team
                       return cn.includes(needle) || parts.some(p => cn.includes(p));
                     })?.id || '';
                   };
-                  // Check which jobs need a deposit but have no email — prompt for them first
+                  // Always show the email prompt modal first — OAuth fires from inside it
                   const allJ2 = editingJobs.filter(j => !archivedJobIds.includes(j.id));
                   const needDeposit = allJ2.filter(j => !(j.wageEntries||[]).some(e => e.type==='deposit'));
-                  const missing = needDeposit.filter(j => !inquiries.find(i => (i.customerName||'').toLowerCase()===(j.customerName||'').toLowerCase())?.email);
-                  if (missing.length > 0) {
-                    setGmailEmailPrompt(missing.map(j => ({ jobId: j.id, jobName: j.jobName, customerName: j.customerName, email: '' })));
-                  } else {
-                    scanGmailForDeposits({});
-                  }
+                  if (needDeposit.length === 0) { alert('All jobs already have a deposit recorded.'); return; }
+                  setGmailEmailPrompt(needDeposit.map(j => {
+                    const inq = inquiries.find(i => (i.customerName||'').toLowerCase()===(j.customerName||'').toLowerCase());
+                    return { jobId: j.id, jobName: j.jobName, customerName: j.customerName, email: inq?.email || '' };
+                  }));
                 }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
@@ -13892,29 +13891,30 @@ The Eyecon Moments Team
         {/* Deposit Form Modal */}
         {/* Deposit modal is now in helpModalJSX (global) */}
 
-        {/* Gmail email prompt — collect missing emails before scan */}
+        {/* Gmail email prompt — always shown before scan so OAuth fires from a button click */}
         {gmailEmailPrompt && (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl`}>
-              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Enter client emails</h2>
-              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>These clients don't have an email saved. Enter them to include in the Gmail scan — they'll be saved to CRM automatically.</p>
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Confirm client emails</h2>
+              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Gmail will search each client's emails for a payment. Fill in any missing addresses — they'll be saved to CRM.</p>
               <div className="space-y-3">
                 {gmailEmailPrompt.map((row, i) => (
                   <div key={row.jobId}>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{row.customerName} · {row.jobName}</label>
+                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{row.customerName} · <span className="font-normal opacity-70">{row.jobName}</span></label>
                     <input
-                      type="email" placeholder="their@email.com"
+                      type="email"
+                      placeholder="their@email.com"
                       value={row.email}
                       onChange={e => setGmailEmailPrompt(prev => prev.map((r, j) => j === i ? {...r, email: e.target.value} : r))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} ${row.email ? 'border-green-400' : 'border-amber-400'}`}
                     />
                   </div>
                 ))}
               </div>
               <div className="flex gap-3 mt-5">
-                <button onClick={() => { setGmailEmailPrompt(null); scanGmailForDeposits({}); }}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                  Skip & scan anyway
+                <button onClick={() => setGmailEmailPrompt(null)}
+                  className={`py-2.5 px-4 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  Cancel
                 </button>
                 <button onClick={() => {
                   const prefill = {};
@@ -13922,7 +13922,7 @@ The Eyecon Moments Team
                   setGmailEmailPrompt(null);
                   scanGmailForDeposits(prefill);
                 }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
-                  Scan Now
+                  🔍 Scan Gmail
                 </button>
               </div>
             </div>
