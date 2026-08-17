@@ -18,6 +18,22 @@ const COMPLETE_SOUND = 'data:audio/mpeg;base64,//vUxAADqDXqnCzl98W0PZnCs5AAANQVT
 const db = createClient('https://wgqamqzlfnjcqyprphkw.supabase.co', 'sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE');
 const VAPID_PUBLIC_KEY = 'BL08gzSk-zy4zKtPKcMCsHs2EVa2uc9xQJ6dCcafzj61W_OQ9OM-uMUqOp2MRMepbFA1jLgdxvXnGi2K4BDNRK4';
 
+// Lazy-loads jsPDF. On stale-chunk errors (old index.html cached in browser),
+// prompts the user to refresh rather than showing a cryptic "Failed to fetch" message.
+const loadJsPDF = async () => {
+  try {
+    return await import('jspdf');
+  } catch (e) {
+    const isStaleChunk = e?.message?.includes('Failed to fetch') || e?.message?.includes('dynamically imported');
+    if (isStaleChunk) {
+      const go = window.confirm('The app has been updated — please refresh the page to load the latest version.\n\nRefresh now?');
+      if (go) window.location.reload();
+      throw new Error('Refresh required');
+    }
+    throw e;
+  }
+};
+
 // DB helpers - convert snake_case rows to camelCase app objects
 const rowToJob = (r) => ({
   id: r.id, jobName: r.job_name, customerName: r.customer_name,
@@ -2097,7 +2113,7 @@ function EyeconMoments() {
 
 
   const downloadInvoicePDF = async (job, inv) => {
-    const { jsPDF } = await import('jspdf');
+    const { jsPDF } = await loadJsPDF();
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const W = 210, mx = 18, cw = W - mx * 2;
     const GOLD = [193,167,106], BLACK = [20,20,20], GRAY = [100,100,100], LGRAY = [235,235,235], RED = [180,40,40], GREEN = [40,140,80];
@@ -10243,7 +10259,7 @@ Notes: ${j.notes || 'none'}`;
     
     // EYECON_LOGO moved to component scope above
     const generateItineraryPDF = async (job, returnBlob = false) => {
-      const { jsPDF } = await import('jspdf');
+      const { jsPDF } = await loadJsPDF();
       const doc = new jsPDF();
       const itinerary = initItinerary(job);
       const shootDate = new Date(job.shootDate);
@@ -18573,7 +18589,7 @@ Eyecon Moments
     // Generate PDF
     const generatePDF = async () => {
       try {
-      const { jsPDF } = await import('jspdf');
+      const { jsPDF } = await loadJsPDF();
       const doc = new jsPDF('p', 'mm', 'a4');
       const W = 210, H = 297, cx = 105;
 
@@ -19789,7 +19805,7 @@ Eyecon Moments
     };
 
     const downloadRevisionPDF = async (rev) => {
-      const { jsPDF } = await import('jspdf');
+      const { jsPDF } = await loadJsPDF();
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       const W = 210; const margin = 15; let y = 20;
       const lh = 7;
