@@ -1010,6 +1010,7 @@ function EyeconMoments() {
   const [availCalYear, setAvailCalYear] = useState(new Date().getFullYear());
   const [upcomingCalMonth, setUpcomingCalMonth] = useState(new Date().getMonth());
   const [upcomingCalYear, setUpcomingCalYear] = useState(new Date().getFullYear());
+  const [showUpcomingCal, setShowUpcomingCal] = useState(false);
   const [showItineraryModal, setShowItineraryModal] = useState(false);
   const [itineraryJob, setItineraryJob] = useState(null);
   const [wageSubmitModal, setWageSubmitModal] = useState(null);
@@ -10656,95 +10657,98 @@ Capturing Your Special Day
 
         <div className="p-4 space-y-4">
 
-          {/* Jobs Calendar — month view with Google Calendar overlay */}
+          {/* Jobs Calendar — collapsed by default, toggle to expand */}
           {(() => {
             const ucMonth = upcomingCalMonth;
             const ucYear = upcomingCalYear;
-            const ucFirstDay = new Date(ucYear, ucMonth, 1).getDay();
-            const ucDaysInMonth = new Date(ucYear, ucMonth + 1, 0).getDate();
             const ucMonthName = new Date(ucYear, ucMonth).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
-            const ucToday = new Date();
-            const allJobsWithDates = editingJobs.filter(j => j.shootDate && !archivedJobIds.includes(j.id));
-            const getJobsForDay = (day) => {
-              const dateStr = `${ucYear}-${String(ucMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-              return allJobsWithDates.filter(j => j.shootDate && String(j.shootDate).startsWith(dateStr));
-            };
-            const getGCalForDay = (day) => {
-              const dateStr = `${ucYear}-${String(ucMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-              return gCalMonthEvents.filter(ev => ev.date === dateStr);
-            };
             const goBack = () => { if (ucMonth === 0) { setUpcomingCalMonth(11); setUpcomingCalYear(y => y-1); } else setUpcomingCalMonth(m => m-1); };
             const goFwd  = () => { if (ucMonth === 11) { setUpcomingCalMonth(0); setUpcomingCalYear(y => y+1); } else setUpcomingCalMonth(m => m+1); };
             return (
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
-                {/* Header row */}
-                <div className="flex items-center justify-between mb-2 gap-2">
-                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗓️ Jobs Calendar</h3>
-                  <button
-                    onClick={() => syncGCalForMonth(ucMonth, ucYear)}
-                    disabled={gCalSyncing}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                      isGoogleSignedIn
-                        ? 'bg-green-500 text-white hover:bg-green-600'
-                        : 'bg-blue-500 text-white hover:bg-blue-600'
-                    } ${gCalSyncing ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                    {gCalSyncing ? '⏳ Syncing…' : isGoogleSignedIn ? '🔄 Sync Google Cal' : '🔗 Connect Google Cal'}
-                  </button>
-                </div>
-                {/* Month nav — own row so arrows never wrap */}
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <button onClick={goBack} className={`px-3 py-1 rounded text-lg font-bold ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>‹</button>
-                  <span className={`font-semibold text-sm min-w-[130px] text-center ${darkMode ? 'text-white' : ''}`}>{ucMonthName}</span>
-                  <button onClick={goFwd}  className={`px-3 py-1 rounded text-lg font-bold ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>›</button>
-                </div>
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`}>
+                {/* Toggle header — always visible */}
+                <button className="w-full flex items-center justify-between px-4 py-3 gap-2" onClick={() => setShowUpcomingCal(v => !v)}>
+                  <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗓️ Jobs Calendar</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${showUpcomingCal ? (darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600') : 'bg-yellow-500 text-white'}`}>
+                    {showUpcomingCal ? 'Hide ▲' : 'Show ▼'}
+                  </span>
+                </button>
 
-                {/* Legend */}
-                <div className="flex gap-3 mb-3">
-                  <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded bg-blue-500"/><span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Eyecon Jobs</span></div>
-                  <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded bg-orange-400"/><span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Google Calendar</span></div>
-                </div>
-
-                {/* Day headers */}
-                <div className="grid grid-cols-7 gap-1 mb-1">
-                  {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
-                    <div key={d} className={`text-center text-xs font-semibold py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{d}</div>
-                  ))}
-                </div>
-                {/* Day cells */}
-                <div className="grid grid-cols-7 gap-1">
-                  {Array.from({length: ucFirstDay}).map((_, i) => <div key={`ue${i}`} />)}
-                  {Array.from({length: ucDaysInMonth}).map((_, i) => {
-                    const day = i + 1;
-                    const dayJobs  = getJobsForDay(day);
-                    const dayGCal  = getGCalForDay(day);
-                    const isToday  = day === ucToday.getDate() && ucMonth === ucToday.getMonth() && ucYear === ucToday.getFullYear();
-                    const hasAny   = dayJobs.length > 0 || dayGCal.length > 0;
-                    return (
-                      <div key={day} className={`rounded p-1 min-h-[48px] ${isToday ? 'ring-2 ring-yellow-400' : ''} ${hasAny ? (darkMode ? 'bg-gray-600' : 'bg-blue-50') : darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                        <p className={`text-xs text-center font-medium mb-0.5 ${isToday ? 'text-yellow-400' : darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{day}</p>
-                        {/* Eyecon jobs — blue */}
-                        {dayJobs.slice(0,1).map(job => (
-                          <div key={job.id} className="text-white rounded px-0.5 mt-0.5 truncate bg-blue-500" style={{fontSize:'9px'}}>{job.jobName || job.customerName}</div>
-                        ))}
-                        {/* GCal events — orange, draggable + clickable */}
-                        {dayGCal.slice(0,2).map(ev => (
-                          <div key={ev.id}
-                            draggable
-                            onDragStart={(e) => { e.dataTransfer.setData('application/gcal-event', JSON.stringify(ev.raw)); e.dataTransfer.effectAllowed='copy'; setGcalDragActive(true); }}
-                            onDragEnd={() => setGcalDragActive(false)}
-                            onClick={() => setImportEventModal(ev)}
-                            className="text-white rounded px-0.5 mt-0.5 truncate bg-orange-400 cursor-grab hover:bg-orange-500 active:cursor-grabbing" style={{fontSize:'9px'}}>
-                            {ev.title}
-                          </div>
-                        ))}
-                        {(dayJobs.length + dayGCal.length) > 3 && (
-                          <div className={`text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} style={{fontSize:'8px'}}>+{(dayJobs.length + dayGCal.length) - 3}</div>
-                        )}
+                {showUpcomingCal && (() => {
+                  const ucFirstDay = new Date(ucYear, ucMonth, 1).getDay();
+                  const ucDaysInMonth = new Date(ucYear, ucMonth + 1, 0).getDate();
+                  const ucToday = new Date();
+                  const allJobsWithDates = editingJobs.filter(j => j.shootDate && !archivedJobIds.includes(j.id));
+                  const getJobsForDay = (day) => {
+                    const dateStr = `${ucYear}-${String(ucMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                    return allJobsWithDates.filter(j => j.shootDate && String(j.shootDate).startsWith(dateStr));
+                  };
+                  const getGCalForDay = (day) => {
+                    const dateStr = `${ucYear}-${String(ucMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                    return gCalMonthEvents.filter(ev => ev.date === dateStr);
+                  };
+                  return (
+                    <div className="px-4 pb-4">
+                      {/* Sync + month nav */}
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <button onClick={goBack} className={`px-2 py-1 rounded text-lg font-bold ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>‹</button>
+                          <span className={`font-semibold text-sm min-w-[120px] text-center ${darkMode ? 'text-white' : ''}`}>{ucMonthName}</span>
+                          <button onClick={goFwd} className={`px-2 py-1 rounded text-lg font-bold ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>›</button>
+                        </div>
+                        <button
+                          onClick={() => syncGCalForMonth(ucMonth, ucYear)}
+                          disabled={gCalSyncing}
+                          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${isGoogleSignedIn ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'} ${gCalSyncing ? 'opacity-60' : ''}`}>
+                          {gCalSyncing ? '⏳' : isGoogleSignedIn ? '🔄 Sync' : '🔗 Connect'}
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
-
+                      {/* Legend */}
+                      <div className="flex gap-3 mb-2">
+                        <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded bg-blue-500"/><span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Eyecon Jobs</span></div>
+                        <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded bg-orange-400"/><span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Google Calendar</span></div>
+                      </div>
+                      {/* Day headers */}
+                      <div className="grid grid-cols-7 gap-1 mb-1">
+                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                          <div key={d} className={`text-center text-xs font-semibold py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{d}</div>
+                        ))}
+                      </div>
+                      {/* Day cells */}
+                      <div className="grid grid-cols-7 gap-1">
+                        {Array.from({length: ucFirstDay}).map((_, i) => <div key={`ue${i}`} />)}
+                        {Array.from({length: ucDaysInMonth}).map((_, i) => {
+                          const day = i + 1;
+                          const dayJobs = getJobsForDay(day);
+                          const dayGCal = getGCalForDay(day);
+                          const isToday = day === ucToday.getDate() && ucMonth === ucToday.getMonth() && ucYear === ucToday.getFullYear();
+                          const hasAny  = dayJobs.length > 0 || dayGCal.length > 0;
+                          return (
+                            <div key={day} className={`rounded p-1 min-h-[48px] ${isToday ? 'ring-2 ring-yellow-400' : ''} ${hasAny ? (darkMode ? 'bg-gray-600' : 'bg-blue-50') : darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                              <p className={`text-xs text-center font-medium mb-0.5 ${isToday ? 'text-yellow-400' : darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{day}</p>
+                              {dayJobs.slice(0,1).map(job => (
+                                <div key={job.id} className="text-white rounded px-0.5 mt-0.5 truncate bg-blue-500" style={{fontSize:'9px'}}>{job.jobName || job.customerName}</div>
+                              ))}
+                              {dayGCal.slice(0,2).map(ev => (
+                                <div key={ev.id}
+                                  draggable
+                                  onDragStart={(e) => { e.dataTransfer.setData('application/gcal-event', JSON.stringify(ev.raw)); e.dataTransfer.effectAllowed='copy'; setGcalDragActive(true); }}
+                                  onDragEnd={() => setGcalDragActive(false)}
+                                  onClick={() => setImportEventModal(ev)}
+                                  className="text-white rounded px-0.5 mt-0.5 truncate bg-orange-400 cursor-grab hover:bg-orange-500 active:cursor-grabbing" style={{fontSize:'9px'}}>
+                                  {ev.title}
+                                </div>
+                              ))}
+                              {(dayJobs.length + dayGCal.length) > 3 && (
+                                <div className={`text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} style={{fontSize:'8px'}}>+{(dayJobs.length + dayGCal.length) - 3}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
