@@ -103,6 +103,9 @@ const rowToInquiry = (r) => ({
   quoteSnapshot: r.quote_snapshot || null,
 });
 
+// Duration helper — supports legacy `duration` (slots × 15 min) and new `durationMins` (actual minutes)
+const getItemMins = (item) => item.durationMins !== undefined ? item.durationMins : (item.duration || 2) * 15;
+
 const { useState, useEffect } = React;
 
 // Icons
@@ -343,7 +346,7 @@ function ClientPortalView({ token, readOnly }) {
       const tot = h * 60 + mn + m;
       return `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`;
     };
-    const itemDurMins = (item) => (item.duration || 2) * 15;
+    const itemDurMins = (item) => getItemMins(item);
     const itemTimes = (() => {
       const times = []; let cur = itin.startTime || '10:00';
       (itin.scheduleItems || []).forEach(it => { times.push(cur); cur = addMins2(cur, itemDurMins(it)); });
@@ -7699,13 +7702,13 @@ Notes: ${j.notes || 'none'}`;
                       const _grp = [];
                       let _gj = _si;
                       while (_gj < _items.length && _items[_gj].groupId === _it.groupId) { _grp.push({ ..._items[_gj], _origIdx: _gj }); _gj++; }
-                      const _maxD = Math.max(..._grp.map(g => g.duration || 2));
+                      const _maxD = Math.max(..._grp.map(g => getItemMins(g)));
                       const _ct = `${String(Math.floor(_cum/60)%24).padStart(2,'0')}:${String(_cum%60).padStart(2,'0')}`;
                       _grp.forEach(g => _withTime.push({ ...g, computedTime: _ct, computedMins: _cum }));
-                      _cum += _maxD * 15; _si = _gj;
+                      _cum += _maxD; _si = _gj;
                     } else {
                       const _im = _it.time ? _toMins(_it.time) : _cum;
-                      if (!_it.time) _cum += (_it.duration || 2) * 15; else _cum = _im + (_it.duration || 2) * 15;
+                      if (!_it.time) _cum += getItemMins(_it); else _cum = _im + getItemMins(_it);
                       _withTime.push({ ..._it, _origIdx: _si, computedTime: `${String(Math.floor(_im/60)%24).padStart(2,'0')}:${String(_im%60).padStart(2,'0')}`, computedMins: _im });
                       _si++;
                     }
@@ -9099,16 +9102,16 @@ Notes: ${j.notes || 'none'}`;
                       let _gj = _si;
                       while (_gj < scheduleItems.length && scheduleItems[_gj].groupId === _gid) { _group.push(scheduleItems[_gj]); _gj++; }
                       const _gMins = cumulativeMins;
-                      const _maxDur = Math.max(..._group.map(g => g.duration || 2));
+                      const _maxDur = Math.max(..._group.map(g => getItemMins(g)));
                       const _hh = Math.floor(_gMins / 60) % 24, _mm = _gMins % 60;
                       const _ct = `${String(_hh).padStart(2,'0')}:${String(_mm).padStart(2,'0')}`;
                       _group.forEach(g => itemsWithTime.push({ ...g, computedTime: _ct, computedMins: _gMins }));
-                      cumulativeMins += _maxDur * 15;
+                      cumulativeMins += _maxDur;
                       _si = _gj;
                     } else {
                       const itemTime = _item.time ? toMins(_item.time) : cumulativeMins;
-                      if (!_item.time) cumulativeMins += (_item.duration || 2) * 15;
-                      else cumulativeMins = itemTime + (_item.duration || 2) * 15;
+                      if (!_item.time) cumulativeMins += getItemMins(_item);
+                      else cumulativeMins = itemTime + getItemMins(_item);
                       const hh = Math.floor(itemTime / 60) % 24, mm = itemTime % 60;
                       itemsWithTime.push({ ..._item, computedTime: `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`, computedMins: itemTime });
                       _si++;
@@ -9992,6 +9995,33 @@ Notes: ${j.notes || 'none'}`;
               newItems[insertAfterIdx] = { ...newItems[insertAfterIdx], groupId: newGroupId };
             }
             newItems.splice(insertAfterIdx + 1, 0, item);
+            const newItinerary = { ...itinerary, scheduleItems: newItems };
+            persistItinerary(jobId, newItinerary);
+            return { ...j, itinerary: newItinerary };
+          }
+          return j;
+        });
+        return updated;
+      });
+    };
+
+    // Drop onto the gap between two groups — insert item at that position
+    const handleDropInGap = (e, jobId, insertBeforeIdx) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const item = { id: data.id, name: data.name, color: data.color, duration: data.duration || 2, ...(data.durationMins !== undefined ? { durationMins: data.durationMins } : {}), notes: data.notes || '' };
+      setEditingJobs(jobs => {
+        const updated = jobs.map(j => {
+          if (j.id === jobId) {
+            const itinerary = initItinerary(j);
+            let newItems = [...itinerary.scheduleItems];
+            let insertAt = insertBeforeIdx;
+            if (data.itemIndex !== null && data.itemIndex !== undefined) {
+              newItems = newItems.filter((_, idx) => idx !== data.itemIndex);
+              if (data.itemIndex < insertAt) insertAt--;
+            }
+            newItems.splice(insertAt, 0, item);
             const newItinerary = { ...itinerary, scheduleItems: newItems };
             persistItinerary(jobId, newItinerary);
             return { ...j, itinerary: newItinerary };
@@ -11272,28 +11302,26 @@ Capturing Your Special Day
                               
                               items.forEach((item, idx) => {
                                 if (item.groupId && currentGroup && currentGroup.groupId === item.groupId) {
-                                  // Add to existing group
                                   currentGroup.items.push({ ...item, idx });
-                                  // Update group duration to max of items
-                                  if ((item.duration || 2) > currentGroup.duration) {
-                                    currentGroup.duration = item.duration || 2;
-                                  }
+                                  const m = getItemMins(item);
+                                  if (m > currentGroup.durationMins) currentGroup.durationMins = m;
                                 } else {
-                                  // Start new group
                                   currentGroup = {
                                     groupId: item.groupId || `single-${idx}`,
                                     items: [{ ...item, idx }],
-                                    duration: item.duration || 2,
-                                    startIdx: idx
+                                    durationMins: getItemMins(item),
+                                    startIdx: idx,
+                                    endIdx: idx,
                                   };
                                   groups.push(currentGroup);
                                 }
+                                if (currentGroup) currentGroup.endIdx = idx;
                               });
-                              
+
                               const boxes = [];
-                              
+
                               groups.forEach((group, groupIdx) => {
-                                const endTime = addMinsToTime(currentTime, group.duration * 15);
+                                const endTime = addMinsToTime(currentTime, group.durationMins);
                                 
                                 boxes.push(
                                   <div key={`group-${groupIdx}`}
@@ -11318,10 +11346,35 @@ Capturing Your Special Day
                                             <button onClick={() => removeFromSchedule(job.id, item.idx)}
                                               className="ml-1 hover:bg-white hover:bg-opacity-20 rounded px-1 text-xs">✕</button>
                                           </div>
-                                          <select value={item.duration || 2}
-                                            onChange={(e) => updateItemDuration(job.id, item.idx, parseInt(e.target.value))}
+                                          <select
+                                            value={item.durationMins === 5 ? '__5m' : (item.duration || 2)}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              if (e.target.value === '__5m') {
+                                                setEditingJobs(jobs => jobs.map(j => {
+                                                  if (j.id !== job.id) return j;
+                                                  const itin2 = initItinerary(j);
+                                                  const ni = [...itin2.scheduleItems];
+                                                  if (ni[item.idx]) ni[item.idx] = { ...ni[item.idx], durationMins: 5, duration: undefined };
+                                                  const newItin = { ...itin2, scheduleItems: ni };
+                                                  persistItinerary(job.id, newItin);
+                                                  return { ...j, itinerary: newItin };
+                                                }));
+                                              } else {
+                                                setEditingJobs(jobs => jobs.map(j => {
+                                                  if (j.id !== job.id) return j;
+                                                  const itin2 = initItinerary(j);
+                                                  const ni = [...itin2.scheduleItems];
+                                                  if (ni[item.idx]) ni[item.idx] = { ...ni[item.idx], duration: parseInt(e.target.value), durationMins: undefined };
+                                                  const newItin = { ...itin2, scheduleItems: ni };
+                                                  persistItinerary(job.id, newItin);
+                                                  return { ...j, itinerary: newItin };
+                                                }));
+                                              }
+                                            }}
                                             onClick={(e) => e.stopPropagation()}
                                             className="w-full mt-1 text-xs bg-white bg-opacity-20 rounded px-1 py-0.5">
+                                            <option value="__5m" className="text-black">5m</option>
                                             <option value={1} className="text-black">15m</option>
                                             <option value={2} className="text-black">30m</option>
                                             <option value={3} className="text-black">45m</option>
@@ -11344,8 +11397,20 @@ Capturing Your Special Day
                                 );
                                 
                                 currentTime = endTime;
+
+                                // Gap drop zone after this group (before the next)
+                                const gapInsertAt = group.endIdx + 1;
+                                boxes.push(
+                                  <div key={`gap-${groupIdx}`}
+                                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.width='24px'; e.currentTarget.style.opacity='1'; }}
+                                    onDragLeave={(e) => { e.currentTarget.style.width='8px'; e.currentTarget.style.opacity='0.35'; }}
+                                    onDrop={(e) => { e.currentTarget.style.width='8px'; e.currentTarget.style.opacity='0.35'; handleDropInGap(e, job.id, gapInsertAt); }}
+                                    title="Drop here to insert"
+                                    style={{width:'8px', minHeight:'120px', opacity:'0.35', flexShrink:0, background:'rgba(74,222,128,0.5)', borderRadius:'4px', cursor:'copy', transition:'width 0.15s, opacity 0.15s'}}
+                                  />
+                                );
                               });
-                              
+
                               // Add empty drop zone at the end
                               boxes.push(
                                 <div key="drop-zone"
