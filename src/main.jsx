@@ -892,6 +892,55 @@ function EyeconMoments() {
   const voiceIsListeningRef = React.useRef(false);
   const helpBottomRef = React.useRef(null);
   const backupDirHandleRef = React.useRef(null);
+
+  // Ask the QC app where this job's footage was put, by whom and when.
+  //
+  // Stage 0 of the QC app already records all of it for every scan and sort, so
+  // the backup panel has no business asking a human to retype it. Matched on
+  // job id — the same id this app hands to the QC app when it opens the editor.
+  //
+  // Everything here degrades quietly. The QC app runs on the editing PC and is
+  // usually not running at all; a failed lookup must leave the form exactly as
+  // it was, still fillable by hand, never an error the user has to dismiss.
+  const lookUpQcIngest = async (jobId) => {
+    const base = qcBase();
+    if (!base || !jobId) { setQcIngest({ found: false, reason: 'no-editor-url' }); return null; }
+    setQcIngest({ loading: true });
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);   // it's localhost; 4s is generous
+      const res = await fetch(`${base}/api/stage0/backup-info?job=${encodeURIComponent(jobId)}`,
+                              { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) { setQcIngest({ found: false, reason: 'bad-response' }); return null; }
+      const data = await res.json();
+      setQcIngest(data && data.ok ? data : { found: false, reason: 'bad-response' });
+      return data && data.ok ? data : null;
+    } catch (err) {
+      // Offline, QC app not running, or the browser blocked it. All the same
+      // to the user: nothing to prefill, carry on by hand.
+      setQcIngest({ found: false, reason: 'unreachable' });
+      return null;
+    }
+  };
+
+  // Fill the backup form from an ingest record. Only ever fills BLANKS, so a
+  // value the user has already typed always wins.
+  const applyQcIngest = (data) => {
+    if (!data || !data.found) return;
+    const first = (data.locations || [])[0] || {};
+    setBackupForm(p => ({
+      ...p,
+      drive: p.drive || data.drive || '',
+      path: p.path || first.path || data.folder || '',
+      backedUpBy: p.backedUpBy || data.backedUpBy || '',
+      fileCheck: p.fileCheck || {
+        folder: data.folder || '', total: data.totalFiles || 0,
+        photos: data.photos || 0, videos: data.videos || 0,
+        other: data.otherFiles || 0, fromQc: true,
+      },
+    }));
+  };
   React.useEffect(() => { helpBottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [helpMessages, helpLoading]);
   const [showingModal, setShowingModal] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -928,6 +977,9 @@ function EyeconMoments() {
   const [expandedAvailableJobs, setExpandedAvailableJobs] = useState({});
   const [stageFileModal, setStageFileModal] = useState(null); // { jobId, stageId, stageName, isPhoto }
   const [backupModal, setBackupModal] = useState(null); // { jobId } or { standalone: true }
+  // Where the QC app is running. Same value the "Open editor" card stores, so
+  // there is one setting rather than two that can disagree.
+  const qcBase = () => (localStorage.getItem('eyecon_editor_url') || '').trim().replace(/\/+$/, '');
   const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null, jobName: '', importedJob: null });
   const [importEditModal, setImportEditModal] = useState(null); // { jobId, jobName, customerName, shootDate, deadline, jobType, hasPhotos, hasVideo, notes }
   const [itinScanModal, setItinScanModal] = useState(null); // { jobId, image, scanning, result }
@@ -960,6 +1012,9 @@ function EyeconMoments() {
   const [pipelineLog, setPipelineLog] = useState([]);
   const [newEmployeeForm, setNewEmployeeForm] = useState({ name: '', username: '', password: '', pin: '', role: 'employee', hourlyRate: 15, phone: '', emergencyContact: '', emergencyPhone: '', address: '', canBeAssigned: true });
   const [backupData, setBackupData] = useState(null);
+  // What the Eyecon QC app's ingest log says about the job whose backup panel
+  // is open: null = not looked up yet, {loading}, {found:false} or the record.
+  const [qcIngest, setQcIngest] = useState(null);
   const [assignmentRequests, setAssignmentRequests] = useState([]);
   const [jobsPipelineView, setJobsPipelineView] = useState(true);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
@@ -7517,7 +7572,15 @@ Notes: ${j.notes || 'none'}`;
           const saveBackup = async () => {
             const fc = backupForm.fileCheck;
             const organised = fc?.organiseResult && !fc.organiseResult.error;
-            const base = { drive: backupForm.drive, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true };
+            // A location filled in from the QC ingest log is tagged as such.
+            // It matters later: "rupon logged this by hand" and "the ingest
+            // tool recorded this automatically" are different kinds of claim,
+            // and flattening them would make the weaker one look like the
+            // stronger one. ingestRunId points back at the exact run.
+            const fromQc = qcIngest && qcIngest.found && backupForm.fileCheck?.fromQc;
+            const base = { drive: backupForm.drive, notes: backupForm.notes, backedUpBy: backupForm.backedUpBy, setAt: new Date().toISOString(), isBackup: true,
+              ...(fromQc ? { source: 'qc-ingest', ingestRunId: qcIngest.runId || '',
+                             ingestAt: qcIngest.setAt || '', ingestStatus: qcIngest.status || '' } : {}) };
             const basePath = backupForm.path || '';
 
             // Persist drive to known list
@@ -7625,6 +7688,83 @@ Notes: ${j.notes || 'none'}`;
                   }
                 </div>
                 <div className="p-4 space-y-3">
+                  {/* Filled in from the QC app's ingest log. Shown rather than
+                      hidden: the editor should be able to see WHERE these
+                      values came from before saving them as a record of where
+                      their footage lives. */}
+                  {!isStandalone && qcIngest && (
+                    qcIngest.loading ? (
+                      <p className="text-xs py-1" style={{color:'rgba(255,255,255,0.4)'}}>⏳ Checking the QC ingest log…</p>
+                    ) : qcIngest.found ? (
+                      <div className="rounded-lg p-2.5 text-xs space-y-1"
+                           style={{background:'rgba(52,211,153,0.08)',border:'1px solid rgba(52,211,153,0.25)'}}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold text-green-400">
+                            Filled in from the QC ingest log — nothing to type
+                          </p>
+                          <button onClick={async () => applyQcIngest(await lookUpQcIngest(job.id))}
+                                  className="text-xs shrink-0" style={{color:'rgba(255,255,255,0.4)'}}>
+                            refresh
+                          </button>
+                        </div>
+                        <p style={{color:'rgba(255,255,255,0.6)'}}>
+                          {qcIngest.backedUpBy || 'unattributed'}
+                          {qcIngest.setAt ? ` · ${new Date(qcIngest.setAt).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}` : ''}
+                          {qcIngest.drive ? ` · drive ${qcIngest.drive}` : ''}
+                        </p>
+                        <p style={{color:'rgba(255,255,255,0.45)'}}>
+                          {qcIngest.totalFiles} files · 📷 {qcIngest.photos} · 🎬 {qcIngest.videos}
+                          {qcIngest.otherFiles ? ` · +${qcIngest.otherFiles} other` : ''}
+                        </p>
+                        {(qcIngest.locations || []).length > 1 && (
+                          <p style={{color:'rgba(255,255,255,0.45)'}}>
+                            {qcIngest.locations.length} locations recorded
+                          </p>
+                        )}
+                        {/* A shoot with holes in its numbering is exactly the
+                            one you want flagged BEFORE it is called safely
+                            stored. */}
+                        {qcIngest.complete === false && (
+                          <p className="text-amber-400">
+                            ⚠ {qcIngest.missing} file(s) unaccounted for in the camera numbering
+                          </p>
+                        )}
+                        {qcIngest.status && qcIngest.status !== 'ok' && (
+                          <p className="text-amber-400">⚠ that ingest finished as “{qcIngest.status}”</p>
+                        )}
+                        {qcIngest.staffSource && qcIngest.staffSource !== 'business-management-app' && (
+                          <p style={{color:'rgba(255,255,255,0.35)'}}>
+                            name not handed over by this app — treat it as a label, not proof
+                          </p>
+                        )}
+                      </div>
+                    ) : qcIngest.reason === 'no-editor-url' ? null : (
+                      <div className="space-y-1.5">
+                        <p className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>
+                          {qcIngest.reason === 'unreachable'
+                            ? 'QC app not reachable — fill this in by hand.'
+                            : 'Nothing ingested for this job yet — fill this in by hand.'}
+                        </p>
+                        {/* The lookup matches on job id, and the QC app only
+                            knows the id if it was told when the editor opened.
+                            Opening it from HERE is what ties the ingest to this
+                            job — the home-page button has no job in hand. */}
+                        {qcBase() && (
+                          <button onClick={() => {
+                            const q = new URLSearchParams({
+                              staff: currentUser?.name || '', staff_id: String(currentUser?.id ?? ''),
+                              job: String(job.id), job_name: job.jobName || '',
+                            });
+                            window.open(`${qcBase()}/?${q.toString()}`, '_blank');
+                          }}
+                            className="w-full text-xs py-1.5 rounded-lg font-medium"
+                            style={{border:'1px dashed rgba(193,167,106,0.4)',background:'rgba(193,167,106,0.06)',color:'var(--gold)'}}>
+                            ✏️ Ingest this job in the QC app
+                          </button>
+                        )}
+                      </div>
+                    )
+                  )}
                   {isStandalone && (
                     <div>
                       <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name *</label>
@@ -8062,11 +8202,25 @@ Notes: ${j.notes || 'none'}`;
                       onPointerUp={() => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }}
                       onPointerLeave={() => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }}
                       onClick={() => {
+                        // Tell the QC app who is working. It stamps this on
+                        // every scan and sort it logs, which is what lets the
+                        // backup panel fill itself in later without anyone
+                        // typing a name. Without it those runs are recorded as
+                        // unattributed and match no job.
+                        const handOff = (base) => {
+                          if (!currentUser) return base;
+                          const sep = base.includes('?') ? '&' : '?';
+                          const q = new URLSearchParams({
+                            staff: currentUser.name || '',
+                            staff_id: String(currentUser.id ?? ''),
+                          });
+                          return `${base}${sep}${q.toString()}`;
+                        };
                         if (editorUrl) {
-                          window.open(editorUrl, '_blank');
+                          window.open(handOff(editorUrl), '_blank');
                         } else {
-                          const url = prompt('Enter the editor URL (e.g. http://localhost:3000):');
-                          if (url && url.trim()) { localStorage.setItem('eyecon_editor_url', url.trim()); window.open(url.trim(), '_blank'); }
+                          const url = prompt('Enter the editor URL (e.g. http://localhost:5000):');
+                          if (url && url.trim()) { localStorage.setItem('eyecon_editor_url', url.trim()); window.open(handOff(url.trim()), '_blank'); }
                         }
                       }}
                       className="col-span-2 rounded-xl p-3 text-left transition-all flex items-center justify-between"
@@ -8109,7 +8263,15 @@ Notes: ${j.notes || 'none'}`;
                         <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{j.jobName}</p>
                         <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : ''}</p>
                       </div>
-                      <button onClick={() => { setBackupModal({ jobId: j.id }); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null }); }}
+                      <button onClick={async () => {
+                        setBackupModal({ jobId: j.id });
+                        setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
+                        // The QC app already recorded where this job's footage
+                        // went, who put it there and when. Ask it, rather than
+                        // asking the person.
+                        const data = await lookUpQcIngest(j.id);
+                        applyQcIngest(data);
+                      }}
                         className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg font-semibold shrink-0">
                         💾 Log Backup
                       </button>
