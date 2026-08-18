@@ -891,7 +891,6 @@ function EyeconMoments() {
   const voiceTranscriptRef = React.useRef('');
   const voiceIsListeningRef = React.useRef(false);
   const helpBottomRef = React.useRef(null);
-  const backupDirHandleRef = React.useRef(null);
 
   // Ask the QC app where this job's footage was put, by whom and when.
   //
@@ -7459,113 +7458,134 @@ Notes: ${j.notes || 'none'}`;
         {backupModal && (() => {
           const isStandalone = backupModal.standalone === true;
           const job = isStandalone ? null : editingJobs.find(j => String(j.id) === String(backupModal.jobId));
-          const scanFolder = async () => {
-            if (!window.showDirectoryPicker) { alert('Folder scanning is not supported in this browser. Use Chrome or Edge on desktop.'); return; }
+          // Scanning and organising both run in the QC app now.
+          //
+          // This form used to walk the folder itself with the File System
+          // Access API and move files into Photos/ and Videos/. Stage 0 of the
+          // QC app does the same job, and does it properly: it never
+          // overwrites on a name clash (this version's move() silently
+          // replaced the file already there), it is resumable after a crash
+          // mid-copy, it splits a dump holding two shoot days, and its gap
+          // check understands counter rollover and mid-shoot prefix changes
+          // rather than reporting thousands of files missing. It also wrote
+          // Photos/ where the QC app writes Pictures/, so running both on one
+          // folder split the footage across two folders.
+          //
+          // So the UI stays here — this is where Rupon works — and the logic
+          // lives in one place, with every run landing in the shared ingest
+          // log automatically.
+          const qcPost = async (path, body, ms = 15000) => {
+            const base = qcBase();
+            if (!base) throw new Error('Set the editor URL on the Open editor card first.');
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), ms);
             try {
-              const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-              backupDirHandleRef.current = dirHandle;
-              setBackupForm(p => ({...p, fileCheck: { scanning: true }, jobName: p.jobName || (isStandalone ? dirHandle.name : p.jobName) }));
-              const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
-              const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
-              const collectFiles = async (handle, list = []) => {
-                for await (const [name, h] of handle.entries()) {
-                  if (h.kind === 'file') list.push(name);
-                  else if (h.kind === 'directory') await collectFiles(h, list);
-                }
-                return list;
-              };
-              const files = await collectFiles(dirHandle);
-              let photos = 0, videos = 0, other = 0;
-              const seqMap = {};
-              for (const name of files) {
-                const ext = (name.split('.').pop() || '').toLowerCase();
-                if (PHOTO_EXTS.has(ext)) photos++;
-                else if (VIDEO_EXTS.has(ext)) videos++;
-                else other++;
-                const m = name.match(/^([A-Za-z_]+?)(\d{3,})/);
-                if (m) {
-                  const pfx = m[1].toUpperCase();
-                  if (!seqMap[pfx]) seqMap[pfx] = [];
-                  seqMap[pfx].push(parseInt(m[2]));
-                }
-              }
-              const anomalies = [];
-              const sequences = [];
-              for (const [pfx, nums] of Object.entries(seqMap)) {
-                if (nums.length < 3) continue;
-                nums.sort((a,b) => a-b);
-                const gaps = [];
-                for (let i = 1; i < nums.length; i++) {
-                  if (nums[i] - nums[i-1] > 1) {
-                    const cnt = nums[i] - nums[i-1] - 1;
-                    gaps.push({ from: nums[i-1]+1, to: nums[i]-1, count: cnt });
-                    anomalies.push(cnt === 1
-                      ? `${pfx}: file #${nums[i-1]+1} missing`
-                      : `${pfx}: ${cnt} files missing between #${nums[i-1]+1} and #${nums[i]-1}`);
-                  }
-                }
-                sequences.push({ prefix: pfx, count: nums.length, min: nums[0], max: nums[nums.length-1], gaps });
-              }
-              if (photos === 0 && videos === 0) anomalies.push('No photos or video files found in this folder');
-              const fileCheck = { scannedAt: new Date().toISOString(), folder: dirHandle.name, total: files.length, photos, videos, other, sequences, anomalies };
-              setBackupForm(p => ({...p, fileCheck, path: p.path || dirHandle.name}));
-            } catch(err) {
-              if (err.name !== 'AbortError') setBackupForm(p => ({...p, fileCheck: { error: err.message || 'Could not read folder' }}));
+              const res = await fetch(base + path, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  // Who is doing this. The QC app stamps it on every log entry.
+                  //
+                  // It has to travel on the request itself. Opening the editor
+                  // in a tab puts the name in the QC app's own session cookie,
+                  // but a cross-origin fetch from here does not carry that
+                  // cookie — so without these headers every run driven from
+                  // this form would be logged as unattributed, which is the
+                  // one thing the backup panel most needs to know.
+                  'X-Eyecon-Staff': currentUser?.name || '',
+                  'X-Eyecon-Staff-Id': String(currentUser?.id ?? ''),
+                },
+                body: JSON.stringify(body || {}), signal: ctrl.signal,
+              });
+              return await res.json();
+            } finally { clearTimeout(timer); }
+          };
+
+          // Browse the editing PC's own filesystem through the QC app. The
+          // browser's folder picker cannot be used for this: it hands back a
+          // handle and a bare folder name, never the absolute path, and the QC
+          // app needs a real path to work on.
+          const browseTo = async (path) => {
+            try {
+              const r = await qcPost('/api/browse', { path });
+              if (!r.ok) { setBackupForm(p => ({...p, fileCheck: { error: r.error }})); return; }
+              setBackupForm(p => ({...p, fileCheck: { browsing: r }}));
+            } catch (err) {
+              setBackupForm(p => ({...p, fileCheck: { error:
+                'QC app not reachable. Start it on the editing PC, then try again.' }}));
             }
           };
 
+          const scanFolder = () => browseTo(backupForm.path || '');
+
+          // Look only — moves nothing. Shows the day breakdown and the gap
+          // report so a card with holes in it is visible BEFORE anything is
+          // called backed up.
+          const qcScan = async (folder) => {
+            setBackupForm(p => ({...p, fileCheck: { scanning: true }}));
+            try {
+              const r = await qcPost('/api/stage0/scan', { folder });
+              if (!r.ok) { setBackupForm(p => ({...p, fileCheck: { error: r.error }})); return; }
+              setBackupForm(p => ({...p, path: folder,
+                fileCheck: { folder, total: r.files, photos: r.pictures, videos: r.videos,
+                             other: r.loose_count, gb: r.gb, volume: r.volume,
+                             days: r.days || [], sequences: r.sequences || null,
+                             scannedAt: new Date().toISOString(), viaQc: true }}));
+            } catch (err) {
+              setBackupForm(p => ({...p, fileCheck: { error:
+                'QC app not reachable. Start it on the editing PC, then try again.' }}));
+            }
+          };
+
+          // Sort into Pictures/ and Videos/, splitting a second shoot day out
+          // first if the user picked one. Progress is polled from the QC app,
+          // which is doing the actual moving.
           const organiseFiles = async () => {
-            const dirHandle = backupDirHandleRef.current;
-            if (!dirHandle) { alert('Please scan the folder first.'); return; }
             const fc = backupForm.fileCheck;
-            const total = (fc?.photos || 0) + (fc?.videos || 0);
+            if (!fc || !fc.folder) { alert('Scan a folder first.'); return; }
             setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: true, organiseResult: null, organiseProgress: null}}));
             try {
-              const PHOTO_EXTS = new Set(['jpg','jpeg','raw','cr2','cr3','nef','arw','dng','heic','png','tif','tiff']);
-              const VIDEO_EXTS = new Set(['mp4','mov','mxf','avi','mkv','m4v','mts','m2ts']);
-              const photosDir = fc.photos > 0 ? await dirHandle.getDirectoryHandle('Photos', { create: true }) : null;
-              const videosDir = fc.videos > 0 ? await dirHandle.getDirectoryHandle('Videos', { create: true }) : null;
-              let movedPhotos = 0, movedVideos = 0, skipped = 0;
-
-              // Collect all file entries first (snapshot) before mutating the directory —
-              // the live entries() iterator can stall when files are deleted mid-iteration
-              const collectEntries = async (handle, list = []) => {
-                const entries = [];
-                for await (const entry of handle.entries()) entries.push(entry);
-                for (const [name, h] of entries) {
-                  if (h.kind === 'directory') {
-                    if (name !== 'Photos' && name !== 'Videos') await collectEntries(h, list);
-                  } else {
-                    list.push({ name, h, parentHandle: handle });
-                  }
-                }
-                return list;
-              };
-
-              const allFiles = await collectEntries(dirHandle);
-              let done = 0;
-              for (const { name, h, parentHandle } of allFiles) {
-                const ext = (name.split('.').pop() || '').toLowerCase();
-                const targetDir = PHOTO_EXTS.has(ext) ? photosDir : VIDEO_EXTS.has(ext) ? videosDir : null;
-                if (!targetDir) { skipped++; continue; }
-                setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organiseProgress: `${done + 1} / ${total} — ${name}`}}));
-                // Use native move() (Chrome 116+) — instant rename on same drive.
-                // Fall back to stream copy + delete for older browsers.
-                if (typeof h.move === 'function') {
-                  await h.move(targetDir);
-                } else {
-                  const file = await h.getFile();
-                  const newHandle = await targetDir.getFileHandle(name, { create: true });
-                  const writable = await newHandle.createWritable();
-                  await file.stream().pipeTo(writable);
-                  await parentHandle.removeEntry(name);
-                }
-                done++;
-                if (targetDir === photosDir) movedPhotos++; else movedVideos++;
+              const started = await qcPost('/api/stage0/organise', {
+                folder: fc.folder, volume: fc.volume || '',
+                keep_day: (fc.days && fc.days.length > 1) ? (fc.keepDay || fc.days[0].day) : '',
+                job: !isStandalone && job ? String(job.id) : '',
+                job_name: !isStandalone && job ? (job.jobName || '') : '',
+              });
+              if (!started.ok) {
+                setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false,
+                  organiseResult: { error: started.error }}}));
+                return;
               }
-              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseProgress: null, organiseResult: { movedPhotos, movedVideos, skipped }}}));
-            } catch(err) {
-              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseProgress: null, organiseResult: { error: err.message || 'Could not organise files' }}}));
+              // Poll until it settles. A 2,874-file sort is not instant, and a
+              // form that looked frozen for ten minutes would get clicked again.
+              const base = qcBase();
+              for (;;) {
+                await new Promise(r => setTimeout(r, 1000));
+                const st = await (await fetch(base + '/api/stage0/state')).json();
+                if (st.status === 'running') {
+                  setBackupForm(p => ({...p, fileCheck: {...p.fileCheck,
+                    organiseProgress: st.total ? `${st.done} / ${st.total} — ${st.phase}` : st.phase}}));
+                  continue;
+                }
+                const rep = st.report || {};
+                const sort = rep.sort || {}; const split = rep.split || {};
+                setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseProgress: null,
+                  organiseResult: st.status === 'error'
+                    ? { error: st.error }
+                    : { movedPhotos: sort.moved || 0, movedVideos: 0,
+                        movedOut: split.moved || 0,
+                        skipped: rep.loose_count || 0,
+                        collisions: [...(sort.collisions || []), ...(split.collisions || [])],
+                        runId: (rep.logged || {}).id || '' },
+                  sequences: rep.sequences || p.fileCheck.sequences }}));
+                // The run has been logged by the QC app; pick the record up so
+                // the fields fill themselves in.
+                if (!isStandalone && job) applyQcIngest(await lookUpQcIngest(job.id));
+                break;
+              }
+            } catch (err) {
+              setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, organising: false, organiseProgress: null,
+                organiseResult: { error: err.message || 'Could not organise files' }}}));
             }
           };
 
@@ -7599,12 +7619,15 @@ Notes: ${j.notes || 'none'}`;
               const ph = fc?.photos || 0; const vi = fc?.videos || 0;
               const detectedType = ph > 0 && vi > 0 ? 'photo-video' : ph > 0 ? 'photo' : vi > 0 ? 'video' : 'photo-video';
               let fileLocs = [];
-              if (organised) {
-                if (fc.organiseResult.movedPhotos > 0) fileLocs.push({ ...base, path: basePath ? `${basePath}/Photos` : 'Photos', mediaType: 'photo', fileCheck: fc });
-                if (fc.organiseResult.movedVideos > 0) fileLocs.push({ ...base, path: basePath ? `${basePath}/Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
-              } else if (fc) {
-                fileLocs.push({ ...base, path: basePath, fileCheck: fc });
+              // One row per folder the QC app actually wrote to. Taking the
+              // destinations from the run itself means the record says where
+              // the files really went, rather than where this form assumed
+              // they would go.
+              if (organised && fc.photos >= 0) {
+                if (fc.photos > 0) fileLocs.push({ ...base, path: basePath ? `${basePath}\\Pictures` : 'Pictures', mediaType: 'photo', fileCheck: fc });
+                if (fc.videos > 0) fileLocs.push({ ...base, path: basePath ? `${basePath}\\Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
               }
+              if (!fileLocs.length && fc) fileLocs.push({ ...base, path: basePath, fileCheck: fc });
               const newId = 'job_' + Date.now();
               const stages = detectedType !== 'photo' ? [
                 {id:1,name:'Cutting, Syncing & Organising',status:'not-started',assignedTo:0},
@@ -7634,11 +7657,11 @@ Notes: ${j.notes || 'none'}`;
             // Regular save for existing job
             if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
             let newLocs = [...(job.fileLocations || [])];
-            if (organised) {
-              if (fc.organiseResult.movedPhotos > 0)
-                newLocs.push({ ...base, path: basePath ? `${basePath}/Photos` : 'Photos', mediaType: 'photo', fileCheck: fc });
-              if (fc.organiseResult.movedVideos > 0)
-                newLocs.push({ ...base, path: basePath ? `${basePath}/Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
+            if (organised && (fc.photos > 0 || fc.videos > 0)) {
+              if (fc.photos > 0)
+                newLocs.push({ ...base, path: basePath ? `${basePath}\\Pictures` : 'Pictures', mediaType: 'photo', fileCheck: fc });
+              if (fc.videos > 0)
+                newLocs.push({ ...base, path: basePath ? `${basePath}\\Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
             } else {
               newLocs.push({ ...base, path: basePath, fileCheck: fc || null });
             }
@@ -7814,13 +7837,35 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                   {/* File check section */}
                   <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode?'text-gray-300':'text-gray-700'}`}>File Check <span className="font-normal text-xs opacity-50">(Chrome/Edge desktop)</span></label>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode?'text-gray-300':'text-gray-700'}`}>File Check <span className="font-normal text-xs opacity-50">(runs in the QC app)</span></label>
                     {!backupForm.fileCheck ? (
                       <button onClick={scanFolder}
                         className="w-full text-sm py-2 rounded-lg flex items-center justify-center gap-2 font-medium text-blue-300"
                         style={{border:'1px dashed rgba(96,165,250,0.4)',background:'rgba(96,165,250,0.06)'}}>
                         📁 Scan folder to check files
                       </button>
+                    ) : backupForm.fileCheck.browsing ? (
+                      /* Browsing the editing PC's own drives through the QC
+                         app, because the browser's picker never reveals an
+                         absolute path and the QC app needs one. */
+                      (() => {
+                        const b = backupForm.fileCheck.browsing;
+                        return (
+                          <div className="rounded-lg p-2.5 space-y-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)'}}>
+                            <p className="text-xs font-mono break-all" style={{color:'rgba(255,255,255,0.6)'}}>{b.path}</p>
+                            <div className="flex gap-1.5">
+                              <button onClick={() => browseTo(b.parent)} className="text-xs px-2 py-1 rounded" style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)'}}>↑ up</button>
+                              <button onClick={() => qcScan(b.path)} className="text-xs px-2 py-1 rounded font-semibold" style={{background:'var(--gold)',color:'#1a1a1a'}}>Scan this folder</button>
+                            </div>
+                            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                              {(b.subfolders || []).map(f => (
+                                <button key={f} onClick={() => browseTo(b.path.replace(/[\\/]+$/,'') + '\\' + f)}
+                                  className="text-xs px-2 py-0.5 rounded" style={{background:'rgba(96,165,250,0.1)',color:'rgb(147,197,253)'}}>{f}</button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : backupForm.fileCheck.scanning ? (
                       <p className={`text-xs text-center py-2 ${darkMode?'text-gray-400':'text-gray-500'}`}>⏳ Scanning files…</p>
                     ) : backupForm.fileCheck.error ? (
@@ -7865,12 +7910,45 @@ Notes: ${j.notes || 'none'}`;
                             </div>
                           );
                         })()}
-                        {backupForm.fileCheck.anomalies?.length > 0 ? (
-                          <div className="space-y-0.5 pt-0.5">
-                            {backupForm.fileCheck.anomalies.map((a,i) => <p key={i} className="text-xs text-amber-400">⚠ {a}</p>)}
+                        {/* The gap report comes from the QC app, which knows
+                            that a counter wrapping past 9999 is not 9,000
+                            missing files and that numbers absent under one
+                            camera prefix may be present under another. */}
+                        {backupForm.fileCheck.sequences ? (
+                          backupForm.fileCheck.sequences.complete ? (
+                            <p className="text-xs text-green-400 pt-0.5">✓ Camera numbering complete — nothing missing</p>
+                          ) : (
+                            <div className="space-y-0.5 pt-0.5">
+                              <p className="text-xs text-amber-400">
+                                ⚠ {backupForm.fileCheck.sequences.missing} file(s) unaccounted for
+                              </p>
+                              {(backupForm.fileCheck.sequences.runs || [])
+                                .filter(r => r.missing > 0)
+                                .map((r,i) => (
+                                  <p key={i} className="text-xs" style={{color:'rgba(255,255,255,0.45)'}}>
+                                    {r.range}: {r.found} of {r.expected}
+                                  </p>
+                                ))}
+                            </div>
+                          )
+                        ) : null}
+                        {/* One dump, two weddings. The QC app splits the day
+                            you don't want out to its own folder; it has to be
+                            chosen before anything moves. */}
+                        {(backupForm.fileCheck.days || []).length > 1 && (
+                          <div className="pt-1 space-y-1">
+                            <p className="text-xs text-amber-400">⚠ Two shoot days in this folder — pick this job's:</p>
+                            {backupForm.fileCheck.days.map(d => (
+                              <button key={d.day}
+                                onClick={() => setBackupForm(p => ({...p, fileCheck: {...p.fileCheck, keepDay: d.day}}))}
+                                className="w-full text-left text-xs px-2 py-1 rounded"
+                                style={(backupForm.fileCheck.keepDay || backupForm.fileCheck.days[0].day) === d.day
+                                  ? {background:'var(--gold)',color:'#1a1a1a',fontWeight:600}
+                                  : {background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.6)'}}>
+                                {d.label}
+                              </button>
+                            ))}
                           </div>
-                        ) : (
-                          <p className="text-xs text-green-400 pt-0.5">✓ No missing files detected</p>
                         )}
                         {(backupForm.fileCheck.photos > 0 || backupForm.fileCheck.videos > 0) && !backupForm.fileCheck.organiseResult && (
                           <div className="pt-1">
@@ -7885,7 +7963,7 @@ Notes: ${j.notes || 'none'}`;
                               <button onClick={organiseFiles}
                                 className="w-full text-xs py-1.5 rounded-lg font-semibold"
                                 style={{background:'rgba(96,165,250,0.12)',border:'1px solid rgba(96,165,250,0.3)',color:'#93c5fd'}}>
-                                📁 Sort into Photos &amp; Videos folders
+                                📁 Sort into Pictures &amp; Videos folders
                               </button>
                             )}
                           </div>
@@ -7894,7 +7972,25 @@ Notes: ${j.notes || 'none'}`;
                           <div className="pt-1 rounded-lg p-2" style={{background: backupForm.fileCheck.organiseResult.error ? 'rgba(239,68,68,0.1)' : 'rgba(52,211,153,0.1)'}}>
                             {backupForm.fileCheck.organiseResult.error
                               ? <p className="text-xs text-red-300">⚠ {backupForm.fileCheck.organiseResult.error}</p>
-                              : <p className="text-xs text-green-300">✓ Moved {backupForm.fileCheck.organiseResult.movedPhotos} photos → Photos/ · {backupForm.fileCheck.organiseResult.movedVideos} videos → Videos/{backupForm.fileCheck.organiseResult.skipped > 0 ? ` · ${backupForm.fileCheck.organiseResult.skipped} other skipped` : ''}</p>
+                              : <div className="space-y-0.5">
+                                  <p className="text-xs text-green-300">
+                                    ✓ Sorted {backupForm.fileCheck.organiseResult.movedPhotos} file(s) into Pictures/ and Videos/
+                                    {backupForm.fileCheck.organiseResult.movedOut > 0 ? ` · ${backupForm.fileCheck.organiseResult.movedOut} moved out as another shoot day` : ''}
+                                    {backupForm.fileCheck.organiseResult.skipped > 0 ? ` · ${backupForm.fileCheck.organiseResult.skipped} left loose, untouched` : ''}
+                                  </p>
+                                  {/* Nothing was overwritten — a name clash is
+                                      reported and BOTH files stay put. */}
+                                  {(backupForm.fileCheck.organiseResult.collisions || []).length > 0 && (
+                                    <p className="text-xs text-amber-400">
+                                      ⚠ {backupForm.fileCheck.organiseResult.collisions.length} name clash(es) — both files left alone, nothing overwritten
+                                    </p>
+                                  )}
+                                  {backupForm.fileCheck.organiseResult.runId && (
+                                    <p className="text-xs" style={{color:'rgba(255,255,255,0.35)'}}>
+                                      logged as {backupForm.fileCheck.organiseResult.runId}
+                                    </p>
+                                  )}
+                                </div>
                             }
                           </div>
                         )}
