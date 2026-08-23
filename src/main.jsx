@@ -5298,6 +5298,20 @@ Notes: ${j.notes || 'none'}`;
             </div>
           </div>
 
+          {/* Log Shoot Wages — quick action */}
+          <button
+            onClick={() => setWageSubmitModal({ selectedJobId: null, customJobName: '', actualStart: '', actualEnd: '', isOverride: false, overrideAmount: 0, overrideReason: '', notes: '', ranOver: false, extraHours: '', extraOverrideAmount: '' })}
+            className={`w-full flex items-center gap-4 p-4 rounded-xl shadow text-left ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50'} border-2 border-transparent hover:border-green-400 transition-all`}>
+            <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center text-2xl shadow">
+              📝
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Log Shoot Wages</p>
+              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Select a job and enter your hours</p>
+            </div>
+            <span className={`text-xl ${darkMode ? 'text-gray-500' : 'text-gray-300'}`}>›</span>
+          </button>
+
           {activeEntry && (
             <div className={`border-2 border-blue-200 rounded-lg p-4 cursor-pointer ${darkMode ? 'bg-blue-900' : 'bg-blue-50'}`} onClick={() => setCurrentView('timeclock')}>
               <div className="flex justify-between items-start mb-2">
