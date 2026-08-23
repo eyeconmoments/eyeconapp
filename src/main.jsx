@@ -1160,6 +1160,17 @@ function EyeconMoments() {
     'Highlights Trailer & Intro': 20,
   };
   const SHOOT_HOURLY_RATE = 13;
+
+  // Parse "Name1 - Name2 - Name3" and "Phone1 - Phone2 - Phone3" into paired contacts
+  const parseNextOfKin = (nameStr, phoneStr) => {
+    const names = (nameStr || '').split(' - ').map(s => s.trim()).filter(Boolean);
+    const phones = (phoneStr || '').split(' - ').map(s => s.trim()).filter(Boolean);
+    const count = Math.max(names.length, phones.length, 1);
+    return Array.from({ length: count }, (_, i) => ({
+      name: names[i] || null,
+      phone: phones[i] || null,
+    })).filter(c => c.name || c.phone);
+  };
   const getStageRate = (stageName, job) => {
     if (stageName === 'Cutting, Syncing & Organising') {
       const cams = Math.min(job?.numVideographers || 2, 3);
@@ -5770,22 +5781,19 @@ Notes: ${j.notes || 'none'}`;
                           {/* Next of Kin */}
                           {itin.nextOfKin?.name && (
                             <div className={`mx-4 mt-3 mb-2 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                              <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itin.nextOfKin.name}</p>
-                              {(() => {
-                                const raw2 = itin.nextOfKin.phone || '';
-                                const nums2 = raw2.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw2.trim() ? [raw2.trim()] : []);
-                                if (nums2.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
-                                return (
-                                  <div className="space-y-1.5">
-                                    {nums2.map((num2, ni2) => (
-                                      <div key={ni2} className="flex items-center justify-between gap-2">
-                                        <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num2.trim()}</span>
-                                        <a href={`tel:${num2.replace(/[^\d+]/g,'')}`} className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500">📞 Call</a>
-                                      </div>
-                                    ))}
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Emergency Contacts</p>
+                              <div className="space-y-2">
+                                {parseNextOfKin(itin.nextOfKin.name, itin.nextOfKin.phone).map((c, ci) => (
+                                  <div key={ci} className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      {c.name && <p className={`text-xs font-semibold truncate ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>{c.name}</p>}
+                                      {c.phone && <p className={`text-sm font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.phone}</p>}
+                                      {!c.phone && <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>}
+                                    </div>
+                                    {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g,'')}`} className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700">📞 Call</a>}
                                   </div>
-                                );
-                              })()}
+                                ))}
+                              </div>
                             </div>
                           )}
                           {/* Open on Maps */}
@@ -9147,25 +9155,19 @@ Notes: ${j.notes || 'none'}`;
                           {/* Next of Kin — parsed multi-number display */}
                           {itin.nextOfKin?.name && (
                             <div className={`mx-4 mb-3 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                              <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itin.nextOfKin.name}</p>
-                              {(() => {
-                                const raw = itin.nextOfKin.phone || '';
-                                const nums = raw.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw.trim() ? [raw.trim()] : []);
-                                if (nums.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
-                                return (
-                                  <div className="space-y-1.5">
-                                    {nums.map((num, ni) => (
-                                      <div key={ni} className="flex items-center justify-between gap-2">
-                                        <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num.trim()}</span>
-                                        <a href={`tel:${num.replace(/[^\d+]/g,'')}`}
-                                          className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">
-                                          📞 Call
-                                        </a>
-                                      </div>
-                                    ))}
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Emergency Contacts</p>
+                              <div className="space-y-2">
+                                {parseNextOfKin(itin.nextOfKin.name, itin.nextOfKin.phone).map((c, ci) => (
+                                  <div key={ci} className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      {c.name && <p className={`text-xs font-semibold truncate ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>{c.name}</p>}
+                                      {c.phone && <p className={`text-sm font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.phone}</p>}
+                                      {!c.phone && <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>}
+                                    </div>
+                                    {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g,'')}`} className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">📞 Call</a>}
                                   </div>
-                                );
-                              })()}
+                                ))}
+                              </div>
                             </div>
                           )}
                           <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
@@ -11099,25 +11101,19 @@ Capturing Your Special Day
                             {/* Next of Kin */}
                             {itinerary.nextOfKin?.name && (
                               <div className={`mx-4 mb-3 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                                <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itinerary.nextOfKin.name}</p>
-                                {(() => {
-                                  const raw = itinerary.nextOfKin.phone || '';
-                                  const nums = raw.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw.trim() ? [raw.trim()] : []);
-                                  if (nums.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
-                                  return (
-                                    <div className="space-y-1.5">
-                                      {nums.map((num, ni) => (
-                                        <div key={ni} className="flex items-center justify-between gap-2">
-                                          <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num.trim()}</span>
-                                          <a href={`tel:${num.replace(/[^\d+]/g,'')}`}
-                                            className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">
-                                            📞 Call
-                                          </a>
-                                        </div>
-                                      ))}
+                                <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Emergency Contacts</p>
+                                <div className="space-y-2">
+                                  {parseNextOfKin(itinerary.nextOfKin.name, itinerary.nextOfKin.phone).map((c, ci) => (
+                                    <div key={ci} className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        {c.name && <p className={`text-xs font-semibold truncate ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>{c.name}</p>}
+                                        {c.phone && <p className={`text-sm font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.phone}</p>}
+                                        {!c.phone && <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>}
+                                      </div>
+                                      {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g,'')}`} className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">📞 Call</a>}
                                     </div>
-                                  );
-                                })()}
+                                  ))}
+                                </div>
                               </div>
                             )}
                             <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
@@ -11238,13 +11234,14 @@ Capturing Your Special Day
                         {/* Next of Kin */}
                         <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'} border ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
                           <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>👤 Next of Kin / Emergency Contact</p>
-                          <div className="flex gap-2 flex-wrap">
-                            <input type="text" value={itinerary.nextOfKin?.name || ''} placeholder="Name..."
+                          <div className="flex flex-col gap-2">
+                            <input type="text" value={itinerary.nextOfKin?.name || ''} placeholder="Bride's Sister - Brother - Groom"
                               onChange={(e) => updateNextOfKin(job.id, 'name', e.target.value)}
-                              className={`flex-1 min-w-32 px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
-                            <input type="tel" value={itinerary.nextOfKin?.phone || ''} placeholder="Phone..."
+                              className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
+                            <input type="tel" value={itinerary.nextOfKin?.phone || ''} placeholder="07700900001 - 07700900002 - 07700900003"
                               onChange={(e) => updateNextOfKin(job.id, 'phone', e.target.value)}
-                              className={`flex-1 min-w-32 px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
+                              className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
+                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Separate multiple contacts with " - " (space-hyphen-space)</p>
                           </div>
                         </div>
                       </div>
