@@ -8058,7 +8058,11 @@ Notes: ${j.notes || 'none'}`;
                           </div>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
-                            {remaining !== null ? ` · £${remaining.toFixed(0)} remaining` : ' · Balance due'}
+                            {remaining !== null
+                              ? depositPaid > 0
+                                ? ` · £${total.toFixed(0)} total · £${depositPaid.toFixed(0)} dep · £${remaining.toFixed(0)} left`
+                                : ` · £${remaining.toFixed(0)} due (no deposit logged)`
+                              : ' · Balance due'}
                           </p>
                         </div>
                         <div className="flex gap-1.5 shrink-0">
