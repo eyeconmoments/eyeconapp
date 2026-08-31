@@ -1229,6 +1229,7 @@ function EyeconMoments() {
   const [gmapsKey, setGmapsKey] = useState(() => localStorage.getItem('eyecon_gmaps_key') || '');
   const [editingGmapsKey, setEditingGmapsKey] = useState(false);
   const [routeStatus, setRouteStatus] = useState({});
+  const [venueAuto, setVenueAuto] = useState({ active: false, dayIdx: null, builderKey: '', suggestions: [], loading: false });
   const [homePanel, setHomePanel] = useState(null);
   const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
@@ -1240,7 +1241,59 @@ function EyeconMoments() {
   };
   const [extractedJobData, setExtractedJobData] = useState(null);
   const [isExtracting, setIsExtracting] = useState(false);
-  
+
+  const POSTCODE_DIST = { 'BB1':0,'BB':3,'PR':15,'BL':10,'M':25,'OL':20,'WN':18,'L':40,'WA':30,'SK':35,'HD':40,'HX':35,'BD':30,'LS':45,'S':55,'DN':70,'HU':90,'YO':80,'DL':60,'TS':85,'NE':110,'SR':105,'DH':100,'CA':80,'LA':50,'FY':25,'LE':90,'NG':85,'DE':75,'ST':60,'WV':70,'B':80,'CV':95,'NN':120,'MK':140,'LU':160,'AL':170,'WD':175,'EN':180,'N':200,'E':205,'SE':210,'SW':210,'W':205,'NW':200,'EC':205,'WC':205,'BR':215,'DA':220,'RM':210,'IG':205,'CM':190,'SS':200,'CO':180,'IP':170,'NR':180,'PE':140,'CB':150,'SG':160,'HP':155,'OX':160,'RG':180,'SL':185,'UB':190,'TW':195,'KT':200,'SM':205,'CR':210,'GU':200,'RH':210,'BN':230,'PO':240,'SO':220,'SP':200,'BA':190,'BS':170,'GL':140,'SN':175,'DT':210,'BH':220,'EX':250,'TQ':260,'PL':280,'TR':300,'TA':200,'CF':170,'NP':160,'SA':180,'LL':80,'SY':100,'LD':110,'HR':130,'WR':110,'DY':85,'TF':80,'CW':45,'CH':50 };
+  const distFromPostcode = (pc) => { if (!pc) return 0; const c = pc.toUpperCase().replace(/[^A-Z0-9 ]/g,'').trim(); const letters = c.replace(/[^A-Z]/g,''); return POSTCODE_DIST[letters.substring(0,3)] ?? POSTCODE_DIST[letters.substring(0,2)] ?? POSTCODE_DIST[letters.substring(0,1)] ?? 50; };
+
+  const loadPlacesAPI = () => new Promise((resolve, reject) => {
+    if (window.google?.maps?.places?.AutocompleteService) { resolve(window.google.maps.places); return; }
+    const prev = document.getElementById('eyecon-gmaps-places');
+    if (prev) prev.remove();
+    const s = document.createElement('script');
+    s.id = 'eyecon-gmaps-places';
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(gmapsKey)}&libraries=places`;
+    s.async = true;
+    s.onload = () => window.google?.maps?.places ? resolve(window.google.maps.places) : reject(new Error('Places library not available'));
+    s.onerror = () => reject(new Error('API key invalid or Places API not enabled'));
+    document.head.appendChild(s);
+  });
+
+  const searchVenuePlaces = async (query, dayIdx, builderKey) => {
+    if (!gmapsKey || query.length < 2) { setVenueAuto({ active: false, dayIdx: null, builderKey: '', suggestions: [], loading: false }); return; }
+    setVenueAuto(v => ({ ...v, active: true, dayIdx, builderKey, loading: true, suggestions: [] }));
+    try {
+      const places = await loadPlacesAPI();
+      const svc = new places.AutocompleteService();
+      svc.getPlacePredictions({ input: query, componentRestrictions: { country: 'gb' }, types: ['establishment'] }, (results, status) => {
+        if (status === 'OK') {
+          setVenueAuto({ active: true, dayIdx, builderKey, suggestions: results.slice(0, 5), loading: false });
+        } else {
+          setVenueAuto(v => ({ ...v, loading: false, suggestions: [] }));
+        }
+      });
+    } catch {
+      setVenueAuto(v => ({ ...v, loading: false, active: false }));
+    }
+  };
+
+  const selectVenueSuggestion = async (suggestion, updateDayFn) => {
+    const venueName = suggestion.structured_formatting?.main_text || suggestion.description;
+    setVenueAuto({ active: false, dayIdx: null, builderKey: '', suggestions: [], loading: false });
+    updateDayFn({ location: venueName });
+    if (!gmapsKey) return;
+    try {
+      const places = await loadPlacesAPI();
+      const div = document.createElement('div');
+      const svc = new places.PlacesService(div);
+      svc.getDetails({ placeId: suggestion.place_id, fields: ['address_components'] }, (place, status) => {
+        if (status === 'OK') {
+          const pc = place.address_components?.find(c => c.types.includes('postal_code'))?.long_name || '';
+          updateDayFn({ location: venueName, postcode: pc, distance: distFromPostcode(pc) });
+        }
+      });
+    } catch {}
+  };
+
   const hardwareLocations = [
     { id: 'pc1', name: 'PC 1', drives: ['HD1', 'HD2', 'HD3', 'HD4', 'HD5', 'HD6', 'HD7', 'HD8', 'HD9', 'HD10', 'Large 1', 'Large 2', 'Large 3', 'D Drive', 'E Drive', 'F Drive', 'G Drive'] },
     { id: 'pc2', name: 'PC 2', drives: ['HD1', 'HD2', 'HD3', 'HD4', 'HD5', 'HD6', 'HD7', 'HD8', 'HD9', 'HD10', 'Large 1', 'Large 2', 'Large 3', 'D Drive', 'E Drive', 'F Drive', 'G Drive'] },
@@ -15864,10 +15917,25 @@ Eyecon Moments
                             <input type="time" value={day.endTime} onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],endTime:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Venue / Location</label>
-                            <input type="text" value={day.location || ''} placeholder="Venue name" onChange={e => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],location:e.target.value}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                          <div className="relative"><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Venue / Location</label>
+                            <input type="text" value={day.location || ''} placeholder="Type to search…"
+                              onChange={e => { const v=e.target.value; const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],location:v}; setQuoteData({...quoteData,dates:nd}); searchVenuePlaces(v,dayIdx,'crm'); }}
+                              onBlur={() => setTimeout(() => setVenueAuto(a => ({...a,active:false})),200)}
+                              className={inpSm} />
+                            {venueAuto.active && venueAuto.builderKey==='crm' && venueAuto.dayIdx===dayIdx && (venueAuto.suggestions.length>0||venueAuto.loading) && (
+                              <div className={`absolute z-50 top-full left-0 right-0 rounded-lg shadow-xl border mt-0.5 ${dm?'bg-gray-800 border-gray-600':'bg-white border-gray-200'}`}>
+                                {venueAuto.loading && <p className={`px-3 py-2 text-xs ${dm?'text-gray-400':'text-gray-500'}`}>Searching…</p>}
+                                {venueAuto.suggestions.map(s => (
+                                  <button key={s.place_id} onMouseDown={() => selectVenueSuggestion(s, upd => { const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],...upd}; setQuoteData({...quoteData,dates:nd}); })}
+                                    className={`w-full text-left px-3 py-1.5 text-xs border-b last:border-0 ${dm?'border-gray-700 hover:bg-gray-700 text-gray-200':'border-gray-100 hover:bg-blue-50 text-gray-800'}`}>
+                                    <span className="font-medium block">{s.structured_formatting?.main_text}</span>
+                                    <span className={`text-xs ${dm?'text-gray-400':'text-gray-500'}`}>{s.structured_formatting?.secondary_text}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}</div>
                           <div><label className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Postcode</label>
-                            <input type="text" value={day.postcode || ''} placeholder="e.g. M1 1AA" onChange={e => { const pc=e.target.value.toUpperCase(); const dist=calcDistFromPostcode(pc); const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],postcode:pc,distance:dist}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
+                            <input type="text" value={day.postcode || ''} placeholder="auto or type" onChange={e => { const pc=e.target.value.toUpperCase(); const dist=calcDistFromPostcode(pc); const nd=[...quoteData.dates]; nd[dayIdx]={...nd[dayIdx],postcode:pc,distance:dist}; setQuoteData({...quoteData,dates:nd}); }} className={inpSm} /></div>
                         </div>
                       </div>
                     ))}
@@ -19621,12 +19689,29 @@ Eyecon Moments
                     }} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
                 </div>
-                <div className="mb-2">
+                <div className="mb-2 relative">
                   <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Venue / Location</label>
                   <input type="text" value={day.location || ''} onChange={(e) => {
-                    const nd = [...quoteData.dates]; nd[dayIdx] = {...nd[dayIdx], location: e.target.value};
+                    const v = e.target.value;
+                    const nd = [...quoteData.dates]; nd[dayIdx] = {...nd[dayIdx], location: v};
                     setQuoteData({...quoteData, dates: nd});
-                  }} className="w-full px-3 py-2 border rounded-lg" placeholder="Venue name and address" />
+                    searchVenuePlaces(v, dayIdx, 'quote');
+                  }} onBlur={() => setTimeout(() => setVenueAuto(a => ({...a, active: false})), 200)}
+                  className="w-full px-3 py-2 border rounded-lg" placeholder="Type venue name to search…" />
+                  {venueAuto.active && venueAuto.builderKey === 'quote' && venueAuto.dayIdx === dayIdx && (venueAuto.suggestions.length > 0 || venueAuto.loading) && (
+                    <div className={`absolute z-50 top-full left-0 right-0 rounded-xl shadow-xl border mt-1 overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+                      {venueAuto.loading && <p className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Searching…</p>}
+                      {venueAuto.suggestions.map(s => (
+                        <button key={s.place_id} onMouseDown={() => selectVenueSuggestion(s, upd => {
+                          const nd = [...quoteData.dates]; nd[dayIdx] = {...nd[dayIdx], ...upd};
+                          setQuoteData({...quoteData, dates: nd});
+                        })} className={`w-full text-left px-4 py-2 text-sm border-b last:border-0 ${darkMode ? 'border-gray-700 hover:bg-gray-700 text-gray-200' : 'border-gray-100 hover:bg-blue-50 text-gray-800'}`}>
+                          <span className="font-medium block">{s.structured_formatting?.main_text}</span>
+                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{s.structured_formatting?.secondary_text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -19636,7 +19721,7 @@ Eyecon Moments
                       const dist = calculateDistanceFromPostcode(pc);
                       const nd = [...quoteData.dates]; nd[dayIdx] = {...nd[dayIdx], postcode: pc, distance: dist};
                       setQuoteData({...quoteData, dates: nd});
-                    }} className="w-full px-3 py-2 border rounded-lg" placeholder="e.g. M1 1AA" />
+                    }} className="w-full px-3 py-2 border rounded-lg" placeholder="auto-filled or type" />
                   </div>
                   <div>
                     <label className={`block text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Distance (mi)</label>
