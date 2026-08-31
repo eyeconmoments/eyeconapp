@@ -15694,8 +15694,8 @@ www.eyeconmoments.co.uk`;
                 const cdnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
                 const shortBkg = h > 0 && h < 4;
                 const pm = shortBkg ? 1.2 : 1;
-                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr${shortBkg ? ' +20% short booking' : ''})`, cost: c }); }
-                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''}${shortBkg ? ' +20% short booking' : ''})`, cost: c }); }
+                if (cdv) { const vr = cdvt === 'single' ? 125 : 150; const vl = cdvt === 'single' ? 'Single Videographer' : 'Dual Videographer'; const c = h * vr * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Cinematography – ${vl} (${h}h × £${vr}/hr)`, cost: c }); }
+                if (cdp) { const photoRate = cdnp >= 2 ? 150 : 125; const c = h * photoRate * pm; total += c; breakdown.push({ item: `Day ${idx+1} - Photography (${h}h × £${photoRate}/hr${cdnp >= 2 ? ` — ${cdnp} photographers` : ''})`, cost: c }); }
                 if (day.drone) { total += 100; breakdown.push({ item: `Day ${idx+1} - Drone Coverage`, cost: 100 }); }
                 const dist = day.distance || 0;
                 if (dist > 0) { const c = calcMileage(dist); total += c; breakdown.push({ item: `Day ${idx+1} - Travel (${dist}mi × £0.45 × 2)`, cost: c }); }
@@ -18921,14 +18921,14 @@ Eyecon Moments
           const videoLabel = dayVType === 'single' ? 'Single Videographer' : 'Dual Videographer';
           const videoCost = hours * videoRate * premiumMultiplier;
           serviceTotal += videoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr${shortBooking ? ' +20% short booking' : ''})`, cost: videoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Cinematography – ${videoLabel} (${hours}h × £${videoRate}/hr)`, cost: videoCost });
         }
 
         if (dayHasP) {
           const photoRate = dayNPhot >= 2 ? 150 : 125;
           const photoCost = hours * photoRate * premiumMultiplier;
           serviceTotal += photoCost;
-          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''}${shortBooking ? ' +20% short booking' : ''})`, cost: photoCost });
+          breakdown.push({ item: `Day ${idx + 1} - Photography (${hours}h × £${photoRate}/hr${dayNPhot >= 2 ? ` — ${dayNPhot} photographer${dayNPhot > 1 ? 's' : ''}` : ''})`, cost: photoCost });
         }
         if (day.drone) {
           serviceTotal += 100;
@@ -19123,8 +19123,8 @@ Eyecon Moments
         const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         ctu('DAY '+(idx+1), y, {size:11, style:'bold'}); y += 12;
-        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr*pm).toFixed(2)+(shortBooking?' (+20%)':''), y, {size:11}); y += 8; }
-        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr*pm).toFixed(2)+(shortBooking?' (+20%)':''), y, {size:11}); y += 8; }
+        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr*pm).toFixed(2), y, {size:11}); y += 8; }
+        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr*pm).toFixed(2), y, {size:11}); y += 8; }
         if (day.drone) { ct('Drone Coverage: £100.00', y, {size:11}); y += 8; }
         const dayDist = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist>0) { ct('Travel: £'+(dayDist*0.9).toFixed(2), y, {size:11}); y += 8; }
@@ -19151,8 +19151,8 @@ Eyecon Moments
         const pm2 = shortBkg2 ? 1.2 : 1;
         doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
         const lines = [];
-        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2*pm2).toFixed(2)+(shortBkg2?' (+20%)':'')); }
-        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2*pm2).toFixed(2)+(shortBkg2?' (+20%)':'')); }
+        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2*pm2).toFixed(2)); }
+        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2*pm2).toFixed(2)); }
         if (day.drone) lines.push('Drone Coverage: £100.00');
         const dayDist2 = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist2>0) lines.push('Travel: £'+(dayDist2*0.9).toFixed(2));
