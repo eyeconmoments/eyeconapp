@@ -18600,13 +18600,15 @@ Eyecon Moments
       // Helper: render one day pricing block centred
       const renderDayPriceCentred = (day, idx, y) => {
         const h = getHrs(day);
+        const shortBooking = h > 0 && h < 4;
+        const pm = shortBooking ? 1.2 : 1;
         const dv = day.video ?? quoteData.wantVideo ?? true;
         const dp = day.photo ?? quoteData.wantPhoto ?? true;
         const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         ctu('DAY '+(idx+1), y, {size:11, style:'bold'}); y += 12;
-        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr).toFixed(2), y, {size:11}); y += 8; }
-        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr).toFixed(2), y, {size:11}); y += 8; }
+        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr*pm).toFixed(2)+(shortBooking?' (+20%)':''), y, {size:11}); y += 8; }
+        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr*pm).toFixed(2)+(shortBooking?' (+20%)':''), y, {size:11}); y += 8; }
         if (day.drone) { ct('Drone Coverage: £100.00', y, {size:11}); y += 8; }
         const dayDist = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist>0) { ct('Travel: £'+(dayDist*0.9).toFixed(2), y, {size:11}); y += 8; }
@@ -18629,10 +18631,12 @@ Eyecon Moments
         const dp2 = day.photo ?? quoteData.wantPhoto ?? true;
         const dvt2 = day.videoType ?? quoteData.videoType ?? 'dual';
         const dnp2 = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
+        const shortBkg2 = h > 0 && h < 4;
+        const pm2 = shortBkg2 ? 1.2 : 1;
         doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
         const lines = [];
-        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2).toFixed(2)); }
-        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2).toFixed(2)); }
+        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2*pm2).toFixed(2)+(shortBkg2?' (+20%)':'')); }
+        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2*pm2).toFixed(2)+(shortBkg2?' (+20%)':'')); }
         if (day.drone) lines.push('Drone Coverage: £100.00');
         const dayDist2 = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist2>0) lines.push('Travel: £'+(dayDist2*0.9).toFixed(2));
