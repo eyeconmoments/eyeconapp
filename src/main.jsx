@@ -979,6 +979,44 @@ function EyeconMoments() {
   // Where the QC app is running. Same value the "Open editor" card stores, so
   // there is one setting rather than two that can disagree.
   const qcBase = () => (localStorage.getItem('eyecon_editor_url') || '').trim().replace(/\/+$/, '');
+
+  // Hand this job's itinerary to the QC app.
+  //
+  // The QC app works out when each part of the day happened by looking at
+  // where a section's clips cluster in time. That is the best it can do on its
+  // own, and it is still guesswork — it can only say "these clips agree with
+  // each other". The itinerary is the real answer: somebody wrote down that
+  // the bride arrives at six, before a frame was shot.
+  //
+  // Sent rather than fetched. The QC app runs on an editor's workstation and
+  // has no login for this one; giving it one, on a machine that also holds the
+  // footage, would be a worse trade than sending the two facts it needs.
+  //
+  // Fire and forget, on a short timeout. The QC app is usually not running,
+  // and opening a job must never wait on it or fail because of it.
+  const sendItineraryToQc = async (job, ms = 2500) => {
+    const base = qcBase();
+    if (!base || !job?.itinerary) return false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(base + '/api/job/itinerary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'omit',
+        signal: ctrl.signal,
+        // The whole object, as stored. The QC app walks scheduleItems from
+        // startTime the same way this app does, so it must not be handed a
+        // half-interpreted version of what it already knows how to read.
+        body: JSON.stringify({ itinerary: job.itinerary }),
+      });
+      return res.ok;
+    } catch {
+      return false;      // not running, blocked, or slow — all fine
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   const [backupForm, setBackupForm] = useState({ drive: '', path: '', backedUpBy: '', notes: '', fileCheck: null, jobName: '', importedJob: null });
   const [importEditModal, setImportEditModal] = useState(null); // { jobId, jobName, customerName, shootDate, deadline, jobType, hasPhotos, hasVideo, notes }
   const [itinScanModal, setItinScanModal] = useState(null); // { jobId, image, scanning, result }
@@ -7814,6 +7852,11 @@ Notes: ${j.notes || 'none'}`;
                               staff: currentUser?.name || '', staff_id: String(currentUser?.id ?? ''),
                               job: String(job.id), job_name: job.jobName || '',
                             });
+                            // Not awaited: the tab opens now, and the plan
+                            // follows a moment later. Waiting on a server that
+                            // is usually not there would put a pause on a
+                            // button that used to be instant.
+                            sendItineraryToQc(job);
                             window.open(`${qcBase()}/?${q.toString()}`, '_blank');
                           }}
                             className="w-full text-xs py-1.5 rounded-lg font-medium"
