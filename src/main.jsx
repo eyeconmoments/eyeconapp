@@ -1055,9 +1055,7 @@ function EyeconMoments() {
       teamNotes: ''
     };
   });
-  const [savedQuotes, setSavedQuotes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('eyecon_parked_quotes') || '[]'); } catch(e) { return []; }
-  });
+  const [savedQuotes, setSavedQuotes] = useState([]);
   const [dailyTasks, setDailyTasks] = useState([
     { id: 1, task: 'Check new inquiries in CRM', completed: false, date: new Date().toDateString(), daysOpen: 0 },
     { id: 2, task: 'Review team timesheets', completed: false, date: new Date().toDateString(), daysOpen: 0 },
@@ -1410,6 +1408,22 @@ function EyeconMoments() {
         }
         if (sugRes.data) setPostSuggestions(sugRes.data.map(rowToSuggestion));
         if (gearRes.data) setGearChecklists(gearRes.data);
+
+        // Load parked quotes from Supabase (migrate from localStorage if needed)
+        try {
+          const { data: qData } = await db.from('quotes').select('*').order('saved_at', { ascending: false });
+          if (qData) {
+            setSavedQuotes(qData.map(r => ({ id: r.id, name: r.name, savedAt: r.saved_at, data: r.data })));
+            // One-time migration from localStorage
+            const lsQuotes = JSON.parse(localStorage.getItem('eyecon_parked_quotes') || '[]');
+            if (lsQuotes.length > 0 && qData.length === 0) {
+              const rows = lsQuotes.map(q => ({ id: q.id, name: q.name, saved_at: q.savedAt || new Date().toISOString(), data: q.data }));
+              await db.from('quotes').insert(rows);
+              setSavedQuotes(lsQuotes);
+              localStorage.removeItem('eyecon_parked_quotes');
+            }
+          }
+        } catch(e) { /* quotes table may not exist yet */ }
 
         // Auto-login: if this device has a saved user, skip the login screen
         try {
@@ -18908,24 +18922,30 @@ Eyecon Moments
       }
     };
 
-    // Park / save / load quotes
-    const parkQuote = () => {
+    // Park / save / load quotes — Supabase-backed
+    const parkQuote = async () => {
       if (!quoteData.clientName && !quoteData.clientEmail) { alert('Please fill in at least a client name or email before parking.'); return; }
       const label = (quoteData.clientName || quoteData.clientEmail || 'Unnamed') + ' — ' + new Date().toLocaleDateString('en-GB');
-      const newSaved = [...savedQuotes, { id: Date.now(), name: label, savedAt: new Date().toISOString(), data: { ...quoteData } }];
-      setSavedQuotes(newSaved);
-      localStorage.setItem('eyecon_parked_quotes', JSON.stringify(newSaved));
-      alert(`Quote parked as "${label}"\n\nYou can reload it from the Parked Quotes section at the top of this page.`);
+      const row = { name: label, saved_at: new Date().toISOString(), data: { ...quoteData } };
+      try {
+        const { data: inserted } = await db.from('quotes').insert([row]).select();
+        const newEntry = inserted?.[0] ? { id: inserted[0].id, name: inserted[0].name, savedAt: inserted[0].saved_at, data: inserted[0].data } : { id: Date.now(), name: label, savedAt: row.saved_at, data: quoteData };
+        setSavedQuotes(prev => [newEntry, ...prev]);
+        alert(`Quote parked as "${label}"`);
+      } catch(e) {
+        alert('Could not save to Supabase — make sure the quotes table exists.\n\n' + e.message);
+      }
     };
     const loadParkedQuote = (sq) => {
       if (window.confirm(`Load "${sq.name}"?\n\nThis will overwrite the current form.`)) {
         setQuoteData(sq.data);
       }
     };
-    const deleteParkedQuote = (id) => {
-      const updated = savedQuotes.filter(sq => sq.id !== id);
-      setSavedQuotes(updated);
-      localStorage.setItem('eyecon_parked_quotes', JSON.stringify(updated));
+    const deleteParkedQuote = async (id) => {
+      try {
+        await db.from('quotes').delete().eq('id', id);
+      } catch(e) {}
+      setSavedQuotes(prev => prev.filter(sq => sq.id !== id));
     };
     
     return (
