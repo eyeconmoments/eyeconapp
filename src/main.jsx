@@ -8020,7 +8020,13 @@ Notes: ${j.notes || 'none'}`;
               if (archivedJobIds.includes(j.id) || j.finalPaymentReceived) return false;
               if (!j.shootDate) return false;
               const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
-              return shoot >= sixtyDaysAgo && shoot <= threeDaysAhead;
+              if (shoot < sixtyDaysAgo || shoot > threeDaysAhead) return false;
+              // Exclude jobs where deposit already covers the full price
+              const dep = getJobDeposit(j);
+              const total = calculateJobRevenue(j);
+              const depositPaid = parseFloat(dep?.amount || 0);
+              if (total > 0 && depositPaid >= total) return false;
+              return true;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
             if (needsPayment.length === 0) return null;
             return (
