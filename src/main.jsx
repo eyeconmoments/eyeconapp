@@ -1149,9 +1149,7 @@ function EyeconMoments() {
       teamNotes: ''
     };
   });
-  const [savedQuotes, setSavedQuotes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('eyecon_parked_quotes') || '[]'); } catch(e) { return []; }
-  });
+  const [savedQuotes, setSavedQuotes] = useState([]);
   const [dailyTasks, setDailyTasks] = useState([
     { id: 1, task: 'Check new inquiries in CRM', completed: false, date: new Date().toDateString(), daysOpen: 0 },
     { id: 2, task: 'Review team timesheets', completed: false, date: new Date().toDateString(), daysOpen: 0 },
@@ -1260,6 +1258,17 @@ function EyeconMoments() {
     'Highlights Trailer & Intro': 20,
   };
   const SHOOT_HOURLY_RATE = 13;
+
+  // Parse "Name1 - Name2 - Name3" and "Phone1 - Phone2 - Phone3" into paired contacts
+  const parseNextOfKin = (nameStr, phoneStr) => {
+    const names = (nameStr || '').split(' - ').map(s => s.trim()).filter(Boolean);
+    const phones = (phoneStr || '').split(' - ').map(s => s.trim()).filter(Boolean);
+    const count = Math.max(names.length, phones.length, 1);
+    return Array.from({ length: count }, (_, i) => ({
+      name: names[i] || null,
+      phone: phones[i] || null,
+    })).filter(c => c.name || c.phone);
+  };
   const getStageRate = (stageName, job) => {
     if (stageName === 'Cutting, Syncing & Organising') {
       const cams = Math.min(job?.numVideographers || 2, 3);
@@ -1499,6 +1508,22 @@ function EyeconMoments() {
         }
         if (sugRes.data) setPostSuggestions(sugRes.data.map(rowToSuggestion));
         if (gearRes.data) setGearChecklists(gearRes.data);
+
+        // Load parked quotes from Supabase (migrate from localStorage if needed)
+        try {
+          const { data: qData } = await db.from('quotes').select('*').order('saved_at', { ascending: false });
+          if (qData) {
+            setSavedQuotes(qData.map(r => ({ id: r.id, name: r.name, savedAt: r.saved_at, data: r.data })));
+            // One-time migration from localStorage
+            const lsQuotes = JSON.parse(localStorage.getItem('eyecon_parked_quotes') || '[]');
+            if (lsQuotes.length > 0 && qData.length === 0) {
+              const rows = lsQuotes.map(q => ({ id: q.id, name: q.name, saved_at: q.savedAt || new Date().toISOString(), data: q.data }));
+              await db.from('quotes').insert(rows);
+              setSavedQuotes(lsQuotes);
+              localStorage.removeItem('eyecon_parked_quotes');
+            }
+          }
+        } catch(e) { /* quotes table may not exist yet */ }
 
         // Auto-login: if this device has a saved user, skip the login screen
         try {
@@ -5508,6 +5533,20 @@ Notes: ${j.notes || 'none'}`;
             </div>
           </div>
 
+          {/* Log Shoot Wages — quick action */}
+          <button
+            onClick={() => setWageSubmitModal({ selectedJobId: null, customJobName: '', actualStart: '', actualEnd: '', isOverride: false, overrideAmount: 0, overrideReason: '', notes: '', ranOver: false, extraHours: '', extraOverrideAmount: '' })}
+            className={`w-full flex items-center gap-4 p-4 rounded-xl shadow text-left ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50'} border-2 border-transparent hover:border-green-400 transition-all`}>
+            <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center text-2xl shadow">
+              📝
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Log Shoot Wages</p>
+              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Select a job and enter your hours</p>
+            </div>
+            <span className={`text-xl ${darkMode ? 'text-gray-500' : 'text-gray-300'}`}>›</span>
+          </button>
+
           {activeEntry && (
             <div className={`border-2 border-blue-200 rounded-lg p-4 cursor-pointer ${darkMode ? 'bg-blue-900' : 'bg-blue-50'}`} onClick={() => setCurrentView('timeclock')}>
               <div className="flex justify-between items-start mb-2">
@@ -5991,22 +6030,19 @@ Notes: ${j.notes || 'none'}`;
                           {/* Next of Kin */}
                           {itin.nextOfKin?.name && (
                             <div className={`mx-4 mt-3 mb-2 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                              <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itin.nextOfKin.name}</p>
-                              {(() => {
-                                const raw2 = itin.nextOfKin.phone || '';
-                                const nums2 = raw2.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw2.trim() ? [raw2.trim()] : []);
-                                if (nums2.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
-                                return (
-                                  <div className="space-y-1.5">
-                                    {nums2.map((num2, ni2) => (
-                                      <div key={ni2} className="flex items-center justify-between gap-2">
-                                        <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num2.trim()}</span>
-                                        <a href={`tel:${num2.replace(/[^\d+]/g,'')}`} className="px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500">📞 Call</a>
-                                      </div>
-                                    ))}
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Emergency Contacts</p>
+                              <div className="space-y-2">
+                                {parseNextOfKin(itin.nextOfKin.name, itin.nextOfKin.phone).map((c, ci) => (
+                                  <div key={ci} className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      {c.name && <p className={`text-xs font-semibold truncate ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>{c.name}</p>}
+                                      {c.phone && <p className={`text-sm font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.phone}</p>}
+                                      {!c.phone && <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>}
+                                    </div>
+                                    {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g,'')}`} className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700">📞 Call</a>}
                                   </div>
-                                );
-                              })()}
+                                ))}
+                              </div>
                             </div>
                           )}
                           {/* Open on Maps */}
@@ -8423,7 +8459,13 @@ Notes: ${j.notes || 'none'}`;
               if (archivedJobIds.includes(j.id) || j.finalPaymentReceived) return false;
               if (!j.shootDate) return false;
               const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
-              return shoot >= sixtyDaysAgo && shoot <= threeDaysAhead;
+              if (shoot < sixtyDaysAgo || shoot > threeDaysAhead) return false;
+              // Exclude jobs where deposit already covers the full price
+              const dep = getJobDeposit(j);
+              const total = calculateJobRevenue(j);
+              const depositPaid = parseFloat(dep?.amount || 0);
+              if (total > 0 && depositPaid >= total) return false;
+              return true;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
             if (needsPayment.length === 0) return null;
             return (
@@ -8461,7 +8503,9 @@ Notes: ${j.notes || 'none'}`;
                           </div>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
-                            {remaining !== null ? ` · £${remaining.toFixed(0)} remaining` : ' · Balance due'}
+                            {remaining !== null && depositPaid > 0
+                              ? ` · £${total.toFixed(0)} total · £${depositPaid.toFixed(0)} dep · £${remaining.toFixed(0)} left`
+                              : ''}
                           </p>
                         </div>
                         <div className="flex gap-1.5 shrink-0">
@@ -9572,25 +9616,19 @@ Notes: ${j.notes || 'none'}`;
                           {/* Next of Kin — parsed multi-number display */}
                           {itin.nextOfKin?.name && (
                             <div className={`mx-4 mb-3 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                              <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itin.nextOfKin.name}</p>
-                              {(() => {
-                                const raw = itin.nextOfKin.phone || '';
-                                const nums = raw.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw.trim() ? [raw.trim()] : []);
-                                if (nums.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
-                                return (
-                                  <div className="space-y-1.5">
-                                    {nums.map((num, ni) => (
-                                      <div key={ni} className="flex items-center justify-between gap-2">
-                                        <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num.trim()}</span>
-                                        <a href={`tel:${num.replace(/[^\d+]/g,'')}`}
-                                          className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">
-                                          📞 Call
-                                        </a>
-                                      </div>
-                                    ))}
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Emergency Contacts</p>
+                              <div className="space-y-2">
+                                {parseNextOfKin(itin.nextOfKin.name, itin.nextOfKin.phone).map((c, ci) => (
+                                  <div key={ci} className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      {c.name && <p className={`text-xs font-semibold truncate ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>{c.name}</p>}
+                                      {c.phone && <p className={`text-sm font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.phone}</p>}
+                                      {!c.phone && <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>}
+                                    </div>
+                                    {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g,'')}`} className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">📞 Call</a>}
                                   </div>
-                                );
-                              })()}
+                                ))}
+                              </div>
                             </div>
                           )}
                           <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
@@ -11299,22 +11337,14 @@ The Eyecon Moments Team
               <div className="flex gap-2 flex-wrap justify-end">
                 <button onClick={() => {
                   const allJ = editingJobs.filter(j => !archivedJobIds.includes(j.id));
-                  const autoMatch = (imp) => {
-                    const needle = imp.customer.toLowerCase();
-                    const parts = needle.split(/[\s&]+/).filter(p => p.length > 2);
-                    return allJ.find(j => {
-                      const cn = (j.customerName || '').toLowerCase();
-                      return cn.includes(needle) || parts.some(p => cn.includes(p));
-                    })?.id || '';
-                  };
-                  // Always show the email prompt modal first — OAuth fires from inside it
-                  const allJ2 = editingJobs.filter(j => !archivedJobIds.includes(j.id));
-                  const needDeposit = allJ2.filter(j => !(j.wageEntries||[]).some(e => e.type==='deposit'));
-                  if (needDeposit.length === 0) { alert('All jobs already have a deposit recorded.'); return; }
-                  setGmailEmailPrompt(needDeposit.map(j => {
+                  // Show all upcoming jobs in the prompt — already-deposited ones are greyed out
+                  const rows = allJ.map(j => {
+                    const hasDeposit = (j.wageEntries||[]).some(e => e.type==='deposit');
                     const inq = inquiries.find(i => (i.customerName||'').toLowerCase()===(j.customerName||'').toLowerCase());
-                    return { jobId: j.id, jobName: j.jobName, customerName: j.customerName, email: inq?.email || '' };
-                  }));
+                    return { jobId: j.id, jobName: j.jobName, customerName: j.customerName, email: inq?.email || '', hasDeposit };
+                  });
+                  if (rows.length === 0) { setGmailEmailPrompt([]); return; }
+                  setGmailEmailPrompt(rows);
                 }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
@@ -11558,25 +11588,19 @@ The Eyecon Moments Team
                             {/* Next of Kin */}
                             {itinerary.nextOfKin?.name && (
                               <div className={`mx-4 mb-3 rounded-xl p-3 ${darkMode ? 'bg-amber-900 bg-opacity-40 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                                <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Next of Kin — {itinerary.nextOfKin.name}</p>
-                                {(() => {
-                                  const raw = itinerary.nextOfKin.phone || '';
-                                  const nums = raw.match(/(\+?[\d][\d\s\-().]{6,}[\d])/g) || (raw.trim() ? [raw.trim()] : []);
-                                  if (nums.length === 0) return <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>;
-                                  return (
-                                    <div className="space-y-1.5">
-                                      {nums.map((num, ni) => (
-                                        <div key={ni} className="flex items-center justify-between gap-2">
-                                          <span className={`text-sm font-mono font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{num.trim()}</span>
-                                          <a href={`tel:${num.replace(/[^\d+]/g,'')}`}
-                                            className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">
-                                            📞 Call
-                                          </a>
-                                        </div>
-                                      ))}
+                                <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>🆘 Emergency Contacts</p>
+                                <div className="space-y-2">
+                                  {parseNextOfKin(itinerary.nextOfKin.name, itinerary.nextOfKin.phone).map((c, ci) => (
+                                    <div key={ci} className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        {c.name && <p className={`text-xs font-semibold truncate ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>{c.name}</p>}
+                                        {c.phone && <p className={`text-sm font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.phone}</p>}
+                                        {!c.phone && <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>No number saved</p>}
+                                      </div>
+                                      {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g,'')}`} className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-500 active:bg-green-700 select-none">📞 Call</a>}
                                     </div>
-                                  );
-                                })()}
+                                  ))}
+                                </div>
                               </div>
                             )}
                             <div className={`flex justify-between text-xs px-4 pb-2 border-b mb-2 ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
@@ -11697,13 +11721,14 @@ The Eyecon Moments Team
                         {/* Next of Kin */}
                         <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white'} border ${darkMode ? 'border-gray-500' : 'border-gray-200'}`}>
                           <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>👤 Next of Kin / Emergency Contact</p>
-                          <div className="flex gap-2 flex-wrap">
-                            <input type="text" value={itinerary.nextOfKin?.name || ''} placeholder="Name..."
+                          <div className="flex flex-col gap-2">
+                            <input type="text" value={itinerary.nextOfKin?.name || ''} placeholder="Bride's Sister - Brother - Groom"
                               onChange={(e) => updateNextOfKin(job.id, 'name', e.target.value)}
-                              className={`flex-1 min-w-32 px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
-                            <input type="tel" value={itinerary.nextOfKin?.phone || ''} placeholder="Phone..."
+                              className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
+                            <input type="tel" value={itinerary.nextOfKin?.phone || ''} placeholder="07700900001 - 07700900002 - 07700900003"
                               onChange={(e) => updateNextOfKin(job.id, 'phone', e.target.value)}
-                              className={`flex-1 min-w-32 px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
+                              className={`w-full px-3 py-2 text-sm border rounded ${darkMode ? 'bg-gray-700 border-gray-500 text-white' : ''}`} />
+                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Separate multiple contacts with " - " (space-hyphen-space)</p>
                           </div>
                         </div>
                       </div>
@@ -14154,34 +14179,49 @@ The Eyecon Moments Team
           <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
               <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Confirm client emails</h2>
-              <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Gmail will search each client's emails for a payment. Fill in any missing addresses — they'll be saved to CRM.</p>
-              <div className="space-y-3">
-                {gmailEmailPrompt.map((row, i) => (
-                  <div key={row.jobId}>
-                    <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{row.customerName} · <span className="font-normal opacity-70">{row.jobName}</span></label>
-                    <input
-                      type="email"
-                      placeholder="their@email.com"
-                      value={row.email}
-                      onChange={e => setGmailEmailPrompt(prev => prev.map((r, j) => j === i ? {...r, email: e.target.value} : r))}
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} ${row.email ? 'border-green-400' : 'border-amber-400'}`}
-                    />
+              {gmailEmailPrompt.length === 0 ? (
+                <p className={`text-sm py-4 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No upcoming jobs found.</p>
+              ) : gmailEmailPrompt.every(r => r.hasDeposit) ? (
+                <p className={`text-sm py-4 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>✅ All jobs already have a deposit recorded.</p>
+              ) : (
+                <>
+                  <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Gmail will search each client's emails for a payment. Fill in any missing addresses — they'll be saved to CRM.</p>
+                  <div className="space-y-3">
+                    {gmailEmailPrompt.map((row, i) => (
+                      <div key={row.jobId} className={row.hasDeposit ? 'opacity-40 pointer-events-none' : ''}>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {row.customerName} · <span className="font-normal opacity-70">{row.jobName}</span>
+                          {row.hasDeposit && <span className="ml-2 text-green-500">✓ deposit recorded</span>}
+                        </label>
+                        {!row.hasDeposit && (
+                          <input
+                            type="email"
+                            placeholder="their@email.com"
+                            value={row.email}
+                            onChange={e => setGmailEmailPrompt(prev => prev.map((r, j) => j === i ? {...r, email: e.target.value} : r))}
+                            className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} ${row.email ? 'border-green-400' : 'border-amber-400'}`}
+                          />
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
               <div className="flex gap-3 mt-5">
                 <button onClick={() => setGmailEmailPrompt(null)}
                   className={`py-2.5 px-4 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                  Cancel
+                  {gmailEmailPrompt.every(r => r.hasDeposit) ? 'Close' : 'Cancel'}
                 </button>
-                <button onClick={() => {
-                  const prefill = {};
-                  gmailEmailPrompt.forEach(r => { if (r.email) prefill[r.jobId] = r.email; });
-                  setGmailEmailPrompt(null);
-                  scanGmailForDeposits(prefill);
-                }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
-                  🔍 Scan Gmail
-                </button>
+                {!gmailEmailPrompt.every(r => r.hasDeposit) && (
+                  <button onClick={() => {
+                    const prefill = {};
+                    gmailEmailPrompt.filter(r => !r.hasDeposit).forEach(r => { if (r.email) prefill[r.jobId] = r.email; });
+                    setGmailEmailPrompt(null);
+                    scanGmailForDeposits(prefill);
+                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
+                    🔍 Scan Gmail
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -19076,13 +19116,15 @@ Eyecon Moments
       // Helper: render one day pricing block centred
       const renderDayPriceCentred = (day, idx, y) => {
         const h = getHrs(day);
+        const shortBooking = h > 0 && h < 4;
+        const pm = shortBooking ? 1.2 : 1;
         const dv = day.video ?? quoteData.wantVideo ?? true;
         const dp = day.photo ?? quoteData.wantPhoto ?? true;
         const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         ctu('DAY '+(idx+1), y, {size:11, style:'bold'}); y += 12;
-        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr).toFixed(2), y, {size:11}); y += 8; }
-        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr).toFixed(2), y, {size:11}); y += 8; }
+        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr*pm).toFixed(2)+(shortBooking?' (+20%)':''), y, {size:11}); y += 8; }
+        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr*pm).toFixed(2)+(shortBooking?' (+20%)':''), y, {size:11}); y += 8; }
         if (day.drone) { ct('Drone Coverage: £100.00', y, {size:11}); y += 8; }
         const dayDist = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist>0) { ct('Travel: £'+(dayDist*0.9).toFixed(2), y, {size:11}); y += 8; }
@@ -19105,10 +19147,12 @@ Eyecon Moments
         const dp2 = day.photo ?? quoteData.wantPhoto ?? true;
         const dvt2 = day.videoType ?? quoteData.videoType ?? 'dual';
         const dnp2 = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
+        const shortBkg2 = h > 0 && h < 4;
+        const pm2 = shortBkg2 ? 1.2 : 1;
         doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
         const lines = [];
-        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2).toFixed(2)); }
-        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2).toFixed(2)); }
+        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2*pm2).toFixed(2)+(shortBkg2?' (+20%)':'')); }
+        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2*pm2).toFixed(2)+(shortBkg2?' (+20%)':'')); }
         if (day.drone) lines.push('Drone Coverage: £100.00');
         const dayDist2 = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist2>0) lines.push('Travel: £'+(dayDist2*0.9).toFixed(2));
@@ -19398,24 +19442,30 @@ Eyecon Moments
       }
     };
 
-    // Park / save / load quotes
-    const parkQuote = () => {
+    // Park / save / load quotes — Supabase-backed
+    const parkQuote = async () => {
       if (!quoteData.clientName && !quoteData.clientEmail) { alert('Please fill in at least a client name or email before parking.'); return; }
       const label = (quoteData.clientName || quoteData.clientEmail || 'Unnamed') + ' — ' + new Date().toLocaleDateString('en-GB');
-      const newSaved = [...savedQuotes, { id: Date.now(), name: label, savedAt: new Date().toISOString(), data: { ...quoteData } }];
-      setSavedQuotes(newSaved);
-      localStorage.setItem('eyecon_parked_quotes', JSON.stringify(newSaved));
-      alert(`Quote parked as "${label}"\n\nYou can reload it from the Parked Quotes section at the top of this page.`);
+      const row = { name: label, saved_at: new Date().toISOString(), data: { ...quoteData } };
+      try {
+        const { data: inserted } = await db.from('quotes').insert([row]).select();
+        const newEntry = inserted?.[0] ? { id: inserted[0].id, name: inserted[0].name, savedAt: inserted[0].saved_at, data: inserted[0].data } : { id: Date.now(), name: label, savedAt: row.saved_at, data: quoteData };
+        setSavedQuotes(prev => [newEntry, ...prev]);
+        alert(`Quote parked as "${label}"`);
+      } catch(e) {
+        alert('Could not save to Supabase — make sure the quotes table exists.\n\n' + e.message);
+      }
     };
     const loadParkedQuote = (sq) => {
       if (window.confirm(`Load "${sq.name}"?\n\nThis will overwrite the current form.`)) {
         setQuoteData(sq.data);
       }
     };
-    const deleteParkedQuote = (id) => {
-      const updated = savedQuotes.filter(sq => sq.id !== id);
-      setSavedQuotes(updated);
-      localStorage.setItem('eyecon_parked_quotes', JSON.stringify(updated));
+    const deleteParkedQuote = async (id) => {
+      try {
+        await db.from('quotes').delete().eq('id', id);
+      } catch(e) {}
+      setSavedQuotes(prev => prev.filter(sq => sq.id !== id));
     };
     
     return (
