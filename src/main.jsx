@@ -980,6 +980,42 @@ function EyeconMoments() {
   // there is one setting rather than two that can disagree.
   const qcBase = () => (localStorage.getItem('eyecon_editor_url') || '').trim().replace(/\/+$/, '');
 
+  // Hand the QC app the diary: every job and the day it was shot.
+  //
+  // Two fields per job, and between them there is nothing left for anyone to
+  // type. The footage already knows the day it was taken — the QC app reads
+  // that to put the clips in order — so a folder of files becomes "this
+  // wedding" on its own, without being named well or opened from the right
+  // place.
+  //
+  // Only ever a name and a date. Nothing about money, clients or staff goes
+  // to the editing machine, because nothing there needs it.
+  const sendDiaryToQc = async (jobs, ms = 2500) => {
+    const base = qcBase();
+    if (!base || !jobs?.length) return false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(base + '/api/jobs/diary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'omit',
+        signal: ctrl.signal,
+        body: JSON.stringify({ jobs: jobs
+          .filter(j => j.shootDate)
+          .map(j => ({
+            id: String(j.id), name: j.jobName || '', couple: j.customerName || '',
+            date: new Date(j.shootDate).toISOString().slice(0, 10),
+          })) }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   // Hand this job's itinerary to the QC app.
   //
   // The QC app works out when each part of the day happened by looking at
@@ -7910,6 +7946,10 @@ Notes: ${j.notes || 'none'}`;
                             // is usually not there would put a pause on a
                             // button that used to be instant.
                             sendItineraryToQc(job);
+                            // The diary goes with it, so the NEXT folder —
+                            // one nobody opened from here — can still find
+                            // itself by the day it was shot.
+                            sendDiaryToQc(editingJobs);
                             window.open(`${qcBase()}/?${q.toString()}`, '_blank');
                           }}
                             className="w-full text-xs py-1.5 rounded-lg font-medium"
