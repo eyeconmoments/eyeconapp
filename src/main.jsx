@@ -1302,6 +1302,8 @@ function EyeconMoments() {
   const [setoffLegs, setSetoffLegs] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_setoff_legs') || '{}'); } catch { return {}; } });
   const [officeAddress, setOfficeAddress] = useState(() => localStorage.getItem('eyecon_office_address') || '');
   const [editingOfficeAddr, setEditingOfficeAddr] = useState(false);
+  const [soundtrackUrl, setSoundtrackUrl] = useState(() => localStorage.getItem('eyecon_soundtrack_url') || '');
+  const [editingSoundtrackUrl, setEditingSoundtrackUrl] = useState(false);
   const [gmapsKey, setGmapsKey] = useState(() => localStorage.getItem('eyecon_gmaps_key') || '');
   const [editingGmapsKey, setEditingGmapsKey] = useState(false);
   const [routeStatus, setRouteStatus] = useState({});
@@ -5132,7 +5134,8 @@ Notes: ${j.notes || 'none'}`;
                     }
                     const trackingUrl = token ? `${window.location.origin}/client/${token}` : '';
                     const trackingLine = trackingUrl ? `\n\nYou can follow our progress on your photos and video here:\n${trackingUrl}\n` : '';
-                    const body = `Hello ${firstName2},\n\nThank you so much for your payment of £${grandTotal2.toFixed(2)} — your balance is now fully settled.\n\nWe're now in the process of editing your photos and video and will have everything ready for you as soon as possible.${trackingLine}\nIf you have any questions in the meantime, please don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`;
+                    const soundtrackLine = soundtrackUrl ? `\n\nTo help us personalise your video, please fill in your song choices using the link below. You have 30 days to complete this — if we don't hear from you within that time, we'll continue editing without your song selections:\n${soundtrackUrl}\n` : '';
+                    const body = `Hello ${firstName2},\n\nThank you so much for your payment of £${grandTotal2.toFixed(2)} — your balance is now fully settled.\n\nWe're now in the process of editing your photos and video and will have everything ready for you as soon as possible.${trackingLine}${soundtrackLine}\nIf you have any questions in the meantime, please don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`;
                     window.open(`mailto:${custEmail}?subject=${emailSubject2}&body=${encodeURIComponent(body)}`, '_blank');
                     setFinalPaymentModal(null);
                   }} className="w-full py-3.5 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600">
@@ -9001,6 +9004,26 @@ Notes: ${j.notes || 'none'}`;
                       <>
                         <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Google Maps key set</span>
                         <button onClick={() => setEditingGmapsKey(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                    <span className="text-sm shrink-0">🎵</span>
+                    {editingSoundtrackUrl || !soundtrackUrl ? (
+                      <>
+                        <input type="url" value={soundtrackUrl}
+                          onChange={e => { setSoundtrackUrl(e.target.value); localStorage.setItem('eyecon_soundtrack_url', e.target.value); }}
+                          placeholder="Soundtrack form link (e.g. Google Form URL)…"
+                          className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          onBlur={() => { localStorage.setItem('eyecon_soundtrack_url', soundtrackUrl); setEditingSoundtrackUrl(!!soundtrackUrl); }}
+                          onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_soundtrack_url', soundtrackUrl); setEditingSoundtrackUrl(false); }}} />
+                        <button onClick={() => { localStorage.setItem('eyecon_soundtrack_url', soundtrackUrl); setEditingSoundtrackUrl(false); }}
+                          className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Soundtrack form link set</span>
+                        <button onClick={() => setEditingSoundtrackUrl(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
                       </>
                     )}
                   </div>
