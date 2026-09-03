@@ -5134,7 +5134,7 @@ Notes: ${j.notes || 'none'}`;
                     }
                     const trackingUrl = token ? `${window.location.origin}/client/${token}` : '';
                     const trackingLine = trackingUrl ? `\n\nYou can follow our progress on your photos and video here:\n${trackingUrl}\n` : '';
-                    const soundtrackLine = soundtrackUrl ? `\n\nTo help us personalise your video, please fill in your song choices using the link below. You have 30 days to complete this — if we don't hear from you within that time, we'll continue editing without your song selections:\n${soundtrackUrl}\n` : '';
+                    const soundtrackLine = soundtrackUrl ? `\n\nPlease can you take the time to fill in the soundtrack document. You can also leave the song choices to ourselves if you wish. Please note you have 30 days to complete this — if we don't hear from you, we will continue to edit without your song choices:\n${soundtrackUrl}\n` : '';
                     const body = `Hello ${firstName2},\n\nThank you so much for your payment of £${grandTotal2.toFixed(2)} — your balance is now fully settled.\n\nWe're now in the process of editing your photos and video and will have everything ready for you as soon as possible.${trackingLine}${soundtrackLine}\nIf you have any questions in the meantime, please don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`;
                     window.open(`mailto:${custEmail}?subject=${emailSubject2}&body=${encodeURIComponent(body)}`, '_blank');
                     setFinalPaymentModal(null);
