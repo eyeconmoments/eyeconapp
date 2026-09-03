@@ -8711,7 +8711,7 @@ Notes: ${j.notes || 'none'}`;
           {(() => {
             if (homePanel !== 'payment') return null;
             const today = new Date(); today.setHours(0,0,0,0);
-            const sixtyDaysAgo = new Date(today); sixtyDaysAgo.setDate(today.getDate() - 60);
+            const sixtyDaysAgo = new Date(today); sixtyDaysAgo.setDate(today.getDate() - 180);
             const threeDaysAhead = new Date(today); threeDaysAhead.setDate(today.getDate() + 3);
             const needsPayment = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || j.finalPaymentReceived) return false;
