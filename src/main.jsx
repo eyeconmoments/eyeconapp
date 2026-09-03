@@ -3150,6 +3150,15 @@ function EyeconMoments() {
     return videoRevenue + photoRevenue;
   };
 
+  // Returns the actual agreed client price — used for payment tracking only.
+  // Never falls back to edit-hour estimates; returns 0 when unknown.
+  const getJobAgreedTotal = (job) => {
+    if (job?.customPrice > 0) return job.customPrice;
+    const inq = inquiries.find(i => (i.customerName || '').toLowerCase() === (job?.customerName || '').toLowerCase());
+    if (inq?.quotedAmount > 0) return inq.quotedAmount;
+    return 0;
+  };
+
   const calculateJobCosts = (job) => {
     const shootCost = (job.shootHours || 0) * ((job.numVideographers || 0) + (job.numPhotographers || 0)) * 13;
     
@@ -8598,7 +8607,7 @@ Notes: ${j.notes || 'none'}`;
               if (shoot < sixtyDaysAgo || shoot > threeDaysAhead) return false;
               // Exclude jobs where deposit already covers the full price
               const dep = getJobDeposit(j);
-              const total = calculateJobRevenue(j);
+              const total = getJobAgreedTotal(j);
               const depositPaid = parseFloat(dep?.amount || 0);
               if (total > 0 && depositPaid >= total) return false;
               return true;
@@ -8613,7 +8622,7 @@ Notes: ${j.notes || 'none'}`;
                 <div className="space-y-2">
                   {needsPayment.map(j => {
                     const dep = getJobDeposit(j);
-                    const total = calculateJobRevenue(j);
+                    const total = getJobAgreedTotal(j);
                     const depositPaid = parseFloat(dep?.amount || 0);
                     // Only show a specific remaining amount when we actually know the total price
                     const remaining = total > 0 ? Math.max(0, total - depositPaid) : null;
@@ -11578,7 +11587,7 @@ The Eyecon Moments Team
                               }
                               // No deposit recorded yet
                               if (!dep2?.amount) {
-                                const knownPrice = job.customPrice > 0 ? job.customPrice : null;
+                                const knownPrice = getJobAgreedTotal(job) || null;
                                 return (
                                   <button onClick={() => { setDepositFormJobId(job.id); setDepositFormAmt(knownPrice ? String(Math.round(knownPrice * 0.5)) : ''); setDepositFormDate(new Date().toISOString().slice(0,10)); }}
                                     className="inline-flex items-center gap-1 text-xs bg-blue-500 bg-opacity-20 text-blue-200 border border-blue-400 border-opacity-40 rounded-full px-2 py-0.5 mt-1 font-semibold hover:bg-opacity-30 cursor-pointer">
@@ -11587,7 +11596,7 @@ The Eyecon Moments Team
                                 );
                               }
                               // Deposit logged, final payment outstanding
-                              const knownTotal = job.customPrice > 0 ? job.customPrice : null;
+                              const knownTotal = getJobAgreedTotal(job) || null;
                               const priorOT = (job.wageEntries||[]).find(e => e.type==='shoot' && e.ranOver && e.extraAmount>0);
                               const balanceDue = knownTotal ? Math.max(0, knownTotal - depositAmt) : depositAmt;
                               return (
@@ -13964,7 +13973,7 @@ The Eyecon Moments Team
                     {/* Final Payment Tracking */}
                     {(() => {
                       const dep2 = getJobDeposit(job);
-                      const total2 = calculateJobRevenue(job);
+                      const total2 = getJobAgreedTotal(job);
                       const depositPaid2 = parseFloat(dep2?.amount || 0);
                       const remaining2 = total2 > 0 ? Math.max(0, total2 - depositPaid2) : depositPaid2;
                       return (
