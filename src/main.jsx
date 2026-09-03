@@ -5185,61 +5185,68 @@ Notes: ${j.notes || 'none'}`;
                 <button onClick={() => { setFinalPaymentModal(null); setFpmGmailResult(null); }} className={`p-2 rounded-lg text-lg ${darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}>✕</button>
               </div>
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                <div className={`rounded-xl p-4 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                  {dep2 > 0 ? (
-                    <>
-                      {total2 > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total job price</span>
-                          <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>£{total2.toFixed(2)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-sm">
-                        <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid</span>
-                        <span className="font-semibold text-green-500">- £{dep2.toFixed(2)}</span>
-                      </div>
-                      <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
-                        <span>Balance due{total2 === 0 ? ' (50/50 est.)' : ''}</span>
-                        <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div>
-                      <p className={`text-sm text-center py-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No deposit on record</p>
-                      <div className="mt-2">
-                        {fpmGmailScanning ? (
-                          <p className={`text-xs text-center animate-pulse ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>🔍 Searching Gmail…</p>
-                        ) : fpmGmailResult?.found ? (
-                          <div className={`rounded-lg p-3 ${darkMode ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
-                            <p className={`text-xs font-semibold mb-0.5 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>📧 Payment email found</p>
-                            <p className={`text-base font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>£{Number(fpmGmailResult.amount).toFixed(2)}</p>
-                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fpmGmailResult.date} · {fpmGmailResult.subject}</p>
-                            <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{fpmGmailResult.snippet}</p>
-                            <button onClick={async () => {
-                              const amt = Number(fpmGmailResult.amount).toFixed(2);
-                              await saveDeposit(finalPaymentModal.jobId, amt, fpmGmailResult.date, true);
-                              const knownTotal = getJobAgreedTotal(editingJobs.find(j => j.id === finalPaymentModal.jobId));
-                              const newDep = Number(fpmGmailResult.amount);
-                              setFinalPaymentModal(p => ({
-                                ...p,
-                                depositPaid: newDep,
-                                finalAmount: knownTotal > 0 ? Math.max(0, knownTotal - newDep).toFixed(2) : p.finalAmount,
-                              }));
-                              setFpmGmailResult(null);
-                            }} className="mt-2 w-full py-2 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700">
-                              ✅ Log £{Number(fpmGmailResult.amount).toFixed(2)} as deposit from email
-                            </button>
-                            <button onClick={() => setFpmGmailResult(null)} className={`mt-1 w-full py-1 rounded text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Not this one — dismiss</button>
-                          </div>
-                        ) : fpmGmailResult?.notFound ? (
-                          <p className={`text-xs text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No payment emails found for this client.</p>
-                        ) : (
-                          <button onClick={() => scanGmailForJobDeposit(fpJob)}
-                            className={`w-full py-2 rounded-lg text-xs font-semibold border ${darkMode ? 'border-amber-600 text-amber-400 hover:bg-amber-900/30' : 'border-amber-400 text-amber-600 hover:bg-amber-50'}`}>
-                            🔍 Check Gmail for deposit
+                <div className={`rounded-xl p-4 space-y-3 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                  {/* Total price — editable */}
+                  <div className="flex justify-between items-center text-sm">
+                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Total agreed price</span>
+                    <div className="flex items-center gap-1">
+                      <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>£</span>
+                      <input type="number" min="0" step="0.01"
+                        value={finalPaymentModal.totalPrice || ''}
+                        placeholder="—"
+                        onChange={e => { const t = parseFloat(e.target.value)||0; setFinalPaymentModal(p => ({ ...p, totalPrice: t, finalAmount: t > 0 ? Math.max(0, t - dep2).toFixed(2) : p.finalAmount })); }}
+                        className={`w-28 text-right font-semibold bg-transparent border-b focus:outline-none ${darkMode ? 'border-gray-600 text-white placeholder-gray-600' : 'border-gray-300 text-gray-900 placeholder-gray-300'}`}
+                      />
+                    </div>
+                  </div>
+                  {/* Deposit — editable */}
+                  <div className="flex justify-between items-center text-sm">
+                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Deposit paid</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-green-500">£</span>
+                      <input type="number" min="0" step="0.01"
+                        value={finalPaymentModal.depositPaid || ''}
+                        placeholder="0"
+                        onChange={e => { const d = parseFloat(e.target.value)||0; setFinalPaymentModal(p => ({ ...p, depositPaid: d, finalAmount: total2 > 0 ? Math.max(0, total2 - d).toFixed(2) : p.finalAmount })); }}
+                        className="w-28 text-right font-semibold text-green-500 bg-transparent border-b border-green-600 focus:outline-none placeholder-green-900"
+                      />
+                    </div>
+                  </div>
+                  {/* Balance */}
+                  <div className={`flex justify-between text-sm font-bold border-t pt-2 ${darkMode ? 'border-gray-700 text-white' : 'border-gray-200 text-gray-900'}`}>
+                    <span>Balance due{total2 === 0 ? ' (est.)' : ''}</span>
+                    <span style={{color:'var(--gold)'}}>£{remaining2.toFixed(2)}</span>
+                  </div>
+                  {/* Gmail scan — shown when no deposit */}
+                  {dep2 === 0 && (
+                    <div className={`border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      {fpmGmailScanning ? (
+                        <p className={`text-xs text-center animate-pulse ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>🔍 Searching Gmail…</p>
+                      ) : fpmGmailResult?.found ? (
+                        <div className={`rounded-lg p-3 ${darkMode ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                          <p className={`text-xs font-semibold mb-0.5 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>📧 Payment email found</p>
+                          <p className={`text-base font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>£{Number(fpmGmailResult.amount).toFixed(2)}</p>
+                          <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fpmGmailResult.date} · {fpmGmailResult.subject}</p>
+                          <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{fpmGmailResult.snippet}</p>
+                          <button onClick={async () => {
+                            const amt = Number(fpmGmailResult.amount).toFixed(2);
+                            await saveDeposit(finalPaymentModal.jobId, amt, fpmGmailResult.date, true);
+                            const newDep = Number(fpmGmailResult.amount);
+                            setFinalPaymentModal(p => ({ ...p, depositPaid: newDep, finalAmount: total2 > 0 ? Math.max(0, total2 - newDep).toFixed(2) : p.finalAmount }));
+                            setFpmGmailResult(null);
+                          }} className="mt-2 w-full py-2 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700">
+                            ✅ Log £{Number(fpmGmailResult.amount).toFixed(2)} as deposit from email
                           </button>
-                        )}
-                      </div>
+                          <button onClick={() => setFpmGmailResult(null)} className={`mt-1 w-full py-1 rounded text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Not this one — dismiss</button>
+                        </div>
+                      ) : fpmGmailResult?.notFound ? (
+                        <p className={`text-xs text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No payment emails found for this client.</p>
+                      ) : (
+                        <button onClick={() => scanGmailForJobDeposit(fpJob)}
+                          className={`w-full py-1.5 rounded-lg text-xs font-semibold border ${darkMode ? 'border-amber-600 text-amber-400 hover:bg-amber-900/30' : 'border-amber-400 text-amber-600 hover:bg-amber-50'}`}>
+                          🔍 Check Gmail for deposit
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -5306,6 +5313,16 @@ Notes: ${j.notes || 'none'}`;
                   disabled={finalAmt2 <= 0}
                   onClick={async () => {
                     const now2 = new Date().toISOString();
+                    // Persist any deposit edits made in the modal
+                    if (dep2 > 0) {
+                      const existingDep = getJobDeposit(fpJob);
+                      await saveDeposit(finalPaymentModal.jobId, String(dep2), existingDep?.date || now2.slice(0,10), true);
+                    }
+                    // Persist total price if entered and not already saved
+                    if (total2 > 0 && (!fpJob?.customPrice || fpJob.customPrice !== total2)) {
+                      await db.from('jobs').update({ custom_price: total2 }).eq('id', finalPaymentModal.jobId);
+                      setEditingJobs(prev => prev.map(j => j.id === finalPaymentModal.jobId ? {...j, customPrice: total2} : j));
+                    }
                     await saveFinalPayment(finalPaymentModal.jobId, true, now2, currentUser.name);
                     for (const lj of otherUnpaidSameCustomer.filter(j => linkedIds.includes(j.id))) {
                       await saveFinalPayment(lj.id, true, now2, currentUser.name);
