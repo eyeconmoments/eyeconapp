@@ -5114,8 +5114,7 @@ Notes: ${j.notes || 'none'}`;
           const grandTotal2 = finalPaymentModal.grandTotal || 0;
           const custEmail = (() => { const inq2 = inquiries.find(i => i.customerName?.toLowerCase() === fpJob?.customerName?.toLowerCase()); return inq2?.email || ''; })();
           const firstName2 = fpJob?.customerName?.split(' ')[0] || 'there';
-          const emailSubject2 = encodeURIComponent(`Payment Confirmation — ${fpJob?.jobName || 'Your Booking'}`);
-          const emailBody2 = encodeURIComponent(`Hello ${firstName2},\n\nThank you for your payment of £${grandTotal2.toFixed(2)}.\n\nYour payment is now complete and your booking with Eyecon Moments is fully settled. It was a pleasure working with you, and we hope you enjoy your memories for years to come.\n\nKind regards,\nEyecon Moments`);
+          const emailSubject2 = encodeURIComponent(`Payment Received — ${fpJob?.jobName || 'Your Booking'}`);
           return (
             <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center">
               <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl shadow-2xl w-full max-w-lg p-6 text-center`}>
@@ -5124,11 +5123,6 @@ Notes: ${j.notes || 'none'}`;
                 <p className={`text-sm ${finalPaymentModal.linkedCount > 0 ? 'mb-1' : 'mb-5'} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>£{grandTotal2.toFixed(2)} received for {fpJob?.jobName}</p>
                 {finalPaymentModal.linkedCount > 0 && <p className={`text-xs mb-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {finalPaymentModal.linkedCount} other job{finalPaymentModal.linkedCount > 1 ? 's' : ''} marked as paid</p>}
                 <div className="space-y-3">
-                  <a href={`mailto:${custEmail}?subject=${emailSubject2}&body=${emailBody2}`}
-                    onClick={() => setFinalPaymentModal(null)}
-                    className="block w-full py-3.5 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600">
-                    📧 Send Payment Confirmation Email
-                  </a>
                   <button onClick={async () => {
                     let token = fpJob?.clientToken;
                     if (!token && fpJob) {
@@ -5136,13 +5130,13 @@ Notes: ${j.notes || 'none'}`;
                       await db.from('jobs').update({ client_token: token }).eq('id', fpJob.id);
                       setEditingJobs(prev => prev.map(j => j.id === fpJob.id ? { ...j, clientToken: token } : j));
                     }
-                    const trackingUrl = `${window.location.origin}/client/${token}`;
-                    const trackSubject = encodeURIComponent(`Your memories are being worked on — ${fpJob?.jobName || 'Your Booking'}`);
-                    const trackBody = encodeURIComponent(`Hi ${firstName2},\n\nThank you again for choosing Eyecon Moments. Now that everything is settled, we wanted to let you know that we're working on your photos and video.\n\nYou can track our progress using the link below — we'll keep it updated as we move through each stage:\n\n${trackingUrl}\n\nWe're so excited to share the final results with you. If you have any questions in the meantime, don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments`);
-                    window.open(`mailto:${custEmail}?subject=${trackSubject}&body=${trackBody}`, '_blank');
+                    const trackingUrl = token ? `${window.location.origin}/client/${token}` : '';
+                    const trackingLine = trackingUrl ? `\n\nYou can follow our progress on your photos and video here:\n${trackingUrl}\n` : '';
+                    const body = `Hello ${firstName2},\n\nThank you so much for your payment of £${grandTotal2.toFixed(2)} — your balance is now fully settled.\n\nWe're now in the process of editing your photos and video and will have everything ready for you as soon as possible.${trackingLine}\nIf you have any questions in the meantime, please don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`;
+                    window.open(`mailto:${custEmail}?subject=${emailSubject2}&body=${encodeURIComponent(body)}`, '_blank');
                     setFinalPaymentModal(null);
-                  }} className={`w-full py-3.5 rounded-xl font-bold text-sm ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-800 text-white hover:bg-gray-700'}`}>
-                    🔗 Send Work Tracking Link
+                  }} className="w-full py-3.5 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-600">
+                    📧 Send Payment Confirmation Email
                   </button>
                   <button onClick={() => setFinalPaymentModal(null)}
                     className={`w-full py-3 rounded-xl font-semibold text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
