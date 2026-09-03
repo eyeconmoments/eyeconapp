@@ -15568,7 +15568,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                     <div>
                       <label className={`block text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Number of days</label>
                       <div className="flex rounded-lg overflow-hidden border" style={{borderColor: darkMode ? '#4b5563' : '#d1d5db'}}>
-                        {[1, 2].map(n => (
+                        {[1, 2, 3, 4].map(n => (
                           <button key={n} onClick={() => setBookingNumDays(n)}
                             className={`flex-1 py-2 text-sm font-semibold transition-colors ${bookingNumDays === n ? 'text-white' : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600'}`}
                             style={bookingNumDays === n ? {background:'var(--gold)'} : {}}>
