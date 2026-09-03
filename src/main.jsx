@@ -1309,6 +1309,7 @@ function EyeconMoments() {
   const [routeStatus, setRouteStatus] = useState({});
   const [venueAuto, setVenueAuto] = useState({ active: false, dayIdx: null, builderKey: '', suggestions: [], loading: false });
   const [homePanel, setHomePanel] = useState(null);
+  const [showRecentPaid, setShowRecentPaid] = useState(false);
   const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
     const entry = { id: Date.now(), ts: new Date().toISOString(), action, jobName, details };
@@ -8790,6 +8791,58 @@ Notes: ${j.notes || 'none'}`;
                     );
                   })}
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* Recently Paid — jobs marked paid in last 30 days, collapsible, with undo */}
+          {(() => {
+            if (homePanel !== 'payment') return null;
+            const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30); thirtyDaysAgo.setHours(0,0,0,0);
+            const recentlyPaid = editingJobs.filter(j => {
+              if (archivedJobIds.includes(j.id) || !j.finalPaymentReceived) return false;
+              const paidDate = j.finalPaymentDate ? new Date(j.finalPaymentDate) : null;
+              return paidDate && paidDate >= thirtyDaysAgo;
+            }).sort((a, b) => new Date(b.finalPaymentDate) - new Date(a.finalPaymentDate));
+            if (recentlyPaid.length === 0) return null;
+            return (
+              <div className="rounded-lg border-l-4 border-gray-500 bg-gray-800/30 p-3">
+                <button
+                  onClick={() => setShowRecentPaid(v => !v)}
+                  className="flex items-center gap-2 w-full text-left mb-1">
+                  <span className="text-base">✅</span>
+                  <p className="font-semibold text-gray-400 text-sm flex-1">Paid in last 30 days — {recentlyPaid.length} job{recentlyPaid.length > 1 ? 's' : ''}</p>
+                  <span className="text-gray-500 text-xs">{showRecentPaid ? '▲ hide' : '▼ show'}</span>
+                </button>
+                {showRecentPaid && (
+                  <div className="space-y-2 mt-2">
+                    {recentlyPaid.map(j => {
+                      const total = getJobAgreedTotal(j);
+                      const dep = getJobDeposit(j);
+                      const depositPaid = parseFloat(dep?.amount || 0);
+                      const finalEntry = (j.wageEntries || []).find(e => e.type === 'final_payment');
+                      const finalAmt = parseFloat(finalEntry?.amount || 0);
+                      return (
+                        <div key={j.id} className="flex justify-between items-center gap-2">
+                          <div className="min-w-0">
+                            <p className={`text-sm font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{j.jobName}</p>
+                            <p className="text-xs text-gray-500">
+                              {j.finalPaymentDate ? new Date(j.finalPaymentDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
+                              {finalAmt > 0 ? ` · £${finalAmt.toFixed(0)} received` : ''}
+                              {total > 0 ? ` · £${total.toFixed(0)} total` : ''}
+                            </p>
+                          </div>
+                          <button onClick={async () => {
+                            if (!window.confirm(`Undo final payment for "${j.jobName}"? This will move it back to the outstanding list.`)) return;
+                            await saveFinalPayment(j.id, false, null, null);
+                          }} className="text-xs px-2.5 py-1.5 bg-red-500 bg-opacity-20 text-red-300 border border-red-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30 shrink-0">
+                            ↩ Undo
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })()}
