@@ -8562,8 +8562,9 @@ Notes: ${j.notes || 'none'}`;
               {key:'itinerary',icon:'📋', label:'Itineraries', color:'#c1a76a', dim:'rgba(193,167,106,0.12)', detail: n => n ? `${n} to send` : 'All sent'},
               {key:'backup',   icon:'💾', label:'Backups',     color:'#60a5fa', dim:'rgba(96,165,250,0.12)',   detail: n => n ? `${n} unlogged` : 'All backed up'},
               {key:'deadline', icon:'⏰', label:'Deadlines',   color:'#f97316', dim:'rgba(249,115,22,0.12)',   detail: n => n ? `${n} this week` : 'Nothing due'},
+              {key:'settings', icon:'⚙️', label:'Settings',    color:'#a78bfa', dim:'rgba(167,139,250,0.12)', detail: () => 'API keys & preferences'},
             ];
-            // Always show grid — backup card is always tappable for Scan & Import
+            // Always show grid — backup + settings cards are always tappable
             return (
               <div className="grid grid-cols-2 gap-3">
                 {CARDS.map(card => {
@@ -8571,7 +8572,7 @@ Notes: ${j.notes || 'none'}`;
                   const active = homePanel === card.key;
                   return (
                     <button key={card.key}
-                      onClick={() => (n > 0 || card.key === 'backup') && setHomePanel(hp => hp === card.key ? null : card.key)}
+                      onClick={() => (n > 0 || card.key === 'backup' || card.key === 'settings') && setHomePanel(hp => hp === card.key ? null : card.key)}
                       className="rounded-xl p-3 text-left transition-all"
                       style={{
                         background: active ? card.dim : 'rgba(255,255,255,0.04)',
@@ -8850,6 +8851,97 @@ Notes: ${j.notes || 'none'}`;
               </div>
             );
           })()}
+
+          {/* Settings panel */}
+          {homePanel === 'settings' && (
+            <div className="rounded-lg border-l-4 p-4 space-y-2" style={{borderColor:'#a78bfa', background:'rgba(167,139,250,0.07)'}}>
+              <p className="font-semibold text-purple-300 mb-3">⚙️ Settings</p>
+              {/* Office address */}
+              <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                <span className="text-sm shrink-0">🏢</span>
+                {editingOfficeAddr || !officeAddress ? (
+                  <>
+                    <input type="text" value={officeAddress}
+                      onChange={e => { setOfficeAddress(e.target.value); localStorage.setItem('eyecon_office_address', e.target.value); }}
+                      placeholder="Office address…"
+                      className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                      onBlur={() => { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(!!officeAddress); }}
+                      onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}} />
+                    <button onClick={() => { localStorage.setItem('eyecon_office_address', officeAddress); setEditingOfficeAddr(false); }}
+                      className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`flex-1 text-xs truncate ${darkMode?'text-gray-300':'text-gray-600'}`}>{officeAddress}</span>
+                    <button onClick={() => setEditingOfficeAddr(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                  </>
+                )}
+              </div>
+              {/* Google Maps key */}
+              <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                <span className="text-sm shrink-0">🗝️</span>
+                {editingGmapsKey || !gmapsKey ? (
+                  <>
+                    <input type="text" value={gmapsKey}
+                      onChange={e => { setGmapsKey(e.target.value); localStorage.setItem('eyecon_gmaps_key', e.target.value); }}
+                      placeholder="Google Maps API key…"
+                      className={`flex-1 text-xs rounded px-2 py-1 border font-mono ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                      onBlur={() => { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(!!gmapsKey); }}
+                      onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(false); }}} />
+                    <button onClick={() => { localStorage.setItem('eyecon_gmaps_key', gmapsKey); setEditingGmapsKey(false); }}
+                      className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Google Maps key set</span>
+                    <button onClick={() => setEditingGmapsKey(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                  </>
+                )}
+              </div>
+              {/* Claude API key */}
+              <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                <span className="text-sm shrink-0">🤖</span>
+                {editingAnthropicKey || !anthropicKey ? (
+                  <>
+                    <input type="password" value={anthropicKey}
+                      onChange={e => { setAnthropicKey(e.target.value); localStorage.setItem('eyecon_anthropic_key', e.target.value); }}
+                      placeholder="Claude API key (sk-ant-…) for quote scanning…"
+                      className={`flex-1 text-xs rounded px-2 py-1 border font-mono ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                      onBlur={() => { localStorage.setItem('eyecon_anthropic_key', anthropicKey); setEditingAnthropicKey(!!anthropicKey); }}
+                      onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_anthropic_key', anthropicKey); setEditingAnthropicKey(false); }}} />
+                    <button onClick={() => { localStorage.setItem('eyecon_anthropic_key', anthropicKey); setEditingAnthropicKey(false); }}
+                      className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Claude API key set</span>
+                    <button onClick={() => setEditingAnthropicKey(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                  </>
+                )}
+              </div>
+              {/* Soundtrack URL */}
+              <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                <span className="text-sm shrink-0">🎵</span>
+                {editingSoundtrackUrl || !soundtrackUrl ? (
+                  <>
+                    <input type="url" value={soundtrackUrl}
+                      onChange={e => { setSoundtrackUrl(e.target.value); localStorage.setItem('eyecon_soundtrack_url', e.target.value); }}
+                      placeholder="Soundtrack form link…"
+                      className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                      onBlur={() => { localStorage.setItem('eyecon_soundtrack_url', soundtrackUrl); setEditingSoundtrackUrl(!!soundtrackUrl); }}
+                      onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_soundtrack_url', soundtrackUrl); setEditingSoundtrackUrl(false); }}} />
+                    <button onClick={() => { localStorage.setItem('eyecon_soundtrack_url', soundtrackUrl); setEditingSoundtrackUrl(false); }}
+                      className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Soundtrack form link set</span>
+                    <button onClick={() => setEditingSoundtrackUrl(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Pre-Itinerary Prompts — jobs shooting within 18 days, portal email not yet sent */}
           {(() => {
