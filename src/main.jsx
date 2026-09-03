@@ -8725,37 +8725,7 @@ Notes: ${j.notes || 'none'}`;
               if (total > 0 && depositPaid >= total) return false;
               return true;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
-
-            // Why a job is NOT in the list above.
-            //
-            // There are five ways to fall out of it and every one of them was
-            // silent, so a job vanishing looked exactly like a job that had
-            // never been there. That is the wrong way round: the point of a
-            // "money still owed" list is that nothing leaves it quietly.
-            //
-            // Looks back further than the list itself, because ageing out at
-            // sixty days is the commonest way to lose one — and an unpaid job
-            // does not stop being unpaid because it got old.
-            const sixMonthsAgo = new Date(today); sixMonthsAgo.setDate(today.getDate() - 180);
-            const hidden = editingJobs.map(j => {
-              if (!j.shootDate) return null;
-              const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
-              if (shoot < sixMonthsAgo || shoot > threeDaysAhead) return null;
-              if (needsPayment.some(n => n.id === j.id)) return null;
-
-              const dep = getJobDeposit(j);
-              const total = getJobAgreedTotal(j);
-              const depositPaid = parseFloat(dep?.amount || 0);
-              let why = '';
-              if (archivedJobIds.includes(j.id)) why = 'archived';
-              else if (j.finalPaymentReceived) why = 'final payment logged';
-              else if (total > 0 && depositPaid >= total) why = 'deposit covers the total';
-              else if (shoot < sixtyDaysAgo) why = 'more than 60 days ago';
-              else return null;
-              return { job: j, why, shoot };
-            }).filter(Boolean).sort((a, b) => b.shoot - a.shoot);
-
-            if (needsPayment.length === 0 && hidden.length === 0) return null;
+            if (needsPayment.length === 0) return null;
             return (
               <div className="rounded-lg border-l-4 border-green-500 bg-green-900/20 p-3">
                 <div className="flex items-center gap-2 mb-2">
@@ -8820,24 +8790,6 @@ Notes: ${j.notes || 'none'}`;
                     );
                   })}
                 </div>
-                {hidden.length > 0 && (
-                  <details className="mt-2">
-                    <summary className="text-xs cursor-pointer select-none" style={{color:'rgba(134,239,172,0.75)'}}>
-                      {hidden.length} job{hidden.length > 1 ? 's are' : ' is'} not in this list — tap to see why
-                    </summary>
-                    <div className="mt-1 space-y-1">
-                      {hidden.map(({ job: j, why }) => (
-                        <div key={j.id} className="flex justify-between items-baseline gap-2 text-xs">
-                          <span className="min-w-0 truncate text-gray-300">{j.jobName}</span>
-                          <span className="whitespace-nowrap text-gray-500">
-                            {new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}
-                            {' \u00b7 '}{why}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
               </div>
             );
           })()}
