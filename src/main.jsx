@@ -1093,6 +1093,8 @@ function EyeconMoments() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showBookingConfirmModal, setShowBookingConfirmModal] = useState(false);
   const [bookingConfirmInquiry, setBookingConfirmInquiry] = useState(null);
+  const [quoteScanning, setQuoteScanning] = useState(false);
+  const [quoteScanError, setQuoteScanError] = useState('');
   const [bookingDate, setBookingDate] = useState('');
   const [bookingNumDays, setBookingNumDays] = useState(1);
   const [bookingDate2, setBookingDate2] = useState('');
@@ -1306,6 +1308,8 @@ function EyeconMoments() {
   const [editingSoundtrackUrl, setEditingSoundtrackUrl] = useState(false);
   const [gmapsKey, setGmapsKey] = useState(() => localStorage.getItem('eyecon_gmaps_key') || '');
   const [editingGmapsKey, setEditingGmapsKey] = useState(false);
+  const [anthropicKey, setAnthropicKey] = useState(() => localStorage.getItem('eyecon_anthropic_key') || '');
+  const [editingAnthropicKey, setEditingAnthropicKey] = useState(false);
   const [routeStatus, setRouteStatus] = useState({});
   const [venueAuto, setVenueAuto] = useState({ active: false, dayIdx: null, builderKey: '', suggestions: [], loading: false });
   const [homePanel, setHomePanel] = useState(null);
@@ -9061,6 +9065,26 @@ Notes: ${j.notes || 'none'}`;
                     )}
                   </div>
                   <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                    <span className="text-sm shrink-0">🤖</span>
+                    {editingAnthropicKey || !anthropicKey ? (
+                      <>
+                        <input type="password" value={anthropicKey}
+                          onChange={e => { setAnthropicKey(e.target.value); localStorage.setItem('eyecon_anthropic_key', e.target.value); }}
+                          placeholder="Claude API key (sk-ant-…) for quote scanning…"
+                          className={`flex-1 text-xs rounded px-2 py-1 border font-mono ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          onBlur={() => { localStorage.setItem('eyecon_anthropic_key', anthropicKey); setEditingAnthropicKey(!!anthropicKey); }}
+                          onKeyDown={e => { if (e.key==='Enter') { localStorage.setItem('eyecon_anthropic_key', anthropicKey); setEditingAnthropicKey(false); }}} />
+                        <button onClick={() => { localStorage.setItem('eyecon_anthropic_key', anthropicKey); setEditingAnthropicKey(false); }}
+                          className="text-xs font-semibold px-2 py-1 rounded shrink-0" style={{background:'var(--gold)',color:'#000'}}>Save</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`flex-1 text-xs ${darkMode?'text-green-400':'text-green-600'}`}>✓ Claude API key set</span>
+                        <button onClick={() => setEditingAnthropicKey(true)} className="text-xs text-blue-400 shrink-0">✏️</button>
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)'}}>
                     <span className="text-sm shrink-0">🎵</span>
                     {editingSoundtrackUrl || !soundtrackUrl ? (
                       <>
@@ -15562,7 +15586,61 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto`}>
                   <h2 className={`text-xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Booking Confirmation</h2>
-                  <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inq.customerName} · {inq.email}</p>
+                  <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inq.customerName} · {inq.email}</p>
+
+                  {/* Quote upload / AI scan */}
+                  {anthropicKey && (
+                    <div className="mb-4">
+                      <label className={`block text-xs font-semibold mb-1.5 ${darkMode?'text-gray-300':'text-gray-600'}`}>📎 Upload quote or screenshot to auto-fill</label>
+                      <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${quoteScanning ? 'opacity-60 pointer-events-none' : ''} ${darkMode?'border-gray-600 hover:border-gold text-gray-400 hover:text-gray-200':'border-gray-300 hover:border-gold text-gray-500 hover:text-gray-700'}`}>
+                        <input type="file" accept="image/*,application/pdf" className="hidden" disabled={quoteScanning} onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          e.target.value = '';
+                          setQuoteScanning(true);
+                          setQuoteScanError('');
+                          try {
+                            const isPdf = file.type === 'application/pdf';
+                            const toBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
+                            const b64 = await toBase64(file);
+                            const mediaType = isPdf ? 'application/pdf' : (file.type || 'image/jpeg');
+                            const contentBlock = isPdf
+                              ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: b64 } }
+                              : { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } };
+                            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                              method: 'POST',
+                              headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-calls': 'true' },
+                              body: JSON.stringify({
+                                model: 'claude-haiku-4-5-20251001',
+                                max_tokens: 512,
+                                messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract the booking/quote details from this document. Reply ONLY with a JSON object with these keys (omit any you cannot find): numDays (integer), date (YYYY-MM-DD of first/only shoot day), date2 (YYYY-MM-DD of second day if present), startTime (HH:MM 24h), endTime (HH:MM 24h), venue (string), totalPrice (number), deposit (number). No explanation, just the JSON.' }] }],
+                              }),
+                            });
+                            if (!res.ok) throw new Error(`API error ${res.status}`);
+                            const data = await res.json();
+                            const text = data.content?.[0]?.text || '';
+                            const jsonMatch = text.match(/\{[\s\S]*\}/);
+                            if (!jsonMatch) throw new Error('Could not read details from document');
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            if (parsed.numDays) setBookingNumDays(Math.min(4, Math.max(1, parseInt(parsed.numDays))));
+                            if (parsed.date) setBookingDate(parsed.date);
+                            if (parsed.date2) setBookingDate2(parsed.date2);
+                            if (parsed.startTime) setBookingStartTime(parsed.startTime);
+                            if (parsed.endTime) setBookingEndTime(parsed.endTime);
+                            if (parsed.venue) setBookingVenue(parsed.venue);
+                            if (parsed.totalPrice) setBookingTotalPrice(String(parsed.totalPrice));
+                            if (parsed.deposit) setBookingDeposit(String(parsed.deposit));
+                          } catch (err) {
+                            setQuoteScanError(err.message || 'Scan failed');
+                          } finally {
+                            setQuoteScanning(false);
+                          }
+                        }} />
+                        {quoteScanning ? <><span className="animate-spin">⏳</span> Reading document…</> : <><span>📄</span> Choose image or PDF</>}
+                      </label>
+                      {quoteScanError && <p className="text-xs text-red-400 mt-1">{quoteScanError}</p>}
+                    </div>
+                  )}
 
                   <div className="space-y-4">
                     <div>
