@@ -1273,6 +1273,8 @@ function EyeconMoments() {
   const [gmailScanResults, setGmailScanResults] = useState([]);
   const [gmailScanning, setGmailScanning] = useState(false);
   const [gmailScanStatus, setGmailScanStatus] = useState('');
+  const [fpmGmailScanning, setFpmGmailScanning] = useState(false);
+  const [fpmGmailResult, setFpmGmailResult] = useState(null);
   const [gmailSaveEmail, setGmailSaveEmail] = useState({});
   const [gmailExpandedBody, setGmailExpandedBody] = useState({});
   const [gmailEmailPrompt, setGmailEmailPrompt] = useState(null); // [{jobId, jobName, email}]
@@ -3319,6 +3321,67 @@ function EyeconMoments() {
     setIsDriveSignedIn(false);
   };
 
+  const decodeGmailBody = (payload) => {
+    if (!payload) return '';
+    const decode = d => { try { return atob(d.replace(/-/g,'+').replace(/_/g,'/')); } catch { return ''; } };
+    const stripHtml = s => s.replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&pound;/g,'£').replace(/&#163;/g,'£').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
+    if (payload.body?.data) { const t=decode(payload.body.data); return payload.mimeType==='text/html'?stripHtml(t):t; }
+    for (const p of (payload.parts||[])) { if (p.mimeType==='text/plain'&&p.body?.data) return decode(p.body.data); }
+    for (const p of (payload.parts||[])) { if (p.mimeType==='text/html'&&p.body?.data) return stripHtml(decode(p.body.data)); }
+    for (const p of (payload.parts||[])) { const t=decodeGmailBody(p); if (t) return t; }
+    return '';
+  };
+
+  const scanGmailForJobDeposit = (job) => {
+    if (!window.google?.accounts?.oauth2) { alert('Google services not loaded yet — connect Google Calendar first.'); return; }
+    setFpmGmailScanning(true);
+    setFpmGmailResult(null);
+    const inq = inquiries.find(i => (i.customerName||'').toLowerCase()===(job.customerName||'').toLowerCase());
+    const email = inq?.email || '';
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
+      error_callback: (err) => {
+        setFpmGmailScanning(false);
+        if (err.type !== 'popup_closed') alert('Google sign-in error: ' + err.type);
+      },
+      callback: async (response) => {
+        if (response.error) { setFpmGmailScanning(false); return; }
+        const tok = response.access_token;
+        try {
+          const q = email
+            ? `from:${email} newer_than:365d`
+            : `"${job.customerName}" (transfer OR payment OR deposit OR paid) newer_than:365d`;
+          const r = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=15`, { headers: { Authorization: `Bearer ${tok}` } });
+          const d = await r.json();
+          const msgs = d.messages || [];
+          if (!msgs.length) { setFpmGmailResult({ notFound: true }); setFpmGmailScanning(false); return; }
+          const msgDatas = await Promise.all(msgs.map(m =>
+            fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`, { headers: { Authorization: `Bearer ${tok}` } }).then(r => r.json())
+          ));
+          let best = null;
+          for (const msgData of msgDatas) {
+            const hdrs = msgData.payload?.headers || [];
+            const dateStr = hdrs.find(h => h.name==='Date')?.value || '';
+            const subject = hdrs.find(h => h.name==='Subject')?.value || '';
+            const snippet = msgData.snippet || '';
+            const body = decodeGmailBody(msgData.payload);
+            const combined = snippet + ' ' + subject + ' ' + body;
+            const allAmounts = [...combined.matchAll(/£\s*([\d,]+\.?\d*)/g)].map(m => parseFloat(m[1].replace(/,/g,'')));
+            const amount = allAmounts.length ? Math.max(...allAmounts) : 0;
+            if (amount < 10) continue;
+            const parsedDate = new Date(dateStr);
+            const isoDate = isNaN(parsedDate.getTime()) ? new Date().toISOString().slice(0,10) : parsedDate.toISOString().slice(0,10);
+            if (!best || amount > best.amount) best = { amount, date: isoDate, subject: subject.slice(0,80), snippet: snippet.slice(0,200) };
+          }
+          setFpmGmailResult(best ? { found: true, ...best } : { notFound: true });
+        } catch(e) { console.error(e); setFpmGmailResult({ notFound: true, error: e.message }); }
+        setFpmGmailScanning(false);
+      }
+    });
+    client.requestAccessToken();
+  };
+
   const scanGmailForDeposits = (prefillEmails = {}) => {
     // prefillEmails: {jobId: emailString} for jobs whose email wasn't in CRM yet
     if (!window.google?.accounts?.oauth2) {
@@ -5119,7 +5182,7 @@ Notes: ${j.notes || 'none'}`;
                   <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>💷 Record Final Payment</h2>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fpJob?.jobName}{fpJob?.customerName ? ` — ${fpJob.customerName}` : ''}</p>
                 </div>
-                <button onClick={() => setFinalPaymentModal(null)} className={`p-2 rounded-lg text-lg ${darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}>✕</button>
+                <button onClick={() => { setFinalPaymentModal(null); setFpmGmailResult(null); }} className={`p-2 rounded-lg text-lg ${darkMode ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}>✕</button>
               </div>
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
                 <div className={`rounded-xl p-4 space-y-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
@@ -5141,7 +5204,43 @@ Notes: ${j.notes || 'none'}`;
                       </div>
                     </>
                   ) : (
-                    <p className={`text-sm text-center py-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No deposit on record — enter the amount below</p>
+                    <div>
+                      <p className={`text-sm text-center py-1 italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No deposit on record</p>
+                      <div className="mt-2">
+                        {fpmGmailScanning ? (
+                          <p className={`text-xs text-center animate-pulse ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>🔍 Searching Gmail…</p>
+                        ) : fpmGmailResult?.found ? (
+                          <div className={`rounded-lg p-3 ${darkMode ? 'bg-green-900/30 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                            <p className={`text-xs font-semibold mb-0.5 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>📧 Payment email found</p>
+                            <p className={`text-base font-bold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>£{Number(fpmGmailResult.amount).toFixed(2)}</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{fpmGmailResult.date} · {fpmGmailResult.subject}</p>
+                            <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{fpmGmailResult.snippet}</p>
+                            <button onClick={async () => {
+                              const amt = Number(fpmGmailResult.amount).toFixed(2);
+                              await saveDeposit(finalPaymentModal.jobId, amt, fpmGmailResult.date, true);
+                              const knownTotal = getJobAgreedTotal(editingJobs.find(j => j.id === finalPaymentModal.jobId));
+                              const newDep = Number(fpmGmailResult.amount);
+                              setFinalPaymentModal(p => ({
+                                ...p,
+                                depositPaid: newDep,
+                                finalAmount: knownTotal > 0 ? Math.max(0, knownTotal - newDep).toFixed(2) : p.finalAmount,
+                              }));
+                              setFpmGmailResult(null);
+                            }} className="mt-2 w-full py-2 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700">
+                              ✅ Log £{Number(fpmGmailResult.amount).toFixed(2)} as deposit from email
+                            </button>
+                            <button onClick={() => setFpmGmailResult(null)} className={`mt-1 w-full py-1 rounded text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Not this one — dismiss</button>
+                          </div>
+                        ) : fpmGmailResult?.notFound ? (
+                          <p className={`text-xs text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>No payment emails found for this client.</p>
+                        ) : (
+                          <button onClick={() => scanGmailForJobDeposit(fpJob)}
+                            className={`w-full py-2 rounded-lg text-xs font-semibold border ${darkMode ? 'border-amber-600 text-amber-400 hover:bg-amber-900/30' : 'border-amber-400 text-amber-600 hover:bg-amber-50'}`}>
+                            🔍 Check Gmail for deposit
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
                 <div>
@@ -5199,7 +5298,7 @@ Notes: ${j.notes || 'none'}`;
                 )}
               </div>
               <div className={`p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} grid grid-cols-2 gap-3`}>
-                <button onClick={() => setFinalPaymentModal(null)}
+                <button onClick={() => { setFinalPaymentModal(null); setFpmGmailResult(null); }}
                   className={`py-3 rounded-xl font-semibold text-sm ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
                   Cancel
                 </button>
