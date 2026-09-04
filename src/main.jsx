@@ -1098,6 +1098,8 @@ function EyeconMoments() {
   const [bookingDate, setBookingDate] = useState('');
   const [bookingNumDays, setBookingNumDays] = useState(1);
   const [bookingDate2, setBookingDate2] = useState('');
+  const [bookingDate3, setBookingDate3] = useState('');
+  const [bookingDate4, setBookingDate4] = useState('');
   const [bookingStartTime, setBookingStartTime] = useState('10:00');
   const [bookingEndTime, setBookingEndTime] = useState('17:00');
   const [bookingVenue, setBookingVenue] = useState('');
@@ -15632,10 +15634,17 @@ www.eyeconmoments.co.uk`,
             };
             const fmtDate = (iso) => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) : '';
             const dateTimeFmt = (() => {
-              if (bookingNumDays === 2 && bookingDate && bookingDate2) {
-                return `Day 1: ${fmtDate(bookingDate)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}\nDay 2: ${fmtDate(bookingDate2)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              const times = `, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              if (bookingNumDays > 1 && bookingDate) {
+                const days = [
+                  bookingDate && `Day 1: ${fmtDate(bookingDate)}${times}`,
+                  bookingDate2 && `Day 2: ${fmtDate(bookingDate2)}${times}`,
+                  bookingDate3 && `Day 3: ${fmtDate(bookingDate3)}${times}`,
+                  bookingDate4 && `Day 4: ${fmtDate(bookingDate4)}${times}`,
+                ].filter(Boolean);
+                return days.join('\n');
               }
-              if (bookingDate) return `${fmtDate(bookingDate)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`;
+              if (bookingDate) return `${fmtDate(bookingDate)}${times}`;
               return inq.eventDate ? inq.eventDate.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) : '';
             })();
             const sendEmail = () => {
@@ -15706,7 +15715,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                                 clientApiKey: anthropicKey,
                                 model: 'claude-haiku-4-5-20251001',
                                 max_tokens: 512,
-                                messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract the booking/quote details from this document. Reply ONLY with a JSON object with these keys (omit any you cannot find): numDays (integer), date (YYYY-MM-DD of first/only shoot day), date2 (YYYY-MM-DD of second day if present), startTime (HH:MM 24h), endTime (HH:MM 24h), venue (string), totalPrice (number), deposit (number). No explanation, just the JSON.' }] }],
+                                messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract the booking/quote details from this document. Reply ONLY with a JSON object with these keys (omit any you cannot find): numDays (integer), date (YYYY-MM-DD of first/only shoot day), date2 (YYYY-MM-DD of second day if present), date3 (YYYY-MM-DD of third day if present), date4 (YYYY-MM-DD of fourth day if present), startTime (HH:MM 24h), endTime (HH:MM 24h), venue (string), totalPrice (number), deposit (number). No explanation, just the JSON.' }] }],
                               }),
                             });
                             if (!res.ok) throw new Error(`API error ${res.status}`);
@@ -15718,6 +15727,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                             if (parsed.numDays) setBookingNumDays(Math.min(4, Math.max(1, parseInt(parsed.numDays))));
                             if (parsed.date) setBookingDate(parsed.date);
                             if (parsed.date2) setBookingDate2(parsed.date2);
+                            if (parsed.date3) setBookingDate3(parsed.date3);
+                            if (parsed.date4) setBookingDate4(parsed.date4);
                             if (parsed.startTime) setBookingStartTime(parsed.startTime);
                             if (parsed.endTime) setBookingEndTime(parsed.endTime);
                             if (parsed.venue) setBookingVenue(parsed.venue);
@@ -15749,14 +15760,28 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       </div>
                     </div>
                     <div>
-                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{bookingNumDays === 2 ? 'Day 1 date' : 'Shoot date'}</label>
+                      <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{bookingNumDays > 1 ? 'Day 1 date' : 'Shoot date'}</label>
                       <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)}
                         className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                     </div>
-                    {bookingNumDays === 2 && (
+                    {bookingNumDays >= 2 && (
                       <div>
                         <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Day 2 date</label>
                         <input type="date" value={bookingDate2} onChange={e => setBookingDate2(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                    )}
+                    {bookingNumDays >= 3 && (
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Day 3 date</label>
+                        <input type="date" value={bookingDate3} onChange={e => setBookingDate3(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
+                      </div>
+                    )}
+                    {bookingNumDays >= 4 && (
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Day 4 date</label>
+                        <input type="date" value={bookingDate4} onChange={e => setBookingDate4(e.target.value)}
                           className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`} />
                       </div>
                     )}
@@ -15833,7 +15858,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       job_type: 'photo-video',
                       has_photos: true, has_video: true,
                       photo_status: 'not-started', photo_assigned_to: null,
-                      notes: bookingVenue ? `Venue: ${bookingVenue}` : '',
+                      notes: [bookingVenue ? `Venue: ${bookingVenue}` : '', bookingDate2 ? `Day 2: ${bookingDate2}` : '', bookingDate3 ? `Day 3: ${bookingDate3}` : '', bookingDate4 ? `Day 4: ${bookingDate4}` : ''].filter(Boolean).join(' | '),
                       shoot_hours: 8, num_videographers: 2, num_photographers: 2,
                       video_edit_hours: 20, photo_edit_hours: 10,
                       file_locations: [], stages,
