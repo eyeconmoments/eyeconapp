@@ -15654,32 +15654,51 @@ www.eyeconmoments.co.uk`,
                 : 'the day before the event';
               const eventTypeCapital = inq.eventType ? inq.eventType.charAt(0).toUpperCase() + inq.eventType.slice(1) : '';
               const subject = `Booking Confirmed — Eyecon Moments`;
+              const scheduleLines = (() => {
+                const days = [
+                  bookingDate && { label: bookingNumDays > 1 ? 'Day 1' : null, date: bookingDate },
+                  bookingDate2 && { label: 'Day 2', date: bookingDate2 },
+                  bookingDate3 && { label: 'Day 3', date: bookingDate3 },
+                  bookingDate4 && { label: 'Day 4', date: bookingDate4 },
+                ].filter(Boolean);
+                return days.map(d =>
+                  `${d.label ? d.label + ' — ' : ''}${fmtDate(d.date)}, ${fmtTime(bookingStartTime)} – ${fmtTime(bookingEndTime)}`
+                ).join('\n');
+              })();
               const body = `Hi ${firstName},
 
-Thank you for your deposit of £${depositNum.toFixed(2)} — your booking is now confirmed.
+Thank you for your deposit — your booking is now confirmed. We're looking forward to being part of your special day.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BOOKING CONFIRMATION
-________________________________
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Event:             ${eventTypeCapital}
-Date & Time:       ${dateTimeFmt}
-Venue:             ${bookingVenue || 'TBC'}
-Total:             £${totalNum.toFixed(2)}
+${eventTypeCapital ? `Event:    ${eventTypeCapital}\n` : ''}Venue:    ${bookingVenue || 'TBC'}
+
+Coverage:
+${scheduleLines}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAYMENT SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total Price:       £${totalNum.toFixed(2)}
 Deposit Paid:      £${depositNum.toFixed(2)}
-Remaining Balance: £${remaining.toFixed(2)} (due ${dayBefore})
-________________________________
+Remaining Balance: £${remaining.toFixed(2)}
 
-Please take a moment to review the above. If anything looks incorrect or needs to be updated, please reply within 24 hours and we will get it sorted straight away.
+The remaining balance is due the day before your event (${dayBefore}). Payment can be made by bank transfer — please reply to this email if you need our details.
 
-We look forward to being part of your event.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Please take a moment to check the details above. If anything looks incorrect, please reply within 24 hours and we'll get it sorted straight away.
 
 Kind regards,
 
 Eyecon Moments
-eyecon.moments@gmail.com
-www.eyeconmoments.co.uk
+📞 07957 450570
+✉️ eyecon.moments@gmail.com
+🌐 www.eyeconmoments.co.uk
 
-________________________________
 This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`;
               openMail(`mailto:${inq.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
             };
