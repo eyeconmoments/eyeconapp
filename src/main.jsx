@@ -15944,13 +15944,14 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         };
                         const extractedTimes = extractTimesFromText([inquiry.notes, inquiry.details].join(' '));
                         setTimeout(() => {
-                          const qd0 = quoteData.dates[0] || {};
-                          setBookingDate(dateISO || qd0.date || '');
-                          setBookingNumDays(quoteData.dates.length >= 2 ? 2 : 1);
-                          setBookingDate2(quoteData.dates[1]?.date || '');
-                          setBookingStartTime(qd0.startTime && qd0.startTime !== '10:00' ? qd0.startTime : (extractedTimes[0] || '10:00'));
-                          setBookingEndTime(qd0.endTime && qd0.endTime !== '22:00' ? qd0.endTime : (extractedTimes[1] || '17:00'));
-                          setBookingVenue(qd0.location || '');
+                          const numDays = Math.max(1, quoteData.dates.length);
+                          setBookingNumDays(numDays);
+                          setBookingDays(quoteData.dates.slice(0, numDays).map((qd, i) => ({
+                            date: (i === 0 ? dateISO : null) || qd.date || '',
+                            startTime: qd.startTime && qd.startTime !== '10:00' ? qd.startTime : (i === 0 ? extractedTimes[0] || '10:00' : '10:00'),
+                            endTime: qd.endTime && qd.endTime !== '22:00' ? qd.endTime : (i === 0 ? extractedTimes[1] || '17:00' : '17:00'),
+                            venue: qd.location || '',
+                          })));
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
                           setBookingConfirmInquiry({...inquiry, status: 'booked'});
@@ -16157,12 +16158,14 @@ www.eyeconmoments.co.uk`;
                       const qd0 = qs.dates?.[0] || {};
                       const extractPrice = (str) => { const m = String(str||'').match(/£([\d,]+(?:\.\d{1,2})?)/); return m ? parseFloat(m[1].replace(/,/g,'')) : NaN; };
                       const budgetNum = [inquiry.budget, inquiry.notes, inquiry.details].reduce((found, src) => isNaN(found) ? extractPrice(src) : found, NaN);
-                      setBookingDate(inquiry.eventDate ? inquiry.eventDate.toISOString().split('T')[0] : qd0.date || '');
-                      setBookingNumDays(qs.dates?.length >= 2 ? 2 : 1);
-                      setBookingDate2(qs.dates?.[1]?.date || '');
-                      setBookingStartTime(qd0.startTime || '10:00');
-                      setBookingEndTime(qd0.endTime || '17:00');
-                      setBookingVenue(qd0.location || '');
+                      const numDays2 = Math.max(1, qs.dates?.length || 1);
+                      setBookingNumDays(numDays2);
+                      setBookingDays((qs.dates?.length > 0 ? qs.dates : [{}]).slice(0, numDays2).map((qd, i) => ({
+                        date: (i === 0 && inquiry.eventDate ? inquiry.eventDate.toISOString().split('T')[0] : null) || qd.date || '',
+                        startTime: qd.startTime || '10:00',
+                        endTime: qd.endTime || '17:00',
+                        venue: qd.location || '',
+                      })));
                       setBookingTotalPrice(isNaN(budgetNum) ? '' : String(budgetNum));
                       setBookingDeposit(isNaN(budgetNum) ? '' : String(Math.round(budgetNum * 0.5)));
                       setBookingConfirmInquiry({ ...inquiry });
