@@ -15699,10 +15699,11 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                             const contentBlock = isPdf
                               ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: b64 } }
                               : { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } };
-                            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                            const res = await fetch('/.netlify/functions/claude-chat', {
                               method: 'POST',
-                              headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-calls': 'true' },
+                              headers: { 'content-type': 'application/json' },
                               body: JSON.stringify({
+                                clientApiKey: anthropicKey,
                                 model: 'claude-haiku-4-5-20251001',
                                 max_tokens: 512,
                                 messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract the booking/quote details from this document. Reply ONLY with a JSON object with these keys (omit any you cannot find): numDays (integer), date (YYYY-MM-DD of first/only shoot day), date2 (YYYY-MM-DD of second day if present), startTime (HH:MM 24h), endTime (HH:MM 24h), venue (string), totalPrice (number), deposit (number). No explanation, just the JSON.' }] }],

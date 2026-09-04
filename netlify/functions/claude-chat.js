@@ -8,15 +8,17 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: '{"error":"Method not allowed"}' };
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { statusCode: 500, headers, body: '{"error":"ANTHROPIC_API_KEY not configured"}' };
-  }
-
   try {
     const payload = JSON.parse(event.body || '{}');
+    const apiKey = process.env.ANTHROPIC_API_KEY || payload.clientApiKey;
+    if (!apiKey) {
+      return { statusCode: 500, headers, body: '{"error":"No API key configured"}' };
+    }
+    // Remove clientApiKey from the payload before forwarding
+    const { clientApiKey: _removed, ...forwardPayload } = payload;
     const apiHeaders = {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     };
     // Interleaved thinking is required when combining extended thinking with tool use
@@ -26,7 +28,7 @@ exports.handler = async (event) => {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: apiHeaders,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(forwardPayload),
     });
     const data = await res.json();
     return { statusCode: res.status, headers, body: JSON.stringify(data) };
