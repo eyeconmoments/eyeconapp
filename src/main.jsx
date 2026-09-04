@@ -9297,8 +9297,9 @@ Notes: ${j.notes || 'none'}`;
                   {soonJobs.map(j => {
                     const itin = j.itinerary || {};
                     const startTime = itin.startTime || j.calendarStartTime || null;
-                    const venue = itin.venue || (j.notes||'').split(/[.\n]/)[0].trim() || '';
+                    const venueFromJob = itin.venue || (j.notes||'').split(/[|.\n]/)[0].replace(/,\s*\d{2}:\d{2}.*$/, '').trim() || '';
                     const legs = setoffLegs[j.id] || {};
+                    const venueAddr = legs.venueAddr ?? venueFromJob;
                     const homeToOffice  = legs.homeToOffice  ?? 20;
                     const gearLoad      = legs.gearLoad      ?? 15;
                     const officeToVenue = legs.officeToVenue ?? '';
@@ -9323,11 +9324,10 @@ Notes: ${j.notes || 'none'}`;
                             <p className={`text-sm font-bold ${darkMode?'text-white':'text-gray-900'}`}>{j.jobName}</p>
                             <p className={`text-xs ${darkMode?'text-gray-400':'text-gray-500'}`}>
                               {isToday ? 'Today' : 'Tomorrow'}{startTime ? ` · Coverage from ${startTime}` : ''}
-                              {venue ? ` · ${venue}` : ''}
                             </p>
                           </div>
-                          {venue && (
-                            <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venue)}`}
+                          {venueAddr && (
+                            <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venueAddr)}`}
                               target="_blank" rel="noopener noreferrer"
                               className="text-xs px-2 py-1 rounded-lg bg-blue-500 bg-opacity-20 text-blue-300 shrink-0 font-medium">
                               🗺️ Directions
@@ -9335,10 +9335,22 @@ Notes: ${j.notes || 'none'}`;
                           )}
                         </div>
 
+                        {/* Venue address — editable so user can correct/add postcode for accurate routing */}
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <span className="text-xs shrink-0" style={{color:'rgba(255,255,255,0.4)'}}>📍 Venue:</span>
+                          <input
+                            type="text"
+                            value={venueAddr}
+                            onChange={e => updateLeg(j.id, 'venueAddr', e.target.value)}
+                            placeholder="Enter venue address or postcode…"
+                            className={`flex-1 text-xs rounded px-2 py-1 border ${darkMode?'bg-gray-700 border-gray-600 text-white placeholder-gray-500':'bg-white border-gray-200 text-gray-900'}`}
+                          />
+                        </div>
+
                         {/* Live route button */}
                         {(officeAddress || gmapsKey) && (
                           <button
-                            onClick={() => calcRoutes(j.id, venue)}
+                            onClick={() => calcRoutes(j.id, venueAddr)}
                             disabled={rStatus === 'loading' || !officeAddress || !gmapsKey}
                             className="w-full mb-2.5 text-xs py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium"
                             style={{
