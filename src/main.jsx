@@ -15677,6 +15677,10 @@ Eyecon Moments
 
 This booking is covered by our standard terms and conditions: www.eyeconmoments.co.uk/terms`;
               openMail(`mailto:${inq.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+              // Mark as booked now that email has been sent
+              updateInquiryStatus(inq.id, 'booked');
+              setShowBookingConfirmModal(false);
+              setBookingConfirmInquiry(null);
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
@@ -15954,9 +15958,11 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                           })));
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
-                          setBookingConfirmInquiry({...inquiry, status: 'booked'});
+                          setBookingConfirmInquiry({...inquiry});
                           setShowBookingConfirmModal(true);
                         }, 300);
+                        // Don't mark as booked yet — the modal buttons do that
+                        return;
                       }
                       updateInquiryStatus(inquiry.id, newStatus);
                     }}
