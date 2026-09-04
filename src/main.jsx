@@ -3696,21 +3696,39 @@ function EyeconMoments() {
     }
   };
 
-  const getUpcomingJobsFromCalendar = async () => {
+  const getUpcomingJobsFromCalendar = async (force = false) => {
     if (!isGoogleSignedIn) return;
 
+    // Daily cache — skip if fetched in the last 23 hours and not forced
+    const cacheKey = 'eyecon_gcal_cache';
+    const cacheTs = 'eyecon_gcal_ts';
+    if (!force) {
+      const ts = parseInt(localStorage.getItem(cacheTs) || '0');
+      if (Date.now() - ts < 23 * 60 * 60 * 1000) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+          if (cached.length > 0) { setUpcomingJobs(cached); return; }
+        } catch {}
+      }
+    }
+
     try {
+      const twoYearsAhead = new Date();
+      twoYearsAhead.setFullYear(twoYearsAhead.getFullYear() + 2);
       const response = await window.gapi.client.calendar.events.list({
         calendarId: 'primary',
         timeMin: new Date().toISOString(),
-        timeMax: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
+        timeMax: twoYearsAhead.toISOString(),
         showDeleted: false,
         singleEvents: true,
-        orderBy: 'startTime'
+        maxResults: 2500,
+        orderBy: 'startTime',
       });
 
       const events = response.result.items || [];
       setUpcomingJobs(events);
+      localStorage.setItem(cacheKey, JSON.stringify(events));
+      localStorage.setItem(cacheTs, String(Date.now()));
     } catch (error) {
       console.error('Error fetching upcoming jobs:', error);
     }
@@ -8561,6 +8579,7 @@ Notes: ${j.notes || 'none'}`;
               {key:'backup',   icon:'💾', label:'Backups',     color:'#60a5fa', dim:'rgba(96,165,250,0.12)',   detail: n => n ? `${n} unlogged` : 'All backed up'},
               {key:'deadline', icon:'⏰', label:'Deadlines',   color:'#f97316', dim:'rgba(249,115,22,0.12)',   detail: n => n ? `${n} this week` : 'Nothing due'},
               {key:'settings', icon:'⚙️', label:'Settings',    color:'#a78bfa', dim:'rgba(167,139,250,0.12)', detail: () => 'API keys & preferences'},
+              {key:'schedule', icon:'📅', label:'Schedule',    color:'#38bdf8', dim:'rgba(56,189,248,0.12)',  detail: () => isGoogleSignedIn ? (upcomingJobs.length > 0 ? `${upcomingJobs.length} events` : 'Loading…') : 'Connect Google Calendar'},
             ];
             // Always show grid — backup + settings cards are always tappable
             return (
@@ -8570,13 +8589,13 @@ Notes: ${j.notes || 'none'}`;
                   const active = homePanel === card.key;
                   return (
                     <button key={card.key}
-                      onClick={() => (n > 0 || card.key === 'backup' || card.key === 'settings') && setHomePanel(hp => hp === card.key ? null : card.key)}
+                      onClick={() => (n > 0 || card.key === 'backup' || card.key === 'settings' || card.key === 'schedule') && setHomePanel(hp => hp === card.key ? null : card.key)}
                       className="rounded-xl p-3 text-left transition-all"
                       style={{
                         background: active ? card.dim : 'rgba(255,255,255,0.04)',
-                        border: `1px solid ${active ? card.color : (n > 0 || card.key === 'backup') ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
-                        opacity: (n > 0 || card.key === 'backup') ? 1 : 0.35,
-                        cursor: (n > 0 || card.key === 'backup') ? 'pointer' : 'default',
+                        border: `1px solid ${active ? card.color : (n > 0 || card.key === 'backup' || card.key === 'schedule') ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'}`,
+                        opacity: (n > 0 || card.key === 'backup' || card.key === 'schedule') ? 1 : 0.35,
+                        cursor: (n > 0 || card.key === 'backup' || card.key === 'schedule') ? 'pointer' : 'default',
                       }}>
                       <div className="flex items-baseline gap-2 mb-1">
                         <span className="text-base">{card.icon}</span>
@@ -8940,6 +8959,84 @@ Notes: ${j.notes || 'none'}`;
               </div>
             </div>
           )}
+
+          {/* Schedule panel — Google Calendar log, today → today+2 years */}
+          {homePanel === 'schedule' && (() => {
+            if (!isGoogleSignedIn) {
+              return (
+                <div className="rounded-lg border-l-4 p-4" style={{borderColor:'#38bdf8', background:'rgba(56,189,248,0.07)'}}>
+                  <p className="font-semibold mb-1" style={{color:'#38bdf8'}}>📅 Calendar Schedule</p>
+                  <p className="text-xs mb-3" style={{color:'rgba(255,255,255,0.5)'}}>Connect your Google Calendar to see all events from today to 2 years ahead.</p>
+                  <button onClick={handleGoogleSignIn}
+                    className="w-full py-2.5 rounded-lg text-sm font-semibold text-white"
+                    style={{background:'#38bdf8',color:'#000'}}>
+                    Connect Google Calendar
+                  </button>
+                </div>
+              );
+            }
+            // Group events by month
+            const now = new Date();
+            const twoYearsOut = new Date(); twoYearsOut.setFullYear(twoYearsOut.getFullYear() + 2);
+            const months = {};
+            upcomingJobs.forEach(ev => {
+              const start = ev.start?.dateTime || ev.start?.date;
+              if (!start) return;
+              const d = new Date(start);
+              if (d < now || d > twoYearsOut) return;
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+              if (!months[key]) months[key] = [];
+              months[key].push(ev);
+            });
+            const sortedMonths = Object.keys(months).sort();
+            return (
+              <div className="rounded-lg border-l-4 p-4 space-y-4" style={{borderColor:'#38bdf8', background:'rgba(56,189,248,0.07)'}}>
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold" style={{color:'#38bdf8'}}>📅 Schedule — next 2 years</p>
+                  <button onClick={() => getUpcomingJobsFromCalendar(true)}
+                    className="text-xs px-2 py-1 rounded" style={{background:'rgba(56,189,248,0.15)',color:'#38bdf8'}}>
+                    ↻ Refresh
+                  </button>
+                </div>
+                {sortedMonths.length === 0 ? (
+                  <p className="text-xs text-center py-4" style={{color:'rgba(255,255,255,0.4)'}}>No events found</p>
+                ) : sortedMonths.map(monthKey => {
+                  const [y, m] = monthKey.split('-');
+                  const monthLabel = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString('en-GB', {month:'long', year:'numeric'});
+                  return (
+                    <div key={monthKey}>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{color:'rgba(56,189,248,0.7)'}}>{monthLabel}</p>
+                      <div className="space-y-1">
+                        {months[monthKey].map(ev => {
+                          const start = ev.start?.dateTime || ev.start?.date;
+                          const d = new Date(start);
+                          const isDateTime = !!ev.start?.dateTime;
+                          const dayLabel = d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric'});
+                          const timeLabel = isDateTime ? d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}) : 'All day';
+                          const end = ev.end?.dateTime;
+                          const endLabel = end ? new Date(end).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}) : '';
+                          return (
+                            <div key={ev.id} className="flex items-start gap-3 py-1.5 px-2 rounded" style={{background:'rgba(255,255,255,0.04)'}}>
+                              <div className="shrink-0 text-right" style={{width:'2.5rem'}}>
+                                <p className="text-xs font-bold" style={{color:'#38bdf8'}}>{dayLabel}</p>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold truncate" style={{color:'rgba(255,255,255,0.9)'}}>{ev.summary || '(No title)'}</p>
+                                <p className="text-xs" style={{color:'rgba(255,255,255,0.4)'}}>
+                                  {isDateTime ? `${timeLabel}${endLabel ? ` – ${endLabel}` : ''}` : 'All day'}
+                                  {ev.location ? ` · ${ev.location}` : ''}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Pre-Itinerary Prompts — jobs shooting within 18 days, portal email not yet sent */}
           {(() => {
