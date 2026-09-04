@@ -15856,6 +15856,41 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       if (error) { alert('Failed to create job: ' + error.message); return; }
                       if (data?.[0]) setEditingJobs(prev => [...prev, rowToJob(data[0])]);
                       logActivity('Job created from booking', jobName, totalAmt > 0 ? `£${totalAmt.toFixed(0)} · deposit £${depositAmt.toFixed(0)}` : '');
+                      // Generate .ics calendar file for all shoot days
+                      const fmtICS = (dateStr, timeStr) => {
+                        if (!dateStr) return '';
+                        const [y, m, d] = dateStr.split('-');
+                        const [hh, mm] = (timeStr || '00:00').split(':');
+                        return `${y}${m}${d}T${hh}${mm}00`;
+                      };
+                      const icsEvents = activeDays.map((day, i) => {
+                        const dtstart = fmtICS(day.date, day.startTime);
+                        const dtend = fmtICS(day.date, day.endTime);
+                        if (!dtstart || !dtend) return '';
+                        const desc = `Eyecon Moments\\nTotal: £${totalAmt.toFixed(0)}${depositAmt > 0 ? ` | Deposit: £${depositAmt.toFixed(0)}` : ''}`;
+                        return [
+                          'BEGIN:VEVENT',
+                          `DTSTART:${dtstart}`,
+                          `DTEND:${dtend}`,
+                          `SUMMARY:${jobName}${bookingNumDays > 1 ? ` — Day ${i + 1}` : ''}`,
+                          day.venue ? `LOCATION:${day.venue}` : '',
+                          `DESCRIPTION:${desc}`,
+                          `UID:eyecon-${jobId}-day${i}@eyeconmoments.co.uk`,
+                          'END:VEVENT',
+                        ].filter(Boolean).join('\r\n');
+                      }).filter(Boolean).join('\r\n');
+                      if (icsEvents) {
+                        const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Eyecon Moments//EN','CALSCALE:GREGORIAN', icsEvents,'END:VCALENDAR'].join('\r\n');
+                        const blob = new Blob([ics], { type: 'text/calendar' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${jobName.replace(/[^a-z0-9]/gi, '_')}.ics`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }
                     }}
                       className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
                       style={{background:'var(--gold)'}}>
