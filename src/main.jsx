@@ -15718,8 +15718,8 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                                 messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract the booking/quote details from this document. Reply ONLY with a JSON object with these keys (omit any you cannot find): numDays (integer), date (YYYY-MM-DD of first/only shoot day), date2 (YYYY-MM-DD of second day if present), date3 (YYYY-MM-DD of third day if present), date4 (YYYY-MM-DD of fourth day if present), startTime (HH:MM 24h), endTime (HH:MM 24h), venue (string), totalPrice (number), deposit (number). No explanation, just the JSON.' }] }],
                               }),
                             });
-                            if (!res.ok) throw new Error(`API error ${res.status}`);
                             const data = await res.json();
+                            if (!res.ok) throw new Error(data?.error?.message || data?.error || `API error ${res.status}`);
                             const text = data.content?.[0]?.text || '';
                             const jsonMatch = text.match(/\{[\s\S]*\}/);
                             if (!jsonMatch) throw new Error('Could not read details from document');

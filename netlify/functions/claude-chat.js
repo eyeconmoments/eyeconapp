@@ -21,10 +21,12 @@ exports.handler = async (event) => {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     };
-    // Interleaved thinking is required when combining extended thinking with tool use
-    if (payload.thinking && payload.tools) {
-      apiHeaders['anthropic-beta'] = 'interleaved-thinking-2025-05-14';
-    }
+    // PDF support requires beta header
+    const hasPdf = JSON.stringify(forwardPayload).includes('"application/pdf"');
+    const betas = [];
+    if (hasPdf) betas.push('pdfs-2024-09-25');
+    if (payload.thinking && payload.tools) betas.push('interleaved-thinking-2025-05-14');
+    if (betas.length) apiHeaders['anthropic-beta'] = betas.join(',');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: apiHeaders,
