@@ -9108,7 +9108,7 @@ Notes: ${j.notes || 'none'}`;
               if (archivedJobIds.includes(j.id) || !j.shootDate) return false;
               const ds = new Date(j.shootDate).toDateString();
               return ds === todayStr || ds === tomorrowStr;
-            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
+            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate)).slice(0, 1); // show only the next upcoming shoot
             if (soonJobs.length === 0) return null;
 
             const parseMins = t => { const [h,m]=(t||'10:00').split(':').map(Number); return h*60+(m||0); };
@@ -9298,7 +9298,12 @@ Notes: ${j.notes || 'none'}`;
                     const itin = j.itinerary || {};
                     const startTime = itin.startTime || j.calendarStartTime || null;
                     const calEv = upcomingJobs.find(ev => Math.abs(new Date(j.shootDate) - new Date(ev.start?.dateTime || ev.start?.date)) < 24 * 60 * 60 * 1000);
-                    const venueFromJob = itin.venue || (j.notes||'').split(/[|.\n]/)[0].replace(/,\s*\d{2}:\d{2}.*$/, '').trim() || calEv?.location || '';
+                    const rawNote = (j.notes||'').split('|')[0].trim()
+                      .replace(/^Day \d+:\s*\d{4}-\d{2}-\d{2},?\s*/, '') // strip "Day N: YYYY-MM-DD, "
+                      .replace(/,\s*\d{2}:\d{2}.*$/, '')                  // strip ", HH:MM..." suffix
+                      .trim();
+                    const venueFromNotes = /^\d{2}:\d{2}/.test(rawNote) ? '' : rawNote; // reject bare time strings
+                    const venueFromJob = itin.venue || venueFromNotes || calEv?.location || '';
                     const legs = setoffLegs[j.id] || {};
                     const venueAddr = legs.venueAddr ?? venueFromJob;
                     const homeToOffice  = legs.homeToOffice  ?? 20;
