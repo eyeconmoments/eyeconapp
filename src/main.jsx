@@ -15812,63 +15812,56 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                       className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
                       Cancel
                     </button>
-                    <button onClick={sendEmail}
+                    <button onClick={async () => {
+                      // Send confirmation email
+                      sendEmail();
+                      // Create job + log deposit
+                      const jobId = crypto.randomUUID();
+                      const jobName = inq.eventType
+                        ? `${inq.customerName} ${inq.eventType.charAt(0).toUpperCase() + inq.eventType.slice(1)}`
+                        : inq.customerName;
+                      const stages = [
+                        {id:1,name:'Cutting, Syncing & Organising',status:'not-started',assignedTo:0},
+                        {id:2,name:'Music, Nesting & Sorting',status:'not-started',assignedTo:0},
+                        {id:3,name:'Colouring & Checking',status:'not-started',assignedTo:0},
+                        {id:4,name:'Highlights Trailer & Intro',status:'not-started',assignedTo:0},
+                      ];
+                      const depositAmt = parseFloat(bookingDeposit) || 0;
+                      const totalAmt = parseFloat(bookingTotalPrice) || 0;
+                      const wageEntries = depositAmt > 0
+                        ? [{ type: 'deposit', amount: String(depositAmt), date: new Date().toISOString().slice(0,10), paid: true }]
+                        : [];
+                      const { data, error } = await db.from('jobs').insert([{
+                        id: jobId,
+                        job_name: jobName,
+                        customer_name: inq.customerName || '',
+                        shoot_date: activeDays[0]?.date || null,
+                        job_type: 'photo-video',
+                        has_photos: true, has_video: true,
+                        photo_status: 'not-started', photo_assigned_to: null,
+                        notes: activeDays.map((d, i) => {
+                          const parts = [];
+                          if (bookingNumDays > 1) parts.push(`Day ${i+1}: ${d.date}`);
+                          if (d.venue) parts.push(d.venue);
+                          if (d.startTime && d.endTime) parts.push(`${d.startTime}–${d.endTime}`);
+                          return parts.join(', ');
+                        }).filter(Boolean).join(' | '),
+                        shoot_hours: 8, num_videographers: 2, num_photographers: 2,
+                        video_edit_hours: 20, photo_edit_hours: 10,
+                        file_locations: [], stages,
+                        custom_price: totalAmt > 0 ? totalAmt : null,
+                        wage_entries: wageEntries,
+                        archived: false,
+                      }]).select();
+                      if (error) { alert('Failed to create job: ' + error.message); return; }
+                      if (data?.[0]) setEditingJobs(prev => [...prev, rowToJob(data[0])]);
+                      logActivity('Job created from booking', jobName, totalAmt > 0 ? `£${totalAmt.toFixed(0)} · deposit £${depositAmt.toFixed(0)}` : '');
+                    }}
                       className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
                       style={{background:'var(--gold)'}}>
-                      ✉️ Open Email
+                      ✉️ Send &amp; Create Job{parseFloat(bookingTotalPrice||0) > 0 ? ` · £${parseFloat(bookingTotalPrice).toFixed(0)}` : ''}
                     </button>
                   </div>
-                  {/* Feature 1: Create Job from booking — saves job + deposit in one tap */}
-                  <button onClick={async () => {
-                    const jobId = crypto.randomUUID();
-                    const jobName = inq.eventType
-                      ? `${inq.customerName} ${inq.eventType.charAt(0).toUpperCase() + inq.eventType.slice(1)}`
-                      : inq.customerName;
-                    const stages = [
-                      {id:1,name:'Cutting, Syncing & Organising',status:'not-started',assignedTo:0},
-                      {id:2,name:'Music, Nesting & Sorting',status:'not-started',assignedTo:0},
-                      {id:3,name:'Colouring & Checking',status:'not-started',assignedTo:0},
-                      {id:4,name:'Highlights Trailer & Intro',status:'not-started',assignedTo:0},
-                    ];
-                    const depositAmt = parseFloat(bookingDeposit) || 0;
-                    const totalAmt = parseFloat(bookingTotalPrice) || 0;
-                    const wageEntries = depositAmt > 0
-                      ? [{ type: 'deposit', amount: String(depositAmt), date: new Date().toISOString().slice(0,10), paid: true }]
-                      : [];
-                    const { data, error } = await db.from('jobs').insert([{
-                      id: jobId,
-                      job_name: jobName,
-                      customer_name: inq.customerName || '',
-                      shoot_date: activeDays[0]?.date || null,
-                      job_type: 'photo-video',
-                      has_photos: true, has_video: true,
-                      photo_status: 'not-started', photo_assigned_to: null,
-                      notes: activeDays.map((d, i) => {
-                        const parts = [];
-                        if (bookingNumDays > 1) parts.push(`Day ${i+1}: ${d.date}`);
-                        if (d.venue) parts.push(d.venue);
-                        if (d.startTime && d.endTime) parts.push(`${d.startTime}–${d.endTime}`);
-                        return parts.join(', ');
-                      }).filter(Boolean).join(' | '),
-                      shoot_hours: 8, num_videographers: 2, num_photographers: 2,
-                      video_edit_hours: 20, photo_edit_hours: 10,
-                      file_locations: [], stages,
-                      custom_price: totalAmt > 0 ? totalAmt : null,
-                      wage_entries: wageEntries,
-                      archived: false,
-                    }]).select();
-                    if (error) { alert('Failed to create job: ' + error.message); return; }
-                    if (data?.[0]) setEditingJobs(prev => [...prev, rowToJob(data[0])]);
-                    // Mark inquiry as booked
-                    await db.from('inquiries').update({ status: 'booked' }).eq('id', inq.id);
-                    setInquiries(prev => prev.map(i => i.id === inq.id ? {...i, status:'booked'} : i));
-                    logActivity('Job created from booking', jobName, totalAmt > 0 ? `£${totalAmt.toFixed(0)} · deposit £${depositAmt.toFixed(0)}` : '');
-                    setShowBookingConfirmModal(false);
-                    setBookingConfirmInquiry(null);
-                    alert(`✅ Job created${depositAmt > 0 ? ` & £${depositAmt.toFixed(0)} deposit logged` : ''}!`);
-                  }} className="mt-2 w-full py-2.5 rounded-lg text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600">
-                    ➕ Create Job {parseFloat(bookingTotalPrice||0) > 0 ? `(£${parseFloat(bookingTotalPrice).toFixed(0)} · deposit £${parseFloat(bookingDeposit||0).toFixed(0)})` : ''}
-                  </button>
                 </div>
               </div>
             );
