@@ -1093,6 +1093,7 @@ function EyeconMoments() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [showBookingConfirmModal, setShowBookingConfirmModal] = useState(false);
   const [bookingConfirmInquiry, setBookingConfirmInquiry] = useState(null);
+  const [bookingConfirmed, setBookingConfirmed] = useState(false); // true = show step-2 soundtrack prompt
   const [quoteScanning, setQuoteScanning] = useState(false);
   const [quoteScanError, setQuoteScanError] = useState('');
   const [bookingNumDays, setBookingNumDays] = useState(1);
@@ -15809,8 +15810,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
               openMail(`mailto:${inq.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
               // Mark as booked now that email has been sent
               updateInquiryStatus(inq.id, 'booked');
-              setShowBookingConfirmModal(false);
-              setBookingConfirmInquiry(null);
+              setBookingConfirmed(true); // show step-2 soundtrack prompt
             };
             return (
               <div key="booking-modal" className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
@@ -15938,7 +15938,7 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                   </div>
 
                   <div className="flex gap-3 mt-6">
-                    <button onClick={() => { setShowBookingConfirmModal(false); setBookingConfirmInquiry(null); }}
+                    <button onClick={() => { setShowBookingConfirmModal(false); setBookingConfirmInquiry(null); setBookingConfirmed(false); }}
                       className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
                       Cancel
                     </button>
@@ -16021,12 +16021,37 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
                       }
+                      setBookingConfirmed(true); // show step-2 soundtrack prompt
                     }}
                       className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
                       style={{background:'var(--gold)'}}>
                       ✉️ Send &amp; Create Job{parseFloat(bookingTotalPrice||0) > 0 ? ` · £${parseFloat(bookingTotalPrice).toFixed(0)}` : ''}
                     </button>
                   </div>
+
+                  {/* Step 2 — soundtrack prompt, shown after booking is sent */}
+                  {bookingConfirmed && (
+                    <div className="mt-4 rounded-xl p-4 text-center space-y-3" style={{background:'rgba(167,139,250,0.1)',border:'1px solid rgba(167,139,250,0.3)'}}>
+                      <p className="text-sm font-semibold" style={{color:'#c4b5fd'}}>✅ Booking confirmed!</p>
+                      {soundtrackUrl ? (() => {
+                        const firstName = inq.customerName.split(' ')[0];
+                        const subj = encodeURIComponent('Soundtrack Choices — Eyecon Moments');
+                        const body = encodeURIComponent(`Hi ${firstName},\n\nWe hope you're looking forward to your special day!\n\nPlease could you take a moment to fill in our soundtrack document with your music choices. You have 30 days to complete this — if we don't hear from you, we'll continue editing without your song selections.\n\n${soundtrackUrl}\n\nKind regards,\nEyecon Moments\n📞 07957 450570\n✉️ eyecon.moments@gmail.com`);
+                        return (
+                          <a href={`mailto:${inq.email}?subject=${subj}&body=${body}`}
+                            className="block w-full py-2.5 rounded-lg text-sm font-semibold text-white"
+                            style={{background:'#7c3aed'}}>
+                            🎵 Send Soundtrack Link to {inq.customerName.split(' ')[0]}
+                          </a>
+                        );
+                      })() : null}
+                      <button onClick={() => { setShowBookingConfirmModal(false); setBookingConfirmInquiry(null); setBookingConfirmed(false); }}
+                        className="block w-full py-2 rounded-lg text-sm font-medium"
+                        style={{color:'rgba(255,255,255,0.5)'}}>
+                        Done
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
