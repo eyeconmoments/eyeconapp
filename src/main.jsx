@@ -9297,7 +9297,8 @@ Notes: ${j.notes || 'none'}`;
                   {soonJobs.map(j => {
                     const itin = j.itinerary || {};
                     const startTime = itin.startTime || j.calendarStartTime || null;
-                    const venueFromJob = itin.venue || (j.notes||'').split(/[|.\n]/)[0].replace(/,\s*\d{2}:\d{2}.*$/, '').trim() || '';
+                    const calEv = upcomingJobs.find(ev => Math.abs(new Date(j.shootDate) - new Date(ev.start?.dateTime || ev.start?.date)) < 24 * 60 * 60 * 1000);
+                    const venueFromJob = itin.venue || (j.notes||'').split(/[|.\n]/)[0].replace(/,\s*\d{2}:\d{2}.*$/, '').trim() || calEv?.location || '';
                     const legs = setoffLegs[j.id] || {};
                     const venueAddr = legs.venueAddr ?? venueFromJob;
                     const homeToOffice  = legs.homeToOffice  ?? 20;
@@ -12057,6 +12058,21 @@ The Eyecon Moments Team
                               {job.itinerary?.clientDraft && (
                                 <span className="text-xs bg-green-500 text-white px-2 py-1 rounded font-semibold" title="Client has submitted their event schedule">📋 Schedule received</span>
                               )}
+                              {/* Soundtrack link */}
+                              {soundtrackUrl && (() => {
+                                const inqMatch = inquiries.find(i => i.customerName?.toLowerCase() === job.customerName?.toLowerCase());
+                                const toEmail = inqMatch?.email || '';
+                                const firstName = (job.customerName || '').split(' ')[0] || 'there';
+                                const subj = encodeURIComponent('Soundtrack Choices — Eyecon Moments');
+                                const body = encodeURIComponent(`Hi ${firstName},\n\nWe hope you're looking forward to your special day!\n\nPlease could you take a moment to fill in our soundtrack document with your music choices. You have 30 days to complete this — if we don't hear from you, we'll continue editing without your song selections.\n\n${soundtrackUrl}\n\nKind regards,\nEyecon Moments\n📞 07957 450570\n✉️ eyecon.moments@gmail.com`);
+                                return (
+                                  <a href={`mailto:${toEmail}?subject=${subj}&body=${body}`}
+                                    onClick={e => e.stopPropagation()}
+                                    className="text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded flex items-center gap-1">
+                                    🎵 Soundtrack
+                                  </a>
+                                );
+                              })()}
                               {/* Client link */}
                               <button onClick={async (e) => {
                                 e.stopPropagation();
@@ -16352,6 +16368,17 @@ www.eyeconmoments.co.uk`;
                           style={{borderColor:'var(--gold)',color:'var(--gold)'}}>
                           ✉️ Send Booking Confirmation Email
                         </button>
+                        {soundtrackUrl && (() => {
+                          const firstName = (inquiry.customerName || '').split(' ')[0] || 'there';
+                          const subj = encodeURIComponent('Soundtrack Choices — Eyecon Moments');
+                          const body = encodeURIComponent(`Hi ${firstName},\n\nWe hope you're looking forward to your special day!\n\nPlease could you take a moment to fill in our soundtrack document with your music choices. You have 30 days to complete this — if we don't hear from you, we'll continue editing without your song selections.\n\n${soundtrackUrl}\n\nKind regards,\nEyecon Moments\n📞 07957 450570\n✉️ eyecon.moments@gmail.com`);
+                          return (
+                            <a href={`mailto:${inquiry.email}?subject=${subj}&body=${body}`}
+                              className={`mt-1.5 w-full py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1 ${darkMode ? 'border-purple-600 text-purple-400 hover:bg-purple-900 hover:bg-opacity-30' : 'border-purple-400 text-purple-700 hover:bg-purple-50'}`}>
+                              🎵 Send Soundtrack Link
+                            </a>
+                          );
+                        })()}
                       </div>
                     );
                   })}
