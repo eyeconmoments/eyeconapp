@@ -2749,29 +2749,41 @@ function EyeconMoments() {
       setIsExtractingCRM(true);
       try {
         const base64Data = compressed.split(',')[1];
-        const response = await fetch("https://wgqamqzlfnjcqyprphkw.supabase.co/functions/v1/Extract-job", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": "Bearer sb_publishable_lWHxlKp0imCmSFHs3KF78w_2KFrEJBE" },
-          body: JSON.stringify({ imageData: base64Data, mediaType: 'image/jpeg' })
+        const apiKey = anthropicKey || localStorage.getItem('eyecon_anthropic_key') || '';
+        if (!apiKey) throw new Error('Add your Claude API key in Settings first');
+        const res = await fetch('/.netlify/functions/claude-chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            clientApiKey: apiKey,
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 512,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Data } },
+                { type: 'text', text: 'This is a screenshot of an enquiry message (Instagram DM, WhatsApp, email, etc.). Extract the customer details. Reply ONLY with JSON: { "customerName": "", "phone": "", "email": "", "eventDate": "YYYY-MM-DD or empty", "eventType": "wedding/mehndi/engagement/party/other", "notes": "full message text" }. If a field is not visible, use an empty string.' }
+              ]
+            }],
+          }),
         });
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
+        const result = await res.json();
+        if (!res.ok) throw new Error(result?.error?.message || result?.error || `API error ${res.status}`);
+        const text = result.content?.[0]?.text || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('No details found in image');
+        const data = JSON.parse(jsonMatch[0]);
         const notesText = data.notes || '';
         const phoneMatch = notesText.match(/(\+?[\d][\d\s\-().]{8,})/);
         const emailMatch = notesText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
-        const igMatch = notesText.match(/@([\w.]+)/);
-        const igHandle = igMatch ? igMatch[1] : '';
-        const nameFromIg = igHandle
-          ? igHandle.replace(/[_. ]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim()
-          : '';
         const parsed = {
-          name: data.customerName || data.name || nameFromIg,
+          name: data.customerName || data.name || '',
           phone: data.phone || (phoneMatch ? phoneMatch[1].trim() : ''),
           email: data.email || (emailMatch ? emailMatch[0] : ''),
         };
         setCrmAIExtracted(parsed);
         setCrmAIEditForm({ name: parsed.name, phone: parsed.phone, email: parsed.email, eventDate: data.eventDate || '', eventType: data.eventType || 'wedding', notes: notesText });
-      } catch (err) { alert('Could not extract details — try a clearer screenshot, or enter manually.'); setCrmAIImage(null); }
+      } catch (err) { alert('Could not extract details — ' + (err.message || 'try a clearer screenshot, or enter manually.')); setCrmAIImage(null); }
       setIsExtractingCRM(false);
     };
     reader.readAsDataURL(file);
