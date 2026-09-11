@@ -286,12 +286,26 @@ function ClientPortalView({ token, readOnly }) {
   if (readOnly && itin) {
     const roTimes = (() => {
       const times = []; let cur = itin.startTime || '10:00';
-      (itin.scheduleItems || []).forEach(it => {
-        times.push(cur);
-        const [h, m] = cur.split(':').map(Number);
-        const tot = h * 60 + m + getItemMins(it);
-        cur = `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`;
-      });
+      const items = itin.scheduleItems || [];
+      let i = 0;
+      while (i < items.length) {
+        const it = items[i];
+        if (it.groupId) {
+          let j = i; const grp = [];
+          while (j < items.length && items[j].groupId === it.groupId) { grp.push(items[j]); j++; }
+          const maxMins = Math.max(...grp.map(g => getItemMins(g)));
+          grp.forEach(() => times.push(cur));
+          const [h, m] = cur.split(':').map(Number);
+          cur = `${String(Math.floor((h*60+m+maxMins)/60)).padStart(2,'0')}:${String((h*60+m+maxMins)%60).padStart(2,'0')}`;
+          i = j;
+        } else {
+          times.push(cur);
+          const [h, m] = cur.split(':').map(Number);
+          const tot = h * 60 + m + getItemMins(it);
+          cur = `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`;
+          i++;
+        }
+      }
       return times;
     })();
     const toggleExpand = (idx) => setExpandedItems(prev => ({ ...prev, [idx]: !prev[idx] }));
@@ -459,7 +473,20 @@ function ClientPortalView({ token, readOnly }) {
         {itin.scheduleItems.length > 0 && (() => {
           const addM2 = (t, m) => { const [h,mn] = t.split(':').map(Number); const tot = h*60+mn+m; return `${String(Math.floor(tot/60)).padStart(2,'0')}:${String(tot%60).padStart(2,'0')}`; };
           const times2 = []; let cur2 = itin.startTime || '10:00';
-          itin.scheduleItems.forEach(it => { times2.push(cur2); cur2 = addM2(cur2, (it.duration||2)*15); });
+          const _si2 = itin.scheduleItems; let _ii2 = 0;
+          while (_ii2 < _si2.length) {
+            const _it2 = _si2[_ii2];
+            if (_it2.groupId) {
+              let _jj2 = _ii2; const _grp2 = [];
+              while (_jj2 < _si2.length && _si2[_jj2].groupId === _it2.groupId) { _grp2.push(_si2[_jj2]); _jj2++; }
+              const _mxM2 = Math.max(..._grp2.map(g => getItemMins(g)));
+              _grp2.forEach(() => times2.push(cur2));
+              cur2 = addM2(cur2, _mxM2);
+              _ii2 = _jj2;
+            } else {
+              times2.push(cur2); cur2 = addM2(cur2, getItemMins(_it2)); _ii2++;
+            }
+          }
           return (
             <div style={card}>
               <span style={label}>Your schedule ({itin.scheduleItems.length} moments)</span>
@@ -11323,23 +11350,22 @@ Notes: ${j.notes || 'none'}`;
       let currentTime = itinerary.startTime || '10:00';
       let lastGroupId = null;
 
-      // Pre-compute max duration for each concurrent group so the block uses the longest item
+      // Pre-compute max duration (actual minutes) for each concurrent group
       const groupMaxDuration = {};
       scheduleItems.forEach(item => {
         if (item.groupId) {
-          groupMaxDuration[item.groupId] = Math.max(groupMaxDuration[item.groupId] || 0, item.duration || 2);
+          groupMaxDuration[item.groupId] = Math.max(groupMaxDuration[item.groupId] || 0, getItemMins(item));
         }
       });
 
       doc.setFontSize(10);
       scheduleItems.forEach((item, idx) => {
-        const duration = item.duration || 2;
         const isNewGroup = !item.groupId || item.groupId !== lastGroupId;
 
         if (isNewGroup) {
-          // Use the longest duration in this concurrent group
-          const blockDuration = item.groupId ? (groupMaxDuration[item.groupId] || duration) : duration;
-          const endTime = addMinsToTime(currentTime, blockDuration * 15);
+          // Use the longest duration (actual minutes) in this concurrent group
+          const blockMins = item.groupId ? (groupMaxDuration[item.groupId] || getItemMins(item)) : getItemMins(item);
+          const endTime = addMinsToTime(currentTime, blockMins);
           // Pre-compute wrapped lines so we know actual row height
           const nameLines = doc.splitTextToSize(item.name, 115); // x=45..x=165, minus ~10 pad
           const noteLines = item.notes ? doc.splitTextToSize(item.notes, 115) : [];
@@ -11376,7 +11402,7 @@ Notes: ${j.notes || 'none'}`;
           // Duration on right — use longest concurrent item's duration
           doc.setTextColor(120, 120, 120);
           doc.setFontSize(9);
-          doc.text(`${blockDuration * 15}m`, 175, yPos, { align: 'right' });
+          doc.text(`${blockMins}m`, 175, yPos, { align: 'right' });
           doc.setFontSize(10);
 
           if (noteLines.length > 0) {
