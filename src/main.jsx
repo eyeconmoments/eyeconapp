@@ -1622,10 +1622,22 @@ function EyeconMoments() {
           db.from('post_suggestions').select('*').order('created_at', { ascending: false }),
           db.from('gear_checklists').select('*').order('created_at', { ascending: false }).gte('created_at', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString())
         ]);
-        if (empRes.data && empRes.data.length > 0) {
-          setEmployees(empRes.data.map(rowToEmployee));
+        let loadedEmps = empRes.data && empRes.data.length > 0 ? empRes.data : null;
+        if (loadedEmps) {
+          setEmployees(loadedEmps.map(rowToEmployee));
         } else {
           setEmployees(FALLBACK_EMPLOYEES);
+        }
+        // Seed any missing employees into Supabase so they persist across all devices
+        const SEED_EMPLOYEES = [
+          { username: 'Karam', password: 'temp123', pin: '9999', name: 'Karam', role: 'employee', hourly_rate: 15, phone: '', emergency_contact: '', emergency_phone: '', address: '', can_be_assigned: true },
+        ];
+        const dbEmps = empRes.data || [];
+        for (const seed of SEED_EMPLOYEES) {
+          if (!dbEmps.find(e => e.username?.toLowerCase() === seed.username.toLowerCase())) {
+            const { data: newEmpData } = await db.from('employees').insert([seed]).select();
+            if (newEmpData?.[0]) setEmployees(prev => [...prev, rowToEmployee(newEmpData[0])]);
+          }
         }
         if (jobRes.data) {
           setEditingJobs(jobRes.data.filter(r => !r.archived).map(rowToJob));
