@@ -1822,15 +1822,16 @@ function EyeconMoments() {
       if (openEntry) {
         const now = new Date();
         const clockInDate = new Date(openEntry.clockIn);
-        const sevenPm = new Date(clockInDate); sevenPm.setHours(17, 0, 0, 0);
+        const fivePmThatDay = new Date(clockInDate); fivePmThatDay.setHours(17, 0, 0, 0);
         const isToday = clockInDate.toDateString() === now.toDateString();
-        if (!isToday || now >= sevenPm) {
-          const autoOut = new Date(clockInDate); autoOut.setHours(17, 0, 0, 0);
-          const hours = Math.round(((autoOut - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
-          await db.from('time_entries').update({ clock_out: autoOut.toISOString(), hours_worked: hours }).eq('id', openEntry.id);
-          setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: autoOut, hoursWorked: hours } : e));
+        // Skip auto clock-out if they clocked in at or after 5pm — would give negative/zero hours
+        const clockedInAfter5pm = clockInDate >= fivePmThatDay;
+        if (!clockedInAfter5pm && (!isToday || now >= fivePmThatDay)) {
+          const hours = Math.max(0, Math.round(((fivePmThatDay - clockInDate) / (1000 * 60 * 60)) * 10) / 10);
+          await db.from('time_entries').update({ clock_out: fivePmThatDay.toISOString(), hours_worked: hours }).eq('id', openEntry.id);
+          setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: fivePmThatDay, hoursWorked: hours } : e));
           setAutoClockOutInfo({
-            date: autoOut.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+            date: fivePmThatDay.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
             hoursWorked: hours
           });
         }
@@ -2331,8 +2332,9 @@ function EyeconMoments() {
       await Promise.allSettled(openEntries.map(async entry => {
         const clockInDate = new Date(entry.clockIn);
         const fivePm = new Date(clockInDate); fivePm.setHours(17, 0, 0, 0);
-        if (now < fivePm) return; // clocked in after 5 PM today — leave open
-        const hours = Math.round(((fivePm - clockInDate) / (1000 * 60 * 60)) * 10) / 10;
+        if (clockInDate >= fivePm) return; // clocked in at or after 5pm — would give negative hours, leave open
+        if (now < fivePm) return; // not yet past 5pm on that day — leave open
+        const hours = Math.max(0, Math.round(((fivePm - clockInDate) / (1000 * 60 * 60)) * 10) / 10);
         await db.from('time_entries').update({ clock_out: fivePm.toISOString(), hours_worked: hours }).eq('id', entry.id);
         setTimeEntries(prev => prev.map(e => e.id === entry.id ? { ...e, clockOut: fivePm, hoursWorked: hours } : e));
         const emp = employees.find(e => e.id === entry.employeeId);
@@ -13394,7 +13396,9 @@ The Eyecon Moments Team
                 </div>
                 <div className="p-4 space-y-3">
                   {taskCards.map(({ type, job }) => {
-                    const activeEntry = timeEntries.find(e => e.employeeId === currentUser.id && e.jobId === job.id && !e.clockOut);
+                    const anyActiveEntry = timeEntries.find(e => e.employeeId === currentUser.id && !e.clockOut);
+                    const activeEntry = anyActiveEntry?.jobId === job.id ? anyActiveEntry : null;
+                    const clockedElsewhere = anyActiveEntry && !activeEntry;
                     const taskKey = `${job.id}-${type}`;
 
                     if (type === 'photo') {
@@ -13415,6 +13419,8 @@ The Eyecon Moments Team
                           <div className="flex gap-2 flex-wrap">
                             {activeEntry ? (
                               <button onClick={() => initiateClockOut(activeEntry.id)} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">🛑 Clock Out ({calculateElapsedTime(activeEntry.clockIn)})</button>
+                            ) : clockedElsewhere ? (
+                              <button onClick={() => handleClockIn(job.id)} className="text-white px-3 py-1.5 rounded text-xs font-semibold flex-1" style={{background:'#f97316'}}>🔄 Switch to this job</button>
                             ) : (
                               <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">▶ Clock In</button>
                             )}
@@ -13443,6 +13449,8 @@ The Eyecon Moments Team
                           <div className="flex gap-1 ml-2 shrink-0">
                             {activeEntry ? (
                               <button onClick={() => initiateClockOut(activeEntry.id)} className="bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">🛑 {calculateElapsedTime(activeEntry.clockIn)}</button>
+                            ) : clockedElsewhere ? (
+                              <button onClick={() => handleClockIn(job.id)} className="text-white px-2 py-1 rounded text-xs font-semibold" style={{background:'#f97316'}}>🔄 Switch</button>
                             ) : (
                               <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">▶ Clock In</button>
                             )}
