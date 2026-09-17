@@ -1265,6 +1265,7 @@ function EyeconMoments() {
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [jobSearchQuery, setJobSearchQuery] = useState('');
   const [archivedJobIds, setArchivedJobIds] = useState([]);
+  const [archivedJobsData, setArchivedJobsData] = useState([]); // full job objects for archived jobs (Files search)
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [showBookedSection, setShowBookedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -1641,7 +1642,9 @@ function EyeconMoments() {
         }
         if (jobRes.data) {
           setEditingJobs(jobRes.data.filter(r => !r.archived).map(rowToJob));
-          setArchivedJobIds(jobRes.data.filter(r => r.archived).map(r => r.id));
+          const archivedRows = jobRes.data.filter(r => r.archived);
+          setArchivedJobIds(archivedRows.map(r => r.id));
+          setArchivedJobsData(archivedRows.map(rowToJob));
           // One-time migration: move any localStorage deposits into wage_entries in Supabase
           for (const row of jobRes.data) {
             const lsKey = `eyecon_deposit_${row.id}`;
@@ -2539,6 +2542,11 @@ function EyeconMoments() {
     }
     await db.from('jobs').update({ archived: !isArchived }).eq('id', jobId);
     setArchivedJobIds(prev => isArchived ? prev.filter(id => id !== jobId) : [...prev, jobId]);
+    if (isArchived) {
+      setArchivedJobsData(prev => prev.filter(j => j.id !== jobId));
+    } else if (job) {
+      setArchivedJobsData(prev => [...prev, job]);
+    }
     logActivity(isArchived ? 'Job unarchived' : 'Job archived', job?.jobName || '', '');
     if (!isArchived) {
       window.__toast(`"${job?.jobName}" archived. Find it in Jobs → Show Archived or the Files tab.`, 'info', 6000);
@@ -6937,7 +6945,8 @@ Notes: ${j.notes || 'none'}`;
 
         {/* Files View for Employees — same card UI as admin */}
         {currentView === 'files' && (() => {
-          const empAllFileLocations = editingJobs.flatMap(job =>
+          const allJobsForEmpFiles = [...editingJobs, ...archivedJobsData];
+          const empAllFileLocations = allJobsForEmpFiles.flatMap(job =>
             (job.fileLocations || []).map((loc, locIdx) => ({
               ...loc,
               jobId: job.id,
@@ -6978,6 +6987,9 @@ Notes: ${j.notes || 'none'}`;
                 />
                 <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {empFiltered.length} file location{empFiltered.length !== 1 ? 's' : ''} found
+                  {fileSearchQuery && empFiltered.some(l => l.isArchived) && (
+                    <span className="ml-2 text-amber-500 font-medium">· {empFiltered.filter(l => l.isArchived).length} in archived jobs</span>
+                  )}
                 </p>
               </div>
 
@@ -7003,6 +7015,9 @@ Notes: ${j.notes || 'none'}`;
                           <div className={`flex-1 p-3 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                             {/* Badges */}
                             <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                              {loc.isArchived && (
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white bg-amber-500">📦 Archived</span>
+                              )}
                               {loc.hardware && hwName && (
                                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${hwColor.badge}`}>{hwName}</span>
                               )}
@@ -16877,18 +16892,19 @@ Eyecon Moments
     );
   }
   if (currentView === 'files') {
-    // Get all file locations from all jobs with original index
-    const allFileLocations = editingJobs.flatMap(job => 
+    // Get all file locations from all jobs (active + archived) with original index
+    const allJobsForFiles = [...editingJobs, ...archivedJobsData];
+    const allFileLocations = allJobsForFiles.flatMap(job =>
       job.fileLocations.map((loc, locIdx) => ({
         ...loc,
         jobId: job.id,
         jobName: job.jobName,
         customerName: job.customerName,
         isArchived: archivedJobIds.includes(job.id),
-        originalIndex: locIdx // Store the original index
+        originalIndex: locIdx
       }))
     );
-    
+
     // Filter by search query
     const filteredLocations = allFileLocations.filter(loc => {
       if (!fileSearchQuery) return true;
@@ -17041,6 +17057,9 @@ Eyecon Moments
             </div>
             <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {filteredLocations.length} file location{filteredLocations.length !== 1 ? 's' : ''} found
+              {fileSearchQuery && filteredLocations.some(l => l.isArchived) && (
+                <span className="ml-2 text-amber-500 font-medium">· {filteredLocations.filter(l => l.isArchived).length} in archived jobs</span>
+              )}
             </p>
           </div>
 
@@ -17083,7 +17102,7 @@ Eyecon Moments
             const archColorMap = Object.fromEntries(uniqueArchIds.map((id, i) => [id, ARCH_PALETTE[i % ARCH_PALETTE.length]]));
             const renderCard = (loc, idx, isArchSection) => {
                   const archColor = isArchSection ? archColorMap[loc.jobId] : null;
-                  const job = editingJobs.find(j => j.id === loc.jobId);
+                  const job = editingJobs.find(j => j.id === loc.jobId) || archivedJobsData.find(j => j.id === loc.jobId);
                   const locationIndex = loc.originalIndex;
                   
                   const photoEditor = job?.photoAssignedTo ? employees.find(e => e.id === job.photoAssignedTo)?.name : null;
