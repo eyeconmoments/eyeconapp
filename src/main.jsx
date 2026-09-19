@@ -14149,7 +14149,7 @@ The Eyecon Moments Team
               return (
                 <div key={job.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow ${isArchived ? 'opacity-60' : ''}`}>
                   <div className="p-4">
-                    {job.driveFolderUrl && (
+                    {job.driveFolderUrl ? (
                       <div className={`flex items-center gap-2 mb-2 p-2 rounded-lg ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
                         <span className="text-sm">📁</span>
                         <span className={`text-xs font-semibold flex-1 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Google Drive Folder</span>
@@ -14157,6 +14157,23 @@ The Eyecon Moments Team
                           className="text-xs font-bold px-2.5 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap">
                           Open Folder →
                         </a>
+                      </div>
+                    ) : (
+                      <div className={`flex items-center gap-2 mb-2 p-2 rounded-lg ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-gray-50 border border-gray-200'}`}>
+                        <span className="text-sm">📁</span>
+                        <span className={`text-xs flex-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No Drive folder yet</span>
+                        <button onClick={async () => {
+                          const driveFolder = await createDriveJobFolderSet(job.jobName);
+                          if (driveFolder) {
+                            const newLocs = [...(job.fileLocations || []), { type: 'drive_folder', id: driveFolder.id, url: driveFolder.url }];
+                            await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
+                            setEditingJobs(prev => prev.map(j => j.id === job.id ? { ...j, fileLocations: newLocs, driveFolderId: driveFolder.id, driveFolderUrl: driveFolder.url } : j));
+                          } else {
+                            alert('Could not create Drive folder. Make sure you are connected to Google.');
+                          }
+                        }} className="text-xs font-bold px-2.5 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 whitespace-nowrap">
+                          + Create Folder
+                        </button>
                       </div>
                     )}
                     {(() => {
