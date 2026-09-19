@@ -3682,10 +3682,15 @@ function EyeconMoments() {
       }
       const parentId = await getOrCreateDriveFolder(jobName, token);
       const folderUrl = `https://drive.google.com/drive/folders/${parentId}`;
+      const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
       const mkSub = (name) => fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        method: 'POST', headers: h,
         body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
+      });
+      // Share parent folder: anyone with the link can view
+      await fetch(`https://www.googleapis.com/drive/v3/files/${parentId}/permissions`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ role: 'reader', type: 'anyone' })
       });
       await Promise.all([mkSub('Photos'), mkSub('Videos')]);
       return { id: parentId, url: folderUrl };
