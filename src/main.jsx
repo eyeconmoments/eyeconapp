@@ -47,7 +47,8 @@ const rowToJob = (r) => ({
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
   wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
-  driveFolderId: r.drive_folder_id || null, driveFolderUrl: r.drive_folder_url || null,
+  driveFolderId: (r.file_locations || []).find(f => f.type === 'drive_folder')?.id || null,
+  driveFolderUrl: (r.file_locations || []).find(f => f.type === 'drive_folder')?.url || null,
   // final payment stored in wage_entries as type:'final_payment' (columns may not exist yet)
   finalPaymentReceived: r.final_payment_received || (r.wage_entries || []).some(e => e.type === 'final_payment' && e.received) || false,
   finalPaymentDate: r.final_payment_date || (r.wage_entries || []).find(e => e.type === 'final_payment')?.date || null,
@@ -79,12 +80,6 @@ ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS final_payment_by text;
 */
 
-/*
--- Run in Supabase SQL editor:
-ALTER TABLE jobs
-  ADD COLUMN IF NOT EXISTS drive_folder_id text,
-  ADD COLUMN IF NOT EXISTS drive_folder_url text;
-*/
 
 /*
 -- Run in Supabase SQL editor:
@@ -3352,7 +3347,9 @@ function EyeconMoments() {
       const createdJob = rowToJob(saved[0]);
       const driveFolder = await createDriveJobFolderSet(createdJob.jobName);
       if (driveFolder) {
-        await db.from('jobs').update({ drive_folder_id: driveFolder.id, drive_folder_url: driveFolder.url }).eq('id', createdJob.id);
+        const newLocs = [...(createdJob.fileLocations || []), { type: 'drive_folder', id: driveFolder.id, url: driveFolder.url }];
+        await db.from('jobs').update({ file_locations: newLocs }).eq('id', createdJob.id);
+        createdJob.fileLocations = newLocs;
         createdJob.driveFolderId = driveFolder.id;
         createdJob.driveFolderUrl = driveFolder.url;
       }
@@ -3961,7 +3958,9 @@ function EyeconMoments() {
     }]);
     const driveFolder = await createDriveJobFolderSet(newJob.jobName);
     if (driveFolder) {
-      await db.from('jobs').update({ drive_folder_id: driveFolder.id, drive_folder_url: driveFolder.url }).eq('id', newJob.id);
+      const newLocs = [{ type: 'drive_folder', id: driveFolder.id, url: driveFolder.url }];
+      await db.from('jobs').update({ file_locations: newLocs }).eq('id', newJob.id);
+      newJob.fileLocations = newLocs;
       newJob.driveFolderId = driveFolder.id;
       newJob.driveFolderUrl = driveFolder.url;
     }
@@ -14750,7 +14749,9 @@ The Eyecon Moments Team
                     const createdJob = rowToJob(data[0]);
                     const driveFolder = await createDriveJobFolderSet(createdJob.jobName);
                     if (driveFolder) {
-                      await db.from('jobs').update({ drive_folder_id: driveFolder.id, drive_folder_url: driveFolder.url }).eq('id', createdJob.id);
+                      const newLocs = [...(createdJob.fileLocations || []), { type: 'drive_folder', id: driveFolder.id, url: driveFolder.url }];
+                      await db.from('jobs').update({ file_locations: newLocs }).eq('id', createdJob.id);
+                      createdJob.fileLocations = newLocs;
                       createdJob.driveFolderId = driveFolder.id;
                       createdJob.driveFolderUrl = driveFolder.url;
                     }
