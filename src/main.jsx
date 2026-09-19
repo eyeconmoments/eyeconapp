@@ -47,6 +47,7 @@ const rowToJob = (r) => ({
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
   wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
+  driveFolderId: r.drive_folder_id || null, driveFolderUrl: r.drive_folder_url || null,
   // final payment stored in wage_entries as type:'final_payment' (columns may not exist yet)
   finalPaymentReceived: r.final_payment_received || (r.wage_entries || []).some(e => e.type === 'final_payment' && e.received) || false,
   finalPaymentDate: r.final_payment_date || (r.wage_entries || []).find(e => e.type === 'final_payment')?.date || null,
@@ -76,6 +77,13 @@ ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS final_payment_received boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS final_payment_date timestamptz,
   ADD COLUMN IF NOT EXISTS final_payment_by text;
+*/
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS drive_folder_id text,
+  ADD COLUMN IF NOT EXISTS drive_folder_url text;
 */
 
 /*
@@ -3340,7 +3348,16 @@ function EyeconMoments() {
       photo_edit_hours: newJob.photoEditHours, custom_price: newJob.customPrice,
       file_locations: newJob.fileLocations, stages: newJob.stages
     }]).select();
-    if (saved) setEditingJobs(prev => [...prev, rowToJob(saved[0])]);
+    if (saved) {
+      const createdJob = rowToJob(saved[0]);
+      const driveFolder = await createDriveJobFolderSet(createdJob.jobName);
+      if (driveFolder) {
+        await db.from('jobs').update({ drive_folder_id: driveFolder.id, drive_folder_url: driveFolder.url }).eq('id', createdJob.id);
+        createdJob.driveFolderId = driveFolder.id;
+        createdJob.driveFolderUrl = driveFolder.url;
+      }
+      setEditingJobs(prev => [...prev, createdJob]);
+    }
     setShowAIJobModal(false);
     setUploadedImage(null);
     setExtractedJobData(null);
@@ -3657,6 +3674,30 @@ function EyeconMoments() {
     return folder.id;
   };
 
+  const createDriveJobFolderSet = async (jobName) => {
+    try {
+      let token;
+      const existing = window.gapi?.client?.getToken?.();
+      if (existing?.access_token && isDriveSignedIn) {
+        token = existing.access_token;
+      } else {
+        token = await requestDriveToken();
+      }
+      const parentId = await getOrCreateDriveFolder(jobName, token);
+      const folderUrl = `https://drive.google.com/drive/folders/${parentId}`;
+      const mkSub = (name) => fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
+      });
+      await Promise.all([mkSub('Photos'), mkSub('Videos')]);
+      return { id: parentId, url: folderUrl };
+    } catch(e) {
+      console.warn('Drive folder creation skipped:', e.message);
+      return null;
+    }
+  };
+
   const sendSMS = async (to, message) => {
     try {
       const res = await fetch('/.netlify/functions/send-sms', {
@@ -3918,6 +3959,12 @@ function EyeconMoments() {
       photo_edit_hours: newJob.photoEditHours, custom_price: newJob.customPrice,
       file_locations: [], stages: newJob.stages || [], itinerary: newJob.itinerary
     }]);
+    const driveFolder = await createDriveJobFolderSet(newJob.jobName);
+    if (driveFolder) {
+      await db.from('jobs').update({ drive_folder_id: driveFolder.id, drive_folder_url: driveFolder.url }).eq('id', newJob.id);
+      newJob.driveFolderId = driveFolder.id;
+      newJob.driveFolderUrl = driveFolder.url;
+    }
     setEditingJobs(prev => [...prev, newJob]);
     return newJob;
   };
@@ -13797,32 +13844,6 @@ The Eyecon Moments Team
       return true;
     });
 
-    // Jobs needing assignment (unassigned file locations or stages)
-    const jobsNeedingAssignment = editingJobs.filter(job => {
-      if (archivedJobIds.includes(job.id)) return false;
-      // Only show jobs whose shoot date has passed (day after shoot)
-      if (job.shootDate) {
-        const dayAfterShoot = new Date(job.shootDate);
-        dayAfterShoot.setDate(dayAfterShoot.getDate() + 1);
-        dayAfterShoot.setHours(0, 0, 0, 0);
-        if (new Date() < dayAfterShoot) return false;
-      }
-      const hasUnassignedPhoto = job.hasPhotos && job.photoAssignedTo === 0 && job.photoStatus !== 'completed';
-      // Only check if CURRENT video stage (first incomplete one) is unassigned
-      let hasUnassignedCurrentVideoStage = false;
-      if (job.hasVideo) {
-        for (let i = 0; i < job.stages.length; i++) {
-          if (job.stages[i].status !== 'completed') {
-            // This is the current stage - check if it's unassigned
-            hasUnassignedCurrentVideoStage = job.stages[i].assignedTo === 0;
-            break;
-          }
-        }
-      }
-      const hasNoFileLocation = !job.fileLocations || job.fileLocations.length === 0;
-      return hasUnassignedPhoto || hasUnassignedCurrentVideoStage || hasNoFileLocation;
-    });
-
     // Pipeline stages for Kanban
     const pipelineStages = [
       { name: 'Cutting, Syncing & Organising', key: 0 },
@@ -14008,59 +14029,6 @@ The Eyecon Moments Team
             </div>
           </div>
 
-          {/* Kanban Board - Jobs Needing Assignment */}
-          {jobsNeedingAssignment.length > 0 && (
-            <div className={`${darkMode ? 'bg-red-900' : 'bg-red-50'} border-2 border-red-300 rounded-lg p-4`}>
-              <h3 className={`font-bold mb-3 ${darkMode ? 'text-red-200' : 'text-red-800'}`}>⚠️ Jobs Needing Assignment ({jobsNeedingAssignment.length})</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {jobsNeedingAssignment.map(job => {
-                  const hasUnassignedPhoto = job.hasPhotos && job.photoAssignedTo === 0 && job.photoStatus !== 'completed';
-                  // Find current video stage
-                  let currentVideoStage = null;
-                  let hasUnassignedCurrentVideoStage = false;
-                  if (job.hasVideo) {
-                    for (let i = 0; i < job.stages.length; i++) {
-                      if (job.stages[i].status !== 'completed') {
-                        currentVideoStage = job.stages[i];
-                        hasUnassignedCurrentVideoStage = job.stages[i].assignedTo === 0;
-                        break;
-                      }
-                    }
-                  }
-                  const hasNoFileLocation = !job.fileLocations || job.fileLocations.length === 0;
-                  
-                  return (
-                    <div key={job.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg p-3 border-l-4 border-red-500`}>
-                      <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</h4>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job.customerName}</p>
-                      <div className="mt-2 space-y-1">
-                        {hasNoFileLocation && (
-                          <p className="text-xs text-red-600">❌ No file location set</p>
-                        )}
-                        {hasUnassignedPhoto && (
-                          <p className="text-xs text-red-600">❌ Photo editing unassigned</p>
-                        )}
-                        {hasUnassignedCurrentVideoStage && currentVideoStage && (
-                          <p className="text-xs text-red-600">❌ {currentVideoStage.name.split(',')[0]} unassigned</p>
-                        )}
-                      </div>
-                      <button 
-                        onClick={() => { 
-                          const allNeedingAssign = jobsNeedingAssignment.filter(j => j.id !== job.id);
-                          setQuickAssignQueue(allNeedingAssign);
-                          setSelectedJob(job); 
-                          setShowingModal('quickAssign'); 
-                        }}
-                        className="mt-2 w-full bg-blue-500 text-white py-1 rounded text-xs font-semibold">
-                        Quick Assign →
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Pipeline View */}
           {jobsPipelineView && (
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
@@ -14182,6 +14150,16 @@ The Eyecon Moments Team
               return (
                 <div key={job.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow ${isArchived ? 'opacity-60' : ''}`}>
                   <div className="p-4">
+                    {job.driveFolderUrl && (
+                      <div className={`flex items-center gap-2 mb-2 p-2 rounded-lg ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                        <span className="text-sm">📁</span>
+                        <span className={`text-xs font-semibold flex-1 ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Google Drive Folder</span>
+                        <a href={job.driveFolderUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-xs font-bold px-2.5 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap">
+                          Open Folder →
+                        </a>
+                      </div>
+                    )}
                     {(() => {
                       const _topDriveFiles = (job.fileLocations || []).filter(f => f.type === 'drive_project_file');
                       if (_topDriveFiles.length === 0) return null;
@@ -14560,7 +14538,7 @@ The Eyecon Moments Team
                       <button title="Send gallery / delivery email to client" onClick={() => {
                         const inqMatch = inquiries.find(i => i.customerName?.toLowerCase() === job.customerName?.toLowerCase());
                         const savedDlv = (() => { try { return JSON.parse(localStorage.getItem(`eyecon_delivery_${job.id}`) || 'null'); } catch { return null; } })();
-                        setGalleryEmailModal({ jobId: job.id, email: inqMatch?.email || '', driveLink: savedDlv?.link || '' });
+                        setGalleryEmailModal({ jobId: job.id, email: inqMatch?.email || '', driveLink: savedDlv?.link || job.driveFolderUrl || '' });
                       }} className="px-3 py-2 rounded text-sm bg-teal-100 text-teal-700 hover:bg-teal-200">
                         📧
                       </button>
@@ -14768,7 +14746,16 @@ The Eyecon Moments Team
                     custom_price:newJob.customPrice, file_locations:[], stages,
                     itinerary: manualJob.venue ? { venue: manualJob.venue } : null
                   }]).select();
-                  if (data) setEditingJobs(prev => [...prev, rowToJob(data[0])]);
+                  if (data) {
+                    const createdJob = rowToJob(data[0]);
+                    const driveFolder = await createDriveJobFolderSet(createdJob.jobName);
+                    if (driveFolder) {
+                      await db.from('jobs').update({ drive_folder_id: driveFolder.id, drive_folder_url: driveFolder.url }).eq('id', createdJob.id);
+                      createdJob.driveFolderId = driveFolder.id;
+                      createdJob.driveFolderUrl = driveFolder.url;
+                    }
+                    setEditingJobs(prev => [...prev, createdJob]);
+                  }
                   setShowManualJobModal(false);
                   setManualJob({jobName:'',customerName:'',shootDate:'',deadline:'',jobType:'photo-video',hasPhotos:true,hasVideo:true,notes:'',shootHours:8,numVideographers:1,numPhotographers:1,videoEditHours:20,photoEditHours:10,customPrice:''});
                   alert('Job added!');
