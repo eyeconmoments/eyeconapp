@@ -3673,6 +3673,10 @@ function EyeconMoments() {
 
   const createDriveJobFolderSet = async (jobName) => {
     try {
+      // Ensure Google APIs are loaded before attempting auth
+      if (!window.google?.accounts?.oauth2) {
+        await window._loadGoogleAPIs();
+      }
       let token;
       const existing = window.gapi?.client?.getToken?.();
       if (existing?.access_token && isDriveSignedIn) {
