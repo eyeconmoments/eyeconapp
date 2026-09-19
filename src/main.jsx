@@ -3645,12 +3645,12 @@ function EyeconMoments() {
       scope: DRIVE_SCOPE,
       callback: (response) => {
         if (response.error) { reject(new Error(response.error)); return; }
-        window.gapi.client.setToken(response);
+        try { window.gapi?.client?.setToken?.(response); } catch(_) {}
         setIsDriveSignedIn(true);
         resolve(response.access_token);
       }
     });
-    client.requestAccessToken({ prompt: '' });
+    client.requestAccessToken({ prompt: 'consent' });
   });
 
   const getOrCreateDriveFolder = async (folderName, token) => {
