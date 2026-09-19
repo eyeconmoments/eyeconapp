@@ -3365,7 +3365,7 @@ function EyeconMoments() {
   const GOOGLE_CLIENT_ID = '177896696760-5ruieeb59dp9av5qq5oms4ukih1g3bla.apps.googleusercontent.com'; // User needs to add this
   const GOOGLE_API_KEY = 'AIzaSyC-q_SPGSK6ZZAisv0NzXDWAJAuG9ZGzNk'; // User needs to add this
   const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
-  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.file";
 
   const initGoogleCalendar = () => new Promise(async (resolve, reject) => {
     try {
@@ -3673,17 +3673,12 @@ function EyeconMoments() {
 
   const createDriveJobFolderSet = async (jobName) => {
     try {
-      // Ensure Google APIs are loaded before attempting auth
-      if (!window.google?.accounts?.oauth2) {
-        await window._loadGoogleAPIs();
-      }
-      let token;
       const existing = window.gapi?.client?.getToken?.();
-      if (existing?.access_token && isDriveSignedIn) {
-        token = existing.access_token;
-      } else {
-        token = await requestDriveToken();
+      if (!existing?.access_token) {
+        // Not signed into Google — silently skip
+        return null;
       }
+      const token = existing.access_token;
       const parentId = await getOrCreateDriveFolder(jobName, token);
       const folderUrl = `https://drive.google.com/drive/folders/${parentId}`;
       const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -14172,6 +14167,10 @@ The Eyecon Moments Team
                         <span className="text-sm">📁</span>
                         <span className={`text-xs flex-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No Drive folder yet</span>
                         <button onClick={async () => {
+                          if (!isGoogleSignedIn) {
+                            alert('Connect Google Calendar first (tap the Sync button on the Jobs page), then try again.');
+                            return;
+                          }
                           const driveFolder = await createDriveJobFolderSet(job.jobName);
                           if (driveFolder) {
                             const newLocs = [...(job.fileLocations || []), { type: 'drive_folder', id: driveFolder.id, url: driveFolder.url }];
