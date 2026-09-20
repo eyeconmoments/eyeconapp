@@ -6072,7 +6072,7 @@ Notes: ${j.notes || 'none'}`;
                         </div>
                       ))}
                       {!activeEntry && (
-                        <button onClick={() => handleClockIn(job.id)} className="w-full bg-green-500 text-white py-2 rounded-lg text-sm font-semibold mt-2">
+                        <button onClick={() => initiateClockIn(job.id)} className="w-full bg-green-500 text-white py-2 rounded-lg text-sm font-semibold mt-2">
                           <Clock /> Clock In
                         </button>
                       )}
@@ -9636,7 +9636,7 @@ Notes: ${j.notes || 'none'}`;
                           {/* Clock in/out */}
                           {liveEntry
                             ? <button onClick={() => initiateClockOut(liveEntry.id)} className="text-xs bg-red-500 text-white px-2 py-1 rounded">Clock Out</button>
-                            : <button onClick={() => handleClockIn(job.id)} className="text-xs bg-green-500 text-white px-2 py-1 rounded">Clock In</button>
+                            : <button onClick={() => initiateClockIn(job.id)} className="text-xs bg-green-500 text-white px-2 py-1 rounded">Clock In</button>
                           }
                         </div>
                       </div>
@@ -9719,22 +9719,7 @@ Notes: ${j.notes || 'none'}`;
                           </div>
                           {isLiveOnThis
                             ? <button onClick={() => initiateClockOut(liveEntry.id)} className="text-xs bg-red-500 text-white px-2 py-1 rounded ml-2 flex-shrink-0">Clock Out</button>
-                            : <button onClick={async () => {
-                                await handleClockIn(job.id);
-                                // auto-assign first unassigned video stage or photo to this user
-                                const fresh = editingJobs.find(j => j.id === job.id);
-                                if (fresh) {
-                                  const unassignedStage = fresh.stages?.find(s => !s.assignedTo && s.status !== 'completed');
-                                  if (unassignedStage) {
-                                    const updatedStages = fresh.stages.map(s => s.id === unassignedStage.id ? {...s, assignedTo: currentUser.id} : s);
-                                    await db.from('jobs').update({ stages: updatedStages }).eq('id', job.id);
-                                    setEditingJobs(prev => prev.map(j => j.id === job.id ? {...j, stages: updatedStages} : j));
-                                  } else if (fresh.hasPhotos && !fresh.photoAssignedTo) {
-                                    await db.from('jobs').update({ photo_assigned_to: currentUser.id }).eq('id', job.id);
-                                    setEditingJobs(prev => prev.map(j => j.id === job.id ? {...j, photoAssignedTo: currentUser.id} : j));
-                                  }
-                                }
-                              }} className="text-xs bg-green-500 text-white px-2 py-1 rounded ml-2 flex-shrink-0">Clock In</button>
+                            : <button onClick={() => initiateClockIn(job.id)} className="text-xs bg-green-500 text-white px-2 py-1 rounded ml-2 flex-shrink-0">Clock In</button>
                           }
                         </div>
                       );
