@@ -1198,6 +1198,7 @@ function EyeconMoments() {
   const [insightsSubTab, setInsightsSubTab] = useState('stats');
   const [pushSubscription, setPushSubscription] = useState(null);
   const [generalClockInModal, setGeneralClockInModal] = useState(null); // { description: '' }
+  const [clockInRoleModal, setClockInRoleModal] = useState(null); // { jobId }
   const [progressModal, setProgressModal] = useState(null); // { entryId, percent, note }
   const [postSuggestions, setPostSuggestions] = useState([]);
   const [postSuggestModal, setPostSuggestModal] = useState(null); // { jobId, note, imageData, uploading }
@@ -1973,6 +1974,15 @@ function EyeconMoments() {
       const notifications = await reg.getNotifications({ tag: 'eyecon-clock-status' });
       notifications.forEach(n => n.close());
     } catch (_) {}
+  };
+
+  const initiateClockIn = (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (job && job.hasPhotos && job.hasVideo) {
+      setClockInRoleModal({ jobId });
+    } else {
+      handleClockIn(jobId);
+    }
   };
 
   const handleClockIn = async (jobId, description = null) => {
@@ -13272,6 +13282,34 @@ The Eyecon Moments Team
 
         {/* Manual Time Entry Override Modal */}
         {/* ── General Clock In Modal ── */}
+        {clockInRoleModal && (() => {
+          const rJob = editingJobs.find(j => j.id === clockInRoleModal.jobId);
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-xs`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>📷 What are you covering?</h3>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{rJob?.jobName}</p>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  <button onClick={() => { handleClockIn(clockInRoleModal.jobId, 'Photo'); setClockInRoleModal(null); }}
+                    className="py-4 rounded-xl bg-purple-500 text-white font-bold text-lg hover:bg-purple-600">
+                    📸 Photo
+                  </button>
+                  <button onClick={() => { handleClockIn(clockInRoleModal.jobId, 'Video'); setClockInRoleModal(null); }}
+                    className="py-4 rounded-xl bg-blue-500 text-white font-bold text-lg hover:bg-blue-600">
+                    🎬 Video
+                  </button>
+                  <button onClick={() => setClockInRoleModal(null)}
+                    className={`col-span-2 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {generalClockInModal && (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
@@ -13470,9 +13508,9 @@ The Eyecon Moments Team
                             {activeEntry ? (
                               <button onClick={() => initiateClockOut(activeEntry.id)} className="bg-red-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">🛑 Clock Out ({calculateElapsedTime(activeEntry.clockIn)})</button>
                             ) : clockedElsewhere ? (
-                              <button onClick={() => handleClockIn(job.id)} className="text-white px-3 py-1.5 rounded text-xs font-semibold flex-1" style={{background:'#f97316'}}>🔄 Switch to this job</button>
+                              <button onClick={() => initiateClockIn(job.id)} className="text-white px-3 py-1.5 rounded text-xs font-semibold flex-1" style={{background:'#f97316'}}>🔄 Switch to this job</button>
                             ) : (
-                              <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">▶ Clock In</button>
+                              <button onClick={() => initiateClockIn(job.id)} className="bg-green-500 text-white px-3 py-1.5 rounded text-xs font-semibold flex-1">▶ Clock In</button>
                             )}
                             {job.photoStatus !== 'in-progress' && <button onClick={() => updatePhotoStatus(job.id, 'in-progress')} className="bg-yellow-500 text-white px-3 py-1.5 rounded text-xs font-semibold">Start</button>}
                             <button onClick={() => { setStageFileModal({ jobId: job.id, stageId: null, stageName: 'Photo Editing', isPhoto: true }); setStageFileForm({ hardware: '', drive: '', path: '', notes: '', filename: '' }); }} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-semibold">✅ Complete</button>
@@ -13500,9 +13538,9 @@ The Eyecon Moments Team
                             {activeEntry ? (
                               <button onClick={() => initiateClockOut(activeEntry.id)} className="bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">🛑 {calculateElapsedTime(activeEntry.clockIn)}</button>
                             ) : clockedElsewhere ? (
-                              <button onClick={() => handleClockIn(job.id)} className="text-white px-2 py-1 rounded text-xs font-semibold" style={{background:'#f97316'}}>🔄 Switch</button>
+                              <button onClick={() => initiateClockIn(job.id)} className="text-white px-2 py-1 rounded text-xs font-semibold" style={{background:'#f97316'}}>🔄 Switch</button>
                             ) : (
-                              <button onClick={() => handleClockIn(job.id)} className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">▶ Clock In</button>
+                              <button onClick={() => initiateClockIn(job.id)} className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">▶ Clock In</button>
                             )}
                           </div>
                         </div>
