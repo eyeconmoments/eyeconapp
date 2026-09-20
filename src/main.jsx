@@ -1977,8 +1977,7 @@ function EyeconMoments() {
   };
 
   const initiateClockIn = (jobId) => {
-    const job = editingJobs.find(j => String(j.id) === String(jobId));
-    if (job && job.hasPhotos && job.hasVideo) {
+    if (jobId) {
       setClockInRoleModal({ jobId });
     } else {
       handleClockIn(jobId);
