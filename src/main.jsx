@@ -5678,7 +5678,7 @@ Notes: ${j.notes || 'none'}`;
                           const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                           const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
                           setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
-                          await handleClockIn(jobId, desc);
+                          if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                         }}
                         className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
                         style={{
@@ -7664,7 +7664,7 @@ Notes: ${j.notes || 'none'}`;
                           const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                           const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
                           setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
-                          await handleClockIn(jobId, desc);
+                          if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                         }}
                         className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
                         style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535',
