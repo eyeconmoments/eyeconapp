@@ -1977,7 +1977,7 @@ function EyeconMoments() {
   };
 
   const initiateClockIn = (jobId) => {
-    const job = editingJobs.find(j => j.id === jobId);
+    const job = editingJobs.find(j => String(j.id) === String(jobId));
     if (job && job.hasPhotos && job.hasVideo) {
       setClockInRoleModal({ jobId });
     } else {
@@ -13428,7 +13428,7 @@ The Eyecon Moments Team
                   </div>
                 ) : (
                   <>
-                  <select onChange={(e) => { if (e.target.value) { handleClockIn(e.target.value); e.target.value = ''; }}}
+                  <select onChange={(e) => { if (e.target.value) { initiateClockIn(e.target.value); e.target.value = ''; }}}
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-green-50'}`}>
                     <option value="">🟢 Clock In to a Job...</option>
                     {editingJobs.filter(j => !archivedJobIds.includes(j.id) && !isJobFullyComplete(j)).map(job => <option key={job.id} value={job.id}>{job.jobName}</option>)}
