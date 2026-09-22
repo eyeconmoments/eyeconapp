@@ -1271,6 +1271,7 @@ function EyeconMoments() {
   const [archivedJobIds, setArchivedJobIds] = useState([]);
   const [archivedJobsData, setArchivedJobsData] = useState([]); // full job objects for archived jobs (Files search)
   const [inquiryFilter, setInquiryFilter] = useState('all');
+  const [inquiryLogInput, setInquiryLogInput] = useState({});
   const [showBookedSection, setShowBookedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
@@ -2706,6 +2707,25 @@ function EyeconMoments() {
   useEffect(() => {
     updateDailyTasks();
   }, []);
+
+  const LOG_SEP = '\n---ACTIONLOG---\n';
+  const parseInquiryLog = (notes) => {
+    const raw = notes || '';
+    const idx = raw.indexOf(LOG_SEP);
+    if (idx === -1) return { original: raw, entries: [] };
+    const entries = raw.slice(idx + LOG_SEP.length).split('\n').filter(Boolean).map(line => {
+      const [ts, by, ...rest] = line.split('|');
+      return { ts, by, text: rest.join('|') };
+    });
+    return { original: raw.slice(0, idx), entries };
+  };
+  const addInquiryLogEntry = async (inquiry, text) => {
+    const { original, entries } = parseInquiryLog(inquiry.notes);
+    const newEntry = `${new Date().toISOString()}|${currentUser?.name || 'Unknown'}|${text}`;
+    const newNotes = original + LOG_SEP + [newEntry, ...entries].join('\n');
+    await db.from('inquiries').update({ notes: newNotes }).eq('id', inquiry.id);
+    setInquiries(prev => prev.map(i => i.id === inquiry.id ? { ...i, notes: newNotes } : i));
+  };
 
   const updateInquiryStatus = async (inquiryId, newStatus) => {
     const updates = { status: newStatus };
@@ -16282,17 +16302,19 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                     <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} italic`}>{inquiry.details}</p>
                   )}
                   {inquiry.notes && (() => {
+                    const { original: notesOrig } = parseInquiryLog(inquiry.notes);
+                    if (!notesOrig) return null;
                     // Parse structured [Quote sent DD/MM/YYYY] entries from notes
                     const qRe = /\[Quote sent (\d{2}\/\d{2}\/\d{4})\]\s*(£[\d,.]+)\s*—\s*([^.]+)\.\s*Follow up by ([^.\n]+)\./g;
                     const quotes = [];
                     let m;
-                    while ((m = qRe.exec(inquiry.notes)) !== null) {
+                    while ((m = qRe.exec(notesOrig)) !== null) {
                       quotes.push({ sentDate: m[1], amount: m[2], typeStr: m[3].trim(), followUpBy: m[4].trim(), raw: m[0] });
                     }
                     if (!quotes.length) {
-                      return <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mt-1`}>📝 {inquiry.notes}</p>;
+                      return <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mt-1`}>📝 {notesOrig}</p>;
                     }
-                    const remaining = quotes.reduce((s, q) => s.replace(q.raw, ''), inquiry.notes).trim().replace(/\n+/g, ' ');
+                    const remaining = quotes.reduce((s, q) => s.replace(q.raw, ''), notesOrig).trim().replace(/\n+/g, ' ');
                     return (
                       <div className="mt-2 space-y-1.5">
                         {quotes.map((q, qi) => (
@@ -16425,6 +16447,52 @@ www.eyeconmoments.co.uk`;
                     {inquiry.status === 'contacted' ? '💰 Create Quote' : '🔄 Requote'}
                   </button>
                 )}
+
+                {/* Action Log */}
+                {(() => {
+                  const { entries } = parseInquiryLog(inquiry.notes);
+                  return (
+                    <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📋 Action Log</p>
+                      {entries.length > 0 ? (
+                        <div className="space-y-1.5 mb-2 max-h-36 overflow-y-auto">
+                          {entries.map((e, i) => (
+                            <div key={i} className={`rounded-lg px-2.5 py-2 text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-50 border border-gray-100'}`}>
+                              <div className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                {e.by} · {new Date(e.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                              <div className={`mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{e.text}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className={`text-xs mb-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>No actions logged yet.</p>
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Log an action (e.g. Called, left voicemail)..."
+                          value={inquiryLogInput[inquiry.id] || ''}
+                          onChange={e => setInquiryLogInput(prev => ({ ...prev, [inquiry.id]: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              const text = inquiryLogInput[inquiry.id]?.trim();
+                              if (text) { addInquiryLogEntry(inquiry, text); setInquiryLogInput(prev => ({ ...prev, [inquiry.id]: '' })); }
+                            }
+                          }}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-xs outline-none ${darkMode ? 'bg-gray-700 text-white placeholder-gray-500 border border-gray-600' : 'bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400'}`}
+                        />
+                        <button
+                          onClick={() => {
+                            const text = inquiryLogInput[inquiry.id]?.trim();
+                            if (text) { addInquiryLogEntry(inquiry, text); setInquiryLogInput(prev => ({ ...prev, [inquiry.id]: '' })); }
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-500 text-white hover:bg-blue-600 shrink-0"
+                        >+ Log</button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -16499,8 +16567,8 @@ www.eyeconmoments.co.uk`;
                             </select>
                           </div>
                         </div>
-                        {inquiry.notes && (
-                          <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inquiry.notes}</p>
+                        {inquiry.notes && parseInquiryLog(inquiry.notes).original && (
+                          <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{parseInquiryLog(inquiry.notes).original}</p>
                         )}
                         <button onClick={openBookingEmail}
                           className={`mt-2 w-full py-1.5 rounded-lg text-xs font-semibold border ${darkMode ? 'border-yellow-600 text-yellow-400 hover:bg-yellow-900 hover:bg-opacity-30' : 'border-yellow-400 text-yellow-700 hover:bg-yellow-50'}`}
@@ -16516,6 +16584,51 @@ www.eyeconmoments.co.uk`;
                               className={`mt-1.5 w-full py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1 ${darkMode ? 'border-purple-600 text-purple-400 hover:bg-purple-900 hover:bg-opacity-30' : 'border-purple-400 text-purple-700 hover:bg-purple-50'}`}>
                               🎵 Send Soundtrack Link
                             </a>
+                          );
+                        })()}
+                        {/* Action Log */}
+                        {(() => {
+                          const { entries } = parseInquiryLog(inquiry.notes);
+                          return (
+                            <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                              <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📋 Action Log</p>
+                              {entries.length > 0 ? (
+                                <div className="space-y-1.5 mb-2 max-h-36 overflow-y-auto">
+                                  {entries.map((e, i) => (
+                                    <div key={i} className={`rounded-lg px-2.5 py-2 text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-50 border border-gray-100'}`}>
+                                      <div className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        {e.by} · {new Date(e.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                      </div>
+                                      <div className={`mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{e.text}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className={`text-xs mb-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>No actions logged yet.</p>
+                              )}
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Log an action..."
+                                  value={inquiryLogInput[inquiry.id] || ''}
+                                  onChange={e => setInquiryLogInput(prev => ({ ...prev, [inquiry.id]: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      const text = inquiryLogInput[inquiry.id]?.trim();
+                                      if (text) { addInquiryLogEntry(inquiry, text); setInquiryLogInput(prev => ({ ...prev, [inquiry.id]: '' })); }
+                                    }
+                                  }}
+                                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs outline-none ${darkMode ? 'bg-gray-700 text-white placeholder-gray-500 border border-gray-600' : 'bg-gray-50 border border-gray-200 text-gray-800 placeholder-gray-400'}`}
+                                />
+                                <button
+                                  onClick={() => {
+                                    const text = inquiryLogInput[inquiry.id]?.trim();
+                                    if (text) { addInquiryLogEntry(inquiry, text); setInquiryLogInput(prev => ({ ...prev, [inquiry.id]: '' })); }
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-500 text-white hover:bg-blue-600 shrink-0"
+                                >+ Log</button>
+                              </div>
+                            </div>
                           );
                         })()}
                       </div>
