@@ -1636,6 +1636,7 @@ function EyeconMoments() {
         // Seed any missing employees into Supabase so they persist across all devices
         const SEED_EMPLOYEES = [
           { username: 'Karam', password: 'temp123', pin: '9999', name: 'Karam', role: 'employee', hourly_rate: 15, phone: '', emergency_contact: '', emergency_phone: '', address: '', can_be_assigned: true },
+          { username: 'Ruma', password: 'temp123', pin: '7862', name: 'Ruma', role: 'admin', hourly_rate: 20, phone: '', emergency_contact: '', emergency_phone: '', address: '', can_be_assigned: true },
         ];
         const dbEmps = empRes.data || [];
         for (const seed of SEED_EMPLOYEES) {
