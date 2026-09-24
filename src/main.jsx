@@ -2722,7 +2722,8 @@ function EyeconMoments() {
   const addInquiryLogEntry = async (inquiry, text) => {
     const { original, entries } = parseInquiryLog(inquiry.notes);
     const newEntry = `${new Date().toISOString()}|${currentUser?.name || 'Unknown'}|${text}`;
-    const newNotes = original + LOG_SEP + [newEntry, ...entries].join('\n');
+    const serialized = entries.map(e => `${e.ts}|${e.by}|${e.text}`);
+    const newNotes = original + LOG_SEP + [newEntry, ...serialized].join('\n');
     await db.from('inquiries').update({ notes: newNotes }).eq('id', inquiry.id);
     setInquiries(prev => prev.map(i => i.id === inquiry.id ? { ...i, notes: newNotes } : i));
   };
