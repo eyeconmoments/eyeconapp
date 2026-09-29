@@ -2720,7 +2720,8 @@ function EyeconMoments() {
     return { original: raw.slice(0, idx), entries };
   };
   const addInquiryLogEntry = async (inquiry, text) => {
-    const { original, entries } = parseInquiryLog(inquiry.notes);
+    const current = inquiries.find(i => i.id === inquiry.id);
+    const { original, entries } = parseInquiryLog(current?.notes ?? inquiry.notes);
     const newEntry = `${new Date().toISOString()}|${currentUser?.name || 'Unknown'}|${text}`;
     const serialized = entries.map(e => `${e.ts}|${e.by}|${e.text}`);
     const newNotes = original + LOG_SEP + [newEntry, ...serialized].join('\n');
@@ -5693,24 +5694,31 @@ Notes: ${j.notes || 'none'}`;
                           autoFocus
                         />
                       )}
-                      <button
-                        disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
-                        onClick={async () => {
-                          const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
-                          const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
-                          if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
-                        }}
-                        className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
-                        style={{
-                          background: 'linear-gradient(135deg,#C1A76A,#e8d4a0)',
-                          color: '#1a2535',
-                          opacity: (!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())) ? 0.4 : 1,
-                          cursor: (!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())) ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        🟢 Clock In
-                      </button>
+                      {(() => {
+                        const selJobId = clockInPickingJob && clockInPickingJob !== 'general' ? parseInt(clockInPickingJob) : null;
+                        const alreadyClockedIn = selJobId !== null && timeEntries.some(e => e.employeeId === currentUser.id && e.jobId === selJobId && !e.clockOut);
+                        const isDisabled = !clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim()) || alreadyClockedIn;
+                        return (
+                          <button
+                            disabled={isDisabled}
+                            onClick={async () => {
+                              const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
+                              const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
+                              setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                              if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
+                            }}
+                            className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
+                            style={{
+                              background: alreadyClockedIn ? 'linear-gradient(135deg,#4a7c59,#6abf7b)' : 'linear-gradient(135deg,#C1A76A,#e8d4a0)',
+                              color: '#1a2535',
+                              opacity: isDisabled ? 0.4 : 1,
+                              cursor: isDisabled ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            {alreadyClockedIn ? '✅ Already Clocked In' : '🟢 Clock In'}
+                          </button>
+                        );
+                      })()}
                       <button
                         onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm"
@@ -7180,6 +7188,33 @@ Notes: ${j.notes || 'none'}`;
             </div>
           );
         })()}
+        {clockInRoleModal && (() => {
+          const rJob = editingJobs.find(j => j.id === clockInRoleModal.jobId);
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-xs`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>📷 What are you covering?</h3>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{rJob?.jobName}</p>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  <button onClick={() => { handleClockIn(clockInRoleModal.jobId, 'Photo'); setClockInRoleModal(null); }}
+                    className="py-4 rounded-xl bg-purple-500 text-white font-bold text-lg hover:bg-purple-600">
+                    📸 Photo
+                  </button>
+                  <button onClick={() => { handleClockIn(clockInRoleModal.jobId, 'Video'); setClockInRoleModal(null); }}
+                    className="py-4 rounded-xl bg-blue-500 text-white font-bold text-lg hover:bg-blue-600">
+                    🎬 Video
+                  </button>
+                  <button onClick={() => setClockInRoleModal(null)}
+                    className={`col-span-2 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {helpModalJSX}
       </div>
     );
@@ -7679,20 +7714,27 @@ Notes: ${j.notes || 'none'}`;
                           className="w-full px-4 py-3 rounded-xl text-sm text-white"
                           style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} autoFocus />
                       )}
-                      <button
-                        disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
-                        onClick={async () => {
-                          const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
-                          const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
-                          if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
-                        }}
-                        className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
-                        style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535',
-                          opacity:(!clockInPickingJob||(clockInPickingJob==='general'&&!clockInGeneralDesc.trim()))?0.4:1,
-                          cursor:(!clockInPickingJob||(clockInPickingJob==='general'&&!clockInGeneralDesc.trim()))?'not-allowed':'pointer'}}>
-                        🟢 Clock In
-                      </button>
+                      {(() => {
+                        const selJobId2 = clockInPickingJob && clockInPickingJob !== 'general' ? parseInt(clockInPickingJob) : null;
+                        const alreadyClockedIn2 = selJobId2 !== null && timeEntries.some(e => e.employeeId === currentUser.id && e.jobId === selJobId2 && !e.clockOut);
+                        const isDisabled2 = !clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim()) || alreadyClockedIn2;
+                        return (
+                          <button
+                            disabled={isDisabled2}
+                            onClick={async () => {
+                              const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
+                              const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
+                              setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                              if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
+                            }}
+                            className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
+                            style={{background: alreadyClockedIn2 ? 'linear-gradient(135deg,#4a7c59,#6abf7b)' : 'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535',
+                              opacity: isDisabled2 ? 0.4 : 1,
+                              cursor: isDisabled2 ? 'not-allowed' : 'pointer'}}>
+                            {alreadyClockedIn2 ? '✅ Already Clocked In' : '🟢 Clock In'}
+                          </button>
+                        );
+                      })()}
                       <button onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
                         Skip for now
@@ -21603,7 +21645,7 @@ Eyecon Moments
           .map(id => employees.find(e => e.id === id)?.name).filter(Boolean);
         return { job, entries, totalH, latestProg, staffOnJob };
       })
-      .sort((a, b) => b.totalH - a.totalH);
+      .sort((a, b) => new Date(a.job.shootDate || 0) - new Date(b.job.shootDate || 0));
 
     // General (no-job) entries
     const generalEntries = weekEntries.filter(e => !e.jobId)
