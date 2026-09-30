@@ -1205,6 +1205,8 @@ function EyeconMoments() {
   const [reportWeekOffset, setReportWeekOffset] = useState(0); // 0=current week, -1=last week, etc.
   const [myItinerariesOpen, setMyItinerariesOpen] = useState(false); // collapsed by default
   const [progressDetailOpen, setProgressDetailOpen] = useState(false);
+  const [driveLinkPromptJob, setDriveLinkPromptJob] = useState(null); // { id, jobName, currentUrl } — prompt to add/open Drive link
+  const [jobProgressTooltip, setJobProgressTooltip] = useState(null); // { jobId, x, y } — hover tooltip
   const [availCalMonth, setAvailCalMonth] = useState(new Date().getMonth());
   const [availCalYear, setAvailCalYear] = useState(new Date().getFullYear());
   const [upcomingCalMonth, setUpcomingCalMonth] = useState(new Date().getMonth());
@@ -10086,8 +10088,9 @@ Notes: ${j.notes || 'none'}`;
 
                 {/* Job breakdown detail */}
                 {progressDetailOpen && (() => {
-                  const photoJobs = activeJobsList.filter(j => j.hasPhotos);
-                  const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages);
+                  const byShootDate = (a, b) => new Date(a.shootDate || 0) - new Date(b.shootDate || 0);
+                  const photoJobs = activeJobsList.filter(j => j.hasPhotos).sort(byShootDate);
+                  const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages).sort(byShootDate);
                   // Latest reported progress for any job: take the highest progressPercent
                   // from clock-out entries (prefer most recent non-null)
                   const getLatestProgress = (jobId) => {
@@ -10111,15 +10114,54 @@ Notes: ${j.notes || 'none'}`;
                             {photoJobs.map(job => {
                               const done = job.photoStatus === 'completed';
                               const reported = done ? 100 : (getLatestProgress(job.id) ?? 0);
+                              const assigneeName = job.photoAssignedTo ? getEmployeeName(job.photoAssignedTo) : null;
+                              const completedEntry = (job.wageEntries || []).find(e => e.type === 'photo' && e.employeeId === job.photoAssignedTo);
+                              const completedAt = completedEntry?.submittedAt;
                               return (
-                                <div key={job.id} className="text-xs py-1.5 px-2 rounded" style={{background: done ? '#f0fdf4' : '#fef9f0'}}>
+                                <div key={job.id} className="text-xs py-1.5 px-2 rounded relative group" style={{background: done ? '#f0fdf4' : '#fef9f0'}}>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
+                                    <button
+                                      className="text-gray-800 truncate flex-1 mr-2 text-left hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                                      title={job.driveFolderUrl ? 'Open Google Drive folder' : 'Add Google Drive link'}
+                                      onClick={() => {
+                                        if (job.driveFolderUrl) {
+                                          window.open(job.driveFolderUrl, '_blank', 'noopener');
+                                        } else {
+                                          setDriveLinkPromptJob({ id: job.id, jobName: job.jobName, currentUrl: '' });
+                                        }
+                                      }}
+                                      onMouseEnter={() => setJobProgressTooltip({ jobId: job.id })}
+                                      onMouseLeave={() => setJobProgressTooltip(null)}
+                                    >
+                                      {job.driveFolderUrl ? '☁️ ' : '🔗 '}{job.jobName}
+                                    </button>
                                     <span className={`font-bold shrink-0 ${done ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
                                       {done ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
                                     </span>
                                   </div>
                                   <ProgressBar pct={reported} color={done ? 'bg-green-500' : 'bg-orange-400'} />
+                                  {/* Hover history tooltip */}
+                                  {jobProgressTooltip?.jobId === job.id && (
+                                    <div
+                                      className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2.5 min-w-48 max-w-64 pointer-events-none"
+                                      style={{top: '100%', left: 0, marginTop: 4}}
+                                    >
+                                      <p className="font-bold text-gray-800 mb-1.5 text-xs">{job.jobName}</p>
+                                      {assigneeName && (
+                                        <p className="text-gray-600 text-xs">📸 Assigned to: <span className="font-medium">{assigneeName}</span></p>
+                                      )}
+                                      <p className="text-gray-600 text-xs mt-0.5">
+                                        Status: <span className={`font-medium ${done ? 'text-green-600' : job.photoStatus === 'in-progress' ? 'text-orange-500' : 'text-gray-400'}`}>
+                                          {done ? 'Completed' : job.photoStatus === 'in-progress' ? 'In Progress' : 'Not Started'}
+                                        </span>
+                                      </p>
+                                      {done && completedAt && (
+                                        <p className="text-gray-500 text-xs mt-0.5">✅ Done {new Date(completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                      )}
+                                      {!job.driveFolderUrl && <p className="text-orange-500 text-xs mt-1">⚠️ No Drive folder — click to add</p>}
+                                      {job.driveFolderUrl && <p className="text-blue-500 text-xs mt-1">Click to open Drive folder</p>}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -10144,16 +10186,61 @@ Notes: ${j.notes || 'none'}`;
                               const pct = allDone ? 100 : reportedOnStage !== null
                                 ? Math.min(99, Math.round(stageBase + (reportedOnStage / 100) * stageSlice))
                                 : stageBase;
+                              const completedStages = job.stages.filter(s => s.status === 'completed');
                               return (
-                                <div key={job.id} className="text-xs py-1.5 px-2 rounded" style={{background: allDone ? '#f0fdf4' : '#fef9f0'}}>
+                                <div key={job.id} className="text-xs py-1.5 px-2 rounded relative" style={{background: allDone ? '#f0fdf4' : '#fef9f0'}}>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
+                                    <button
+                                      className="text-gray-800 truncate flex-1 mr-2 text-left hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                                      title={job.driveFolderUrl ? 'Open Google Drive folder' : 'Add Google Drive link'}
+                                      onClick={() => {
+                                        if (job.driveFolderUrl) {
+                                          window.open(job.driveFolderUrl, '_blank', 'noopener');
+                                        } else {
+                                          setDriveLinkPromptJob({ id: job.id, jobName: job.jobName, currentUrl: '' });
+                                        }
+                                      }}
+                                      onMouseEnter={() => setJobProgressTooltip({ jobId: job.id })}
+                                      onMouseLeave={() => setJobProgressTooltip(null)}
+                                    >
+                                      {job.driveFolderUrl ? '☁️ ' : '🔗 '}{job.jobName}
+                                    </button>
                                     <span className={`font-bold shrink-0 ${allDone ? 'text-green-600' : pct > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
                                       {allDone ? '✅ 100%' : `${pct}%`}
                                       <span className="font-normal text-gray-400 ml-1">({doneStages}/{totalStages})</span>
                                     </span>
                                   </div>
                                   <ProgressBar pct={pct} color={allDone ? 'bg-green-500' : 'bg-blue-500'} />
+                                  {/* Hover history tooltip */}
+                                  {jobProgressTooltip?.jobId === job.id && (
+                                    <div
+                                      className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2.5 min-w-48 max-w-64 pointer-events-none"
+                                      style={{top: '100%', left: 0, marginTop: 4}}
+                                    >
+                                      <p className="font-bold text-gray-800 mb-1.5 text-xs">{job.jobName}</p>
+                                      {completedStages.length > 0 ? (
+                                        <div className="space-y-0.5">
+                                          {completedStages.map(s => (
+                                            <p key={s.id} className="text-gray-600 text-xs">
+                                              ✅ <span className="font-medium">{s.name.split(',')[0]}</span>
+                                              {s.completedBy && <span className="text-gray-500"> — {s.completedBy}</span>}
+                                              {s.completedAt && <span className="text-gray-400"> · {new Date(s.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-gray-400 text-xs">No stages completed yet</p>
+                                      )}
+                                      {currentStage && (
+                                        <p className="text-blue-500 text-xs mt-1">
+                                          🔄 <span className="font-medium">{currentStage.name.split(',')[0]}</span> in progress
+                                          {currentStage.assignedTo && <span className="text-gray-500"> — {getEmployeeName(currentStage.assignedTo)}</span>}
+                                        </p>
+                                      )}
+                                      {!job.driveFolderUrl && <p className="text-orange-500 text-xs mt-1">⚠️ No Drive folder — click to add</p>}
+                                      {job.driveFolderUrl && <p className="text-blue-500 text-xs mt-1">Click to open Drive folder</p>}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -11004,6 +11091,44 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
         </div>
+
+        {/* Drive link prompt — add/open Google Drive folder from progress list */}
+        {driveLinkPromptJob && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl`}>
+              <div className="text-3xl text-center mb-2">☁️</div>
+              <h2 className={`text-base font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add Google Drive Link</h2>
+              <p className={`text-xs text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{driveLinkPromptJob.jobName}</p>
+              <input
+                type="url"
+                value={driveLinkPromptJob.currentUrl}
+                onChange={e => setDriveLinkPromptJob(p => ({ ...p, currentUrl: e.target.value }))}
+                placeholder="https://drive.google.com/drive/folders/..."
+                className={`w-full px-3 py-2.5 rounded-lg text-sm border mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'}`}
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setDriveLinkPromptJob(null)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Cancel</button>
+                <button
+                  disabled={!driveLinkPromptJob.currentUrl.trim()}
+                  onClick={async () => {
+                    const url = driveLinkPromptJob.currentUrl.trim();
+                    if (!url) return;
+                    const jobId = driveLinkPromptJob.id;
+                    const existing = editingJobs.find(j => j.id === jobId);
+                    const newLocs = [...(existing?.fileLocations || []).filter(f => f.type !== 'drive_folder'), { type: 'drive_folder', url }];
+                    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, driveFolderUrl: url, fileLocations: newLocs } : j));
+                    await db.from('jobs').update({ file_locations: newLocs }).eq('id', jobId);
+                    setDriveLinkPromptJob(null);
+                    window.open(url, '_blank', 'noopener');
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity ${!driveLinkPromptJob.currentUrl.trim() ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  style={{background:'var(--gold)'}}>Save &amp; Open</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
