@@ -10088,8 +10088,9 @@ Notes: ${j.notes || 'none'}`;
 
                 {/* Job breakdown detail */}
                 {progressDetailOpen && (() => {
-                  const photoJobs = activeJobsList.filter(j => j.hasPhotos);
-                  const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages);
+                  const byShootDate = (a, b) => new Date(a.shootDate || 0) - new Date(b.shootDate || 0);
+                  const photoJobs = activeJobsList.filter(j => j.hasPhotos).sort(byShootDate);
+                  const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages).sort(byShootDate);
                   // Latest reported progress for any job: take the highest progressPercent
                   // from clock-out entries (prefer most recent non-null)
                   const getLatestProgress = (jobId) => {
