@@ -14275,27 +14275,44 @@ The Eyecon Moments Team
                       </select>
                     </div>
                     {job.hasPhotos && (
-                      job.photoStatus === 'completed' ? (
-                        <div className={`mb-3 px-3 py-2 rounded-lg flex items-center justify-between ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">✅</span>
-                            <div>
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>📸 Photo Editing — Done</span>
-                              {job.photoAssignedTo > 0 && (
-                                <span className={`text-xs ml-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                  {employees.find(e => e.id === job.photoAssignedTo)?.name || ''}
-                                </span>
-                              )}
-                            </div>
+                      job.photoStatus === 'completed' ? (() => {
+                        const photoWage = (job.wageEntries || []).find(e => e.type === 'photo' && e.employeeId === job.photoAssignedTo);
+                        const photoCompletedAt = photoWage?.submittedAt ? new Date(photoWage.submittedAt) : null;
+                        const photoLoc = (job.fileLocations || []).find(f => !f.type && (f.stage === 'Photo Editing' || f.stageName === 'Photo Editing'));
+                        const photoHrs = job.photoAssignedTo
+                          ? timeEntries.filter(t => String(t.jobId) === String(job.id) && t.employeeId === job.photoAssignedTo && t.hoursWorked).reduce((a, t) => a + t.hoursWorked, 0)
+                          : 0;
+                        const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+                        return (
+                        <div className={`mb-3 p-2 rounded-lg ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className={`text-xs font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>📸 Photo Editing</span>
+                            <select value={job.photoStatus} onChange={(e) => updatePhotoStatus(job.id, e.target.value)}
+                              className={`text-xs px-2 py-1 rounded border ${getStatusColor(job.photoStatus)}`}>
+                              <option value="not-started">Not Started</option>
+                              <option value="in-progress">In Progress</option>
+                              <option value="completed">Completed</option>
+                            </select>
                           </div>
-                          <select value={job.photoStatus} onChange={(e) => updatePhotoStatus(job.id, e.target.value)}
-                            className={`text-xs px-2 py-1 rounded border ${getStatusColor(job.photoStatus)}`}>
-                            <option value="not-started">Not Started</option>
-                            <option value="in-progress">In Progress</option>
-                            <option value="completed">Completed</option>
-                          </select>
+                          <div className="space-y-1 mt-1">
+                            <p className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                              ✓ {employees.find(e => e.id === job.photoAssignedTo)?.name || photoWage?.employeeName || 'Unknown'}
+                              {photoCompletedAt && ` · ${photoCompletedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })} ${photoCompletedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+                              {isAdmin && photoHrs > 0 && ` · ${photoHrs.toFixed(1)}h`}
+                            </p>
+                            {photoLoc && (photoLoc.hardware || photoLoc.drive || photoLoc.path || photoLoc.filename) && (
+                              <div className={`text-xs rounded px-2 py-1 ${darkMode ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800'}`}>
+                                {photoLoc.hardware && <span className="font-medium">💻 {photoLoc.hardware}</span>}
+                                {photoLoc.drive && <span className="ml-1">· {photoLoc.drive}</span>}
+                                {photoLoc.path && <span className="ml-1 opacity-75">· {photoLoc.path}</span>}
+                                {photoLoc.filename && <div className="mt-0.5 opacity-90">📁 {photoLoc.filename}</div>}
+                                {isAdmin && photoLoc.setAt && <div className="opacity-60 text-xs">Logged {new Date(photoLoc.setAt).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}</div>}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      ) : (
+                        );
+                      })() : (
                         <div className={`mb-3 p-3 ${darkMode ? 'bg-purple-900' : 'bg-purple-50'} rounded-lg`}>
                           <div className="flex justify-between items-center mb-2">
                             <span className={`font-semibold text-sm ${darkMode ? 'text-purple-200' : ''}`}><Camera /> Photo Editing</span>
