@@ -11091,6 +11091,44 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
         </div>
+
+        {/* Drive link prompt — add/open Google Drive folder from progress list */}
+        {driveLinkPromptJob && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl`}>
+              <div className="text-3xl text-center mb-2">☁️</div>
+              <h2 className={`text-base font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add Google Drive Link</h2>
+              <p className={`text-xs text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{driveLinkPromptJob.jobName}</p>
+              <input
+                type="url"
+                value={driveLinkPromptJob.currentUrl}
+                onChange={e => setDriveLinkPromptJob(p => ({ ...p, currentUrl: e.target.value }))}
+                placeholder="https://drive.google.com/drive/folders/..."
+                className={`w-full px-3 py-2.5 rounded-lg text-sm border mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'}`}
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setDriveLinkPromptJob(null)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Cancel</button>
+                <button
+                  disabled={!driveLinkPromptJob.currentUrl.trim()}
+                  onClick={async () => {
+                    const url = driveLinkPromptJob.currentUrl.trim();
+                    if (!url) return;
+                    const jobId = driveLinkPromptJob.id;
+                    const existing = editingJobs.find(j => j.id === jobId);
+                    const newLocs = [...(existing?.fileLocations || []).filter(f => f.type !== 'drive_folder'), { type: 'drive_folder', url }];
+                    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, driveFolderUrl: url, fileLocations: newLocs } : j));
+                    await db.from('jobs').update({ file_locations: newLocs }).eq('id', jobId);
+                    setDriveLinkPromptJob(null);
+                    window.open(url, '_blank', 'noopener');
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity ${!driveLinkPromptJob.currentUrl.trim() ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  style={{background:'var(--gold)'}}>Save &amp; Open</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -15151,51 +15189,6 @@ The Eyecon Moments Team
             </div>
           );
         })()}
-
-        {/* Drive link prompt — shown when clicking a job with no Drive folder */}
-        {driveLinkPromptJob && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl`}>
-              <div className="text-3xl text-center mb-2">☁️</div>
-              <h2 className={`text-base font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Add Google Drive Link
-              </h2>
-              <p className={`text-xs text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {driveLinkPromptJob.jobName}
-              </p>
-              <input
-                type="url"
-                value={driveLinkPromptJob.currentUrl}
-                onChange={e => setDriveLinkPromptJob(p => ({ ...p, currentUrl: e.target.value }))}
-                placeholder="https://drive.google.com/drive/folders/..."
-                className={`w-full px-3 py-2.5 rounded-lg text-sm border mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'}`}
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDriveLinkPromptJob(null)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-                >Cancel</button>
-                <button
-                  disabled={!driveLinkPromptJob.currentUrl.trim()}
-                  onClick={async () => {
-                    const url = driveLinkPromptJob.currentUrl.trim();
-                    if (!url) return;
-                    const jobId = driveLinkPromptJob.id;
-                    const existing = editingJobs.find(j => j.id === jobId);
-                    const newLocs = [...(existing?.fileLocations || []).filter(f => f.type !== 'drive_folder'), { type: 'drive_folder', url }];
-                    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, driveFolderUrl: url, fileLocations: newLocs } : j));
-                    await db.from('jobs').update({ file_locations: newLocs }).eq('id', jobId);
-                    setDriveLinkPromptJob(null);
-                    window.open(url, '_blank', 'noopener');
-                  }}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity ${!driveLinkPromptJob.currentUrl.trim() ? 'opacity-40 cursor-not-allowed' : ''}`}
-                  style={{background: 'var(--gold)'}}
-                >Save &amp; Open</button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* File location prompt — shown after completing a stage */}
         {locationPrompt && (
