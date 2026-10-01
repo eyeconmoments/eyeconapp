@@ -1281,7 +1281,9 @@ function EyeconMoments() {
   const [wagesPeriodFilter, setWagesPeriodFilter] = useState('all');
   const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
   const [showClockInPrompt, setShowClockInPrompt] = useState(false);
-  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
+  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null); // { date, hoursWorked, entryId }
+  const [autoClockOutProgress, setAutoClockOutProgress] = useState(50);
+  const [autoClockOutNote, setAutoClockOutNote] = useState('');
   const [clockInPickingJob, setClockInPickingJob] = useState(false);
   const [clockInGeneralDesc, setClockInGeneralDesc] = useState('');
   const [clockOutBannerDismissed, setClockOutBannerDismissed] = useState(false);
@@ -1840,8 +1842,11 @@ function EyeconMoments() {
           setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: fivePmThatDay, hoursWorked: hours } : e));
           setAutoClockOutInfo({
             date: fivePmThatDay.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
-            hoursWorked: hours
+            hoursWorked: hours,
+            entryId: openEntry.id
           });
+          setAutoClockOutProgress(50);
+          setAutoClockOutNote('');
         }
       }
 
@@ -2027,6 +2032,22 @@ function EyeconMoments() {
         if (job) setProjectFileModal({ jobId: job.id, jobName: job.jobName });
       }
     }
+  };
+
+  const saveAutoClockOutQualification = async () => {
+    if (!autoClockOutInfo?.entryId) return;
+    const updateData = { progress_percent: autoClockOutProgress };
+    if (autoClockOutNote.trim()) updateData.progress_note = autoClockOutNote.trim();
+    await db.from('time_entries').update(updateData).eq('id', autoClockOutInfo.entryId);
+    setTimeEntries(prev => prev.map(e => e.id === autoClockOutInfo.entryId
+      ? { ...e, progressPercent: autoClockOutProgress, progressNote: autoClockOutNote.trim() || null }
+      : e));
+  };
+
+  const dismissAutoClockOutInfo = () => {
+    setAutoClockOutInfo(null);
+    setAutoClockOutProgress(50);
+    setAutoClockOutNote('');
   };
 
   const initiateClockOut = (entryId) => {
@@ -5632,16 +5653,49 @@ Notes: ${j.notes || 'none'}`;
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
             <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
               {autoClockOutInfo && (
-                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
-                  <div className="flex items-start gap-3">
+                <div className="p-5" style={{borderBottom: showClockInPrompt ? '1px solid rgba(193,167,106,0.15)' : undefined}}>
+                  <div className="flex items-start gap-3 mb-4">
                     <span className="text-2xl">⏰</span>
                     <div>
-                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Did you forget to clock out?</h3>
                       <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
-                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                        You were auto clocked out on <span className="text-white font-medium">{autoClockOutInfo.date}</span> — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> was logged. What progress did you make?
                       </p>
-                      <p className="text-xs mt-1" style={{color:'#6a7d90'}}>Check your hours tab if this doesn't look right.</p>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <span className={`text-4xl font-bold tabular-nums ${autoClockOutProgress >= 80 ? 'text-green-400' : autoClockOutProgress >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {autoClockOutProgress}%
+                      </span>
+                    </div>
+                    <input type="range" min="0" max="100" step="5"
+                      value={autoClockOutProgress}
+                      onChange={e => setAutoClockOutProgress(Number(e.target.value))}
+                      className="w-full" style={{accentColor:'#C1A76A'}} />
+                    <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.1)'}}>
+                      <div className={`h-full rounded-full transition-all ${autoClockOutProgress >= 80 ? 'bg-green-500' : autoClockOutProgress >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{width: autoClockOutProgress + '%'}} />
+                    </div>
+                    <input type="text" placeholder="Add a note (optional)"
+                      value={autoClockOutNote}
+                      onChange={e => setAutoClockOutNote(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white"
+                      style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} />
+                    {!showClockInPrompt && (
+                      <>
+                        <button
+                          onClick={async () => { await saveAutoClockOutQualification(); dismissAutoClockOutInfo(); }}
+                          className="w-full py-3 rounded-xl font-bold text-sm"
+                          style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}>
+                          ✓ Save Progress
+                        </button>
+                        <button onClick={dismissAutoClockOutInfo}
+                          className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                          Skip
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -5698,9 +5752,10 @@ Notes: ${j.notes || 'none'}`;
                       <button
                         disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
                         onClick={async () => {
+                          if (autoClockOutInfo) await saveAutoClockOutQualification();
                           const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                           const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                          setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc('');
                           if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                         }}
                         className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
@@ -5714,7 +5769,7 @@ Notes: ${j.notes || 'none'}`;
                         🟢 Clock In
                       </button>
                       <button
-                        onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                        onClick={() => { setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm"
                         style={{color:'#8a9bb0'}}
                       >
@@ -5724,17 +5779,6 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 );
               })()}
-              {!showClockInPrompt && autoClockOutInfo && (
-                <div className="p-4">
-                  <button
-                    onClick={() => setAutoClockOutInfo(null)}
-                    className="w-full py-2.5 rounded-xl text-sm"
-                    style={{color:'#8a9bb0'}}
-                  >
-                    Got it
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -7624,15 +7668,49 @@ Notes: ${j.notes || 'none'}`;
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
             <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
               {autoClockOutInfo && (
-                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
-                  <div className="flex items-start gap-3">
+                <div className="p-5" style={{borderBottom: showClockInPrompt ? '1px solid rgba(193,167,106,0.15)' : undefined}}>
+                  <div className="flex items-start gap-3 mb-4">
                     <span className="text-2xl">⏰</span>
                     <div>
-                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Did you forget to clock out?</h3>
                       <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
-                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                        You were auto clocked out on <span className="text-white font-medium">{autoClockOutInfo.date}</span> — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> was logged. What progress did you make?
                       </p>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <span className={`text-4xl font-bold tabular-nums ${autoClockOutProgress >= 80 ? 'text-green-400' : autoClockOutProgress >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {autoClockOutProgress}%
+                      </span>
+                    </div>
+                    <input type="range" min="0" max="100" step="5"
+                      value={autoClockOutProgress}
+                      onChange={e => setAutoClockOutProgress(Number(e.target.value))}
+                      className="w-full" style={{accentColor:'#C1A76A'}} />
+                    <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.1)'}}>
+                      <div className={`h-full rounded-full transition-all ${autoClockOutProgress >= 80 ? 'bg-green-500' : autoClockOutProgress >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{width: autoClockOutProgress + '%'}} />
+                    </div>
+                    <input type="text" placeholder="Add a note (optional)"
+                      value={autoClockOutNote}
+                      onChange={e => setAutoClockOutNote(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white"
+                      style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} />
+                    {!showClockInPrompt && (
+                      <>
+                        <button
+                          onClick={async () => { await saveAutoClockOutQualification(); dismissAutoClockOutInfo(); }}
+                          className="w-full py-3 rounded-xl font-bold text-sm"
+                          style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}>
+                          ✓ Save Progress
+                        </button>
+                        <button onClick={dismissAutoClockOutInfo}
+                          className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                          Skip
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -7684,9 +7762,10 @@ Notes: ${j.notes || 'none'}`;
                       <button
                         disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
                         onClick={async () => {
+                          if (autoClockOutInfo) await saveAutoClockOutQualification();
                           const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                           const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                          setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc('');
                           if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                         }}
                         className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
@@ -7695,7 +7774,7 @@ Notes: ${j.notes || 'none'}`;
                           cursor:(!clockInPickingJob||(clockInPickingJob==='general'&&!clockInGeneralDesc.trim()))?'not-allowed':'pointer'}}>
                         🟢 Clock In
                       </button>
-                      <button onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                      <button onClick={() => { setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
                         Skip for now
                       </button>
@@ -7703,11 +7782,6 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 );
               })()}
-              {!showClockInPrompt && autoClockOutInfo && (
-                <div className="p-4">
-                  <button onClick={() => setAutoClockOutInfo(null)} className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>Got it</button>
-                </div>
-              )}
             </div>
           </div>
         )}
