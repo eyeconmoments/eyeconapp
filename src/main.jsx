@@ -1275,13 +1275,16 @@ function EyeconMoments() {
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [inquiryLogInput, setInquiryLogInput] = useState({});
   const [showBookedSection, setShowBookedSection] = useState(false);
+  const [showArchivedSection, setShowArchivedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
   const [wagesPeriodFilter, setWagesPeriodFilter] = useState('all');
   const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
   const [showClockInPrompt, setShowClockInPrompt] = useState(false);
-  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
+  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null); // { date, hoursWorked, entryId }
+  const [autoClockOutProgress, setAutoClockOutProgress] = useState(50);
+  const [autoClockOutNote, setAutoClockOutNote] = useState('');
   const [clockInPickingJob, setClockInPickingJob] = useState(false);
   const [clockInGeneralDesc, setClockInGeneralDesc] = useState('');
   const [clockOutBannerDismissed, setClockOutBannerDismissed] = useState(false);
@@ -1840,8 +1843,11 @@ function EyeconMoments() {
           setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: fivePmThatDay, hoursWorked: hours } : e));
           setAutoClockOutInfo({
             date: fivePmThatDay.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
-            hoursWorked: hours
+            hoursWorked: hours,
+            entryId: openEntry.id
           });
+          setAutoClockOutProgress(50);
+          setAutoClockOutNote('');
         }
       }
 
@@ -2029,6 +2035,22 @@ function EyeconMoments() {
     }
   };
 
+  const saveAutoClockOutQualification = async () => {
+    if (!autoClockOutInfo?.entryId) return;
+    const updateData = { progress_percent: autoClockOutProgress };
+    if (autoClockOutNote.trim()) updateData.progress_note = autoClockOutNote.trim();
+    await db.from('time_entries').update(updateData).eq('id', autoClockOutInfo.entryId);
+    setTimeEntries(prev => prev.map(e => e.id === autoClockOutInfo.entryId
+      ? { ...e, progressPercent: autoClockOutProgress, progressNote: autoClockOutNote.trim() || null }
+      : e));
+  };
+
+  const dismissAutoClockOutInfo = () => {
+    setAutoClockOutInfo(null);
+    setAutoClockOutProgress(50);
+    setAutoClockOutNote('');
+  };
+
   const initiateClockOut = (entryId) => {
     const entry = timeEntries.find(e => e.id === entryId);
     let defaultPercent = 0;
@@ -2109,6 +2131,10 @@ function EyeconMoments() {
     if (newStatus === 'completed') {
       const stage = job.stages.find(s => s.id === stageId);
       const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      sendActivityPush('✅ Stage Completed', `${stageLabel} done on ${job.jobName}`);
+      if (stage?.assignedTo && stage.assignedTo !== currentUser?.id) {
+        sendPushToEmployee(stage.assignedTo, '✅ Stage Marked Complete', `Your "${stageLabel}" stage on ${job.jobName} has been marked complete`);
+      }
       setProjectFileModal({ jobId, jobName: job.jobName, stageName: stage?.name || '', stageLabel });
       // If this stage already has a drive file (prior session), queue goto prompt for the next stage
       const existingFile = (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === stage?.name);
@@ -2126,6 +2152,11 @@ function EyeconMoments() {
     const newStages = job.stages.map(s => s.id === stageId ? { ...s, assignedTo: parseInt(employeeId) } : s);
     await db.from('jobs').update({ stages: newStages }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, stages: newStages } : j));
+    if (employeeId) {
+      const stage = job.stages.find(s => s.id === stageId);
+      const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      sendPushToEmployee(parseInt(employeeId), '🎬 Stage Assigned', `You've been assigned "${stageLabel}" on ${job.jobName}`);
+    }
   };
 
   const updatePhotoStatus = async (jobId, newStatus) => {
@@ -2891,6 +2922,7 @@ function EyeconMoments() {
     }]).select().single();
     if (error) { alert('Failed to save: ' + error.message); return; }
     setInquiries(prev => [rowToInquiry(data), ...prev]);
+    sendActivityPush('📥 New CRM Lead', `${crmAIEditForm.name} added via Instagram scan`);
     setShowCRMAIModal(false); setCrmAIImage(null); setCrmAIExtracted(null); setCrmAIEditForm(null);
     alert('Contact added to CRM!');
   };
@@ -3177,7 +3209,18 @@ function EyeconMoments() {
     setEmployees(prev => prev.map(emp => emp.id === employeeId ? { ...emp, [field]: value } : emp));
   };
 
-  const getFilteredInquiries = () => inquiryFilter === 'all' ? inquiries : inquiries.filter(inq => inq.status === inquiryFilter);
+  const isArchivedInquiry = (i) => {
+    if (i.status === 'declined') return true;
+    if (i.status !== 'booked' && i.eventDate) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      return new Date(i.eventDate) < today;
+    }
+    return false;
+  };
+  const getFilteredInquiries = () => {
+    const active = inquiries.filter(i => !isArchivedInquiry(i));
+    return inquiryFilter === 'all' ? active : active.filter(inq => inq.status === inquiryFilter);
+  };
   const getJobHours = (jobId) => timeEntries.filter(e => e.jobId === jobId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
   const getEmployeeHours = (employeeId) => timeEntries.filter(e => e.employeeId === employeeId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
   const getLatestProgress = (jobId) => {
@@ -5638,16 +5681,49 @@ Notes: ${j.notes || 'none'}`;
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
             <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
               {autoClockOutInfo && (
-                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
-                  <div className="flex items-start gap-3">
+                <div className="p-5" style={{borderBottom: showClockInPrompt ? '1px solid rgba(193,167,106,0.15)' : undefined}}>
+                  <div className="flex items-start gap-3 mb-4">
                     <span className="text-2xl">⏰</span>
                     <div>
-                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Did you forget to clock out?</h3>
                       <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
-                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                        You were auto clocked out on <span className="text-white font-medium">{autoClockOutInfo.date}</span> — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> was logged. What progress did you make?
                       </p>
-                      <p className="text-xs mt-1" style={{color:'#6a7d90'}}>Check your hours tab if this doesn't look right.</p>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <span className={`text-4xl font-bold tabular-nums ${autoClockOutProgress >= 80 ? 'text-green-400' : autoClockOutProgress >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {autoClockOutProgress}%
+                      </span>
+                    </div>
+                    <input type="range" min="0" max="100" step="5"
+                      value={autoClockOutProgress}
+                      onChange={e => setAutoClockOutProgress(Number(e.target.value))}
+                      className="w-full" style={{accentColor:'#C1A76A'}} />
+                    <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.1)'}}>
+                      <div className={`h-full rounded-full transition-all ${autoClockOutProgress >= 80 ? 'bg-green-500' : autoClockOutProgress >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{width: autoClockOutProgress + '%'}} />
+                    </div>
+                    <input type="text" placeholder="Add a note (optional)"
+                      value={autoClockOutNote}
+                      onChange={e => setAutoClockOutNote(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white"
+                      style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} />
+                    {!showClockInPrompt && (
+                      <>
+                        <button
+                          onClick={async () => { await saveAutoClockOutQualification(); dismissAutoClockOutInfo(); }}
+                          className="w-full py-3 rounded-xl font-bold text-sm"
+                          style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}>
+                          ✓ Save Progress
+                        </button>
+                        <button onClick={dismissAutoClockOutInfo}
+                          className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                          Skip
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -5704,9 +5780,10 @@ Notes: ${j.notes || 'none'}`;
                       <button
                         disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
                         onClick={async () => {
+                          if (autoClockOutInfo) await saveAutoClockOutQualification();
                           const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                           const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                          setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc('');
                           if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                         }}
                         className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
@@ -5720,7 +5797,7 @@ Notes: ${j.notes || 'none'}`;
                         🟢 Clock In
                       </button>
                       <button
-                        onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                        onClick={() => { setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm"
                         style={{color:'#8a9bb0'}}
                       >
@@ -5730,17 +5807,6 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 );
               })()}
-              {!showClockInPrompt && autoClockOutInfo && (
-                <div className="p-4">
-                  <button
-                    onClick={() => setAutoClockOutInfo(null)}
-                    className="w-full py-2.5 rounded-xl text-sm"
-                    style={{color:'#8a9bb0'}}
-                  >
-                    Got it
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -7647,15 +7713,49 @@ Notes: ${j.notes || 'none'}`;
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
             <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
               {autoClockOutInfo && (
-                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
-                  <div className="flex items-start gap-3">
+                <div className="p-5" style={{borderBottom: showClockInPrompt ? '1px solid rgba(193,167,106,0.15)' : undefined}}>
+                  <div className="flex items-start gap-3 mb-4">
                     <span className="text-2xl">⏰</span>
                     <div>
-                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Did you forget to clock out?</h3>
                       <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
-                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                        You were auto clocked out on <span className="text-white font-medium">{autoClockOutInfo.date}</span> — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> was logged. What progress did you make?
                       </p>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <span className={`text-4xl font-bold tabular-nums ${autoClockOutProgress >= 80 ? 'text-green-400' : autoClockOutProgress >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {autoClockOutProgress}%
+                      </span>
+                    </div>
+                    <input type="range" min="0" max="100" step="5"
+                      value={autoClockOutProgress}
+                      onChange={e => setAutoClockOutProgress(Number(e.target.value))}
+                      className="w-full" style={{accentColor:'#C1A76A'}} />
+                    <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.1)'}}>
+                      <div className={`h-full rounded-full transition-all ${autoClockOutProgress >= 80 ? 'bg-green-500' : autoClockOutProgress >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{width: autoClockOutProgress + '%'}} />
+                    </div>
+                    <input type="text" placeholder="Add a note (optional)"
+                      value={autoClockOutNote}
+                      onChange={e => setAutoClockOutNote(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white"
+                      style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} />
+                    {!showClockInPrompt && (
+                      <>
+                        <button
+                          onClick={async () => { await saveAutoClockOutQualification(); dismissAutoClockOutInfo(); }}
+                          className="w-full py-3 rounded-xl font-bold text-sm"
+                          style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}>
+                          ✓ Save Progress
+                        </button>
+                        <button onClick={dismissAutoClockOutInfo}
+                          className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                          Skip
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -7707,9 +7807,10 @@ Notes: ${j.notes || 'none'}`;
                       <button
                         disabled={!clockInPickingJob || (clockInPickingJob === 'general' && !clockInGeneralDesc.trim())}
                         onClick={async () => {
+                          if (autoClockOutInfo) await saveAutoClockOutQualification();
                           const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                           const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                          setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                          setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc('');
                           if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                         }}
                         className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
@@ -7718,7 +7819,7 @@ Notes: ${j.notes || 'none'}`;
                           cursor:(!clockInPickingJob||(clockInPickingJob==='general'&&!clockInGeneralDesc.trim()))?'not-allowed':'pointer'}}>
                         🟢 Clock In
                       </button>
-                      <button onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                      <button onClick={() => { setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
                         Skip for now
                       </button>
@@ -7726,11 +7827,6 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 );
               })()}
-              {!showClockInPrompt && autoClockOutInfo && (
-                <div className="p-4">
-                  <button onClick={() => setAutoClockOutInfo(null)} className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>Got it</button>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -15779,6 +15875,7 @@ The Eyecon Moments Team
   if (currentView === 'crm') {
     const filteredInquiries = getFilteredInquiries();
     const bookedInquiries = inquiries.filter(i => i.status === 'booked');
+    const archivedInquiries = inquiries.filter(i => isArchivedInquiry(i));
     const pipelineInquiries = filteredInquiries.filter(i => i.status !== 'booked');
 
     // Calculate CRM response stats
@@ -15810,6 +15907,7 @@ The Eyecon Moments Team
     }).length;
     
     const needingResponse = inquiries.filter(i => {
+      if (isArchivedInquiry(i)) return false;
       const daysSince = Math.floor((currentTime - new Date(i.submittedDate)) / (1000 * 60 * 60 * 24));
       return i.status === 'new' && daysSince > 1;
     }).length;
@@ -15880,7 +15978,7 @@ The Eyecon Moments Team
               📸 Add from Screenshot
             </button>
             <div className="flex gap-2 overflow-x-auto">
-              {['all', 'new', 'contacted', 'quoted', 'declined'].map(status => (
+              {['all', 'new', 'contacted', 'quoted'].map(status => (
                 <button key={status} onClick={() => setInquiryFilter(status)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
                     inquiryFilter === status
@@ -15896,6 +15994,7 @@ The Eyecon Moments Team
           {/* Follow-up needed alert */}
           {(() => {
             const needsFollowUp = inquiries.filter(i => {
+              if (isArchivedInquiry(i)) return false;
               if (i.status !== 'quoted') return false;
               const quotedDate = new Date(i.quotedDate || i.submittedDate);
               const daysSinceQuoted = Math.floor((currentTime - quotedDate) / (1000 * 60 * 60 * 24));
@@ -16823,6 +16922,74 @@ www.eyeconmoments.co.uk`;
               )}
             </div>
           )}
+
+          {/* Archived — declined + past-date leads */}
+          {archivedInquiries.length > 0 && (
+            <div className={`rounded-lg shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <button
+                onClick={() => setShowArchivedSection(v => !v)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} transition-colors`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-gray-400 text-lg">📁</span>
+                  <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Archived</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                    {archivedInquiries.length}
+                  </span>
+                </span>
+                <span className={`text-lg transition-transform duration-200 ${showArchivedSection ? 'rotate-180' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>▾</span>
+              </button>
+              {showArchivedSection && (
+                <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                  {archivedInquiries.map(inquiry => {
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const datePassed = inquiry.status !== 'booked' && inquiry.eventDate && new Date(inquiry.eventDate) < today;
+                    const archiveReason = inquiry.status === 'declined' ? 'Declined' : datePassed ? 'Date passed' : 'Archived';
+                    return (
+                      <div key={inquiry.id} className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-start gap-3 min-w-0">
+                            {inquiry.contactPhoto
+                              ? <img src={inquiry.contactPhoto} alt="contact" className="w-10 h-10 rounded-lg object-cover border border-gray-300 shrink-0 opacity-60" />
+                              : <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-base shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>📁</div>
+                            }
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{inquiry.customerName}</h3>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  inquiry.status === 'declined'
+                                    ? (darkMode ? 'bg-red-900 text-red-400' : 'bg-red-100 text-red-600')
+                                    : (darkMode ? 'bg-amber-900 text-amber-400' : 'bg-amber-100 text-amber-700')
+                                }`}>{archiveReason}</span>
+                              </div>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {inquiry.eventType}{inquiry.eventDate ? ` — ${formatDate(inquiry.eventDate)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
+                            <button onClick={() => deleteInquiry(inquiry.id)} className="text-red-400 hover:text-red-600 text-xs" title="Delete">🗑️</button>
+                            <select
+                              value={inquiry.status}
+                              onChange={e => updateInquiryStatus(inquiry.id, e.target.value)}
+                              className={`text-xs rounded px-2 py-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                              {['new','contacted','quoted','booked','declined'].map(s => (
+                                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {inquiry.notes && parseInquiryLog(inquiry.notes).original && (
+                          <p className={`text-xs mt-2 line-clamp-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{parseInquiryLog(inquiry.notes).original}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
           {/* CRM Screenshot AI Modal */}
@@ -17163,6 +17330,7 @@ Eyecon Moments
                     }]).select().single();
                     if (!error && data) {
                       setInquiries(prev => [rowToInquiry(data), ...prev]);
+                      sendActivityPush('📥 New CRM Lead', `${addContactForm.name.trim()} added to CRM`);
                       setShowAddContactModal(false);
                     } else {
                       alert('Save failed: ' + (error?.message || 'unknown error'));
@@ -20603,6 +20771,7 @@ Eyecon Moments
           }]).select().single();
           if (!error && data) {
             setInquiries(prev => [rowToInquiry(data), ...prev]);
+            sendActivityPush('📥 New CRM Lead', `${quoteData.clientName} added as "Quoted"`);
             alert('✅ New CRM lead created as "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
           } else {
             alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');

@@ -37,6 +37,8 @@
 // }
 // ────────────────────────────────────────────────────────────────────────────
 
+const webPush = require('web-push');
+
 const SUPABASE_AUTH = () => {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   return {
@@ -105,6 +107,37 @@ exports.handler = async (event) => {
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
     console.log('Inquiry inserted:', row.customer_name, row.email);
+
+    // Notify admins via push notification
+    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+      try {
+        // Fetch all employees to find admin/manager IDs
+        const empRes = await fetch(`${process.env.SUPABASE_URL}/rest/v1/employees?select=id,role`, {
+          headers: SUPABASE_AUTH(),
+        });
+        const employees = await empRes.json();
+        const adminIds = (Array.isArray(employees) ? employees : [])
+          .filter(e => e.role === 'admin' || e.role === 'manager')
+          .map(e => e.id);
+
+        if (adminIds.length) {
+          const subRes = await fetch(
+            `${process.env.SUPABASE_URL}/rest/v1/push_subscriptions?employee_id=in.(${adminIds.join(',')})&select=subscription`,
+            { headers: SUPABASE_AUTH() }
+          );
+          const subRows = await subRes.json();
+          const subs = (Array.isArray(subRows) ? subRows : []).map(r => r.subscription).filter(Boolean);
+          if (subs.length) {
+            webPush.setVapidDetails('mailto:eyecon.moments@gmail.com', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
+            const payload = JSON.stringify({ title: '📥 New Enquiry', body: `${row.customer_name} submitted a form enquiry`, icon: '/logo.png' });
+            await Promise.allSettled(subs.map(sub => webPush.sendNotification(sub, payload)));
+          }
+        }
+      } catch (pushErr) {
+        console.warn('Push notification failed:', pushErr.message);
+      }
+    }
+
     return { statusCode: 200, headers: cors, body: JSON.stringify({ ok: true, id: data?.[0]?.id }) };
   } catch (e) {
     console.error('form-webhook error:', e.message);
