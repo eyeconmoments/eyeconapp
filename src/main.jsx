@@ -53,6 +53,9 @@ const rowToJob = (r) => ({
   finalPaymentReceived: r.final_payment_received || (r.wage_entries || []).some(e => e.type === 'final_payment' && e.received) || false,
   finalPaymentDate: r.final_payment_date || (r.wage_entries || []).find(e => e.type === 'final_payment')?.date || null,
   finalPaymentBy: r.final_payment_by || (r.wage_entries || []).find(e => e.type === 'final_payment')?.by || null,
+  gallerySentAt: r.gallery_sent_at ? new Date(r.gallery_sent_at) : null,
+  clientAddress: r.client_address || '',
+  jobSent: r.job_sent || false,
 });
 
 const rowToEmployee = (r) => ({
@@ -78,6 +81,14 @@ ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS final_payment_received boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS final_payment_date timestamptz,
   ADD COLUMN IF NOT EXISTS final_payment_by text;
+*/
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS gallery_sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS client_address text,
+  ADD COLUMN IF NOT EXISTS job_sent boolean DEFAULT false;
 */
 
 
@@ -2600,6 +2611,22 @@ function EyeconMoments() {
     if (!isArchived) {
       window.__toast(`"${job?.jobName}" archived. Find it in Jobs → Show Archived or the Files tab.`, 'info', 6000);
     }
+  };
+
+  const markJobSent = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    await db.from('jobs').update({ job_sent: true, archived: true }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, jobSent: true, archived: true } : j));
+    setArchivedJobIds(prev => [...new Set([...prev, jobId])]);
+    setArchivedJobsData(prev => [...prev, { ...job, jobSent: true, archived: true }]);
+    logActivity('Memory stick sent', job.jobName, '');
+    window.__toast(`"${job.jobName}" marked as sent and archived.`, 'success', 5000);
+  };
+
+  const saveClientAddress = async (jobId, address) => {
+    await db.from('jobs').update({ client_address: address }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, clientAddress: address } : j));
   };
 
     const addFileLocation = async (jobId) => {
@@ -14128,6 +14155,16 @@ The Eyecon Moments Team
       return true;
     });
 
+    // Jobs ready to post: complete, gallery sent 30+ days ago, no open revisions, not sent/archived
+    const readyToSendJobs = editingJobs.filter(job => {
+      if (archivedJobIds.includes(job.id) || job.jobSent) return false;
+      if (!isJobFullyComplete(job)) return false;
+      if (!job.gallerySentAt) return false;
+      const daysSince = Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000);
+      if (daysSince < 30) return false;
+      return !revisions.some(r => !r.completed && r.title.toLowerCase().includes(job.jobName.toLowerCase()));
+    });
+
     // Pipeline stages for Kanban
     const pipelineStages = [
       { name: 'Cutting, Syncing & Organising', key: 0 },
@@ -14423,6 +14460,55 @@ The Eyecon Moments Team
             </div>
           )}
           
+          {/* Ready to Send Section */}
+          {!jobsPipelineView && readyToSendJobs.length > 0 && (
+            <div className={`rounded-lg border-2 p-4 ${darkMode ? 'bg-amber-900 border-amber-600' : 'bg-amber-50 border-amber-300'}`}>
+              <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-amber-300' : 'text-amber-800'}`}>
+                📬 Ready to Send ({readyToSendJobs.length})
+                <span className={`text-xs font-normal ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>— gallery sent 30+ days ago, no revisions outstanding</span>
+              </h3>
+              <div className="space-y-2">
+                {readyToSendJobs.map(job => (
+                  <div key={job.id} className={`rounded-lg p-3 border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-amber-200'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                        {job.gallerySentAt && (
+                          <p className={`text-xs mt-0.5 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                            Gallery sent {Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000)} days ago
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={() => {
+                        if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
+                        markJobSent(job.id);
+                      }} className="whitespace-nowrap px-3 py-1.5 rounded text-sm font-semibold bg-green-500 text-white hover:bg-green-600 flex-shrink-0">
+                        📬 Mark as Sent
+                      </button>
+                    </div>
+                    {job.clientAddress ? (
+                      <div className={`mt-2 flex items-center gap-2`}>
+                        <p className={`text-xs flex-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📮 {job.clientAddress}</p>
+                        <button onClick={() => saveClientAddress(job.id, '')} className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>Edit</button>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          placeholder="Enter client's home address to post memory stick…"
+                          defaultValue=""
+                          onBlur={e => { if (e.target.value.trim()) saveClientAddress(job.id, e.target.value.trim()); }}
+                          className={`w-full px-2 py-1.5 rounded border text-xs ${darkMode ? 'bg-gray-700 border-gray-500 text-white placeholder-gray-500' : 'bg-white border-amber-300 placeholder-gray-400'}`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Job List */}
           {!jobsPipelineView && (
           <div className="space-y-3">
@@ -14861,7 +14947,7 @@ The Eyecon Moments Team
                       const saveDlv = (link, sent) => { localStorage.setItem(dlvKey, JSON.stringify({ link, sent })); refreshLocal(); };
                       return (
                         <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📤 Gallery / Delivery Link {dlv?.sent ? <span className="text-green-500 font-normal ml-1">✅ Sent</span> : null}</p>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📤 Gallery / Delivery Link {dlv?.sent ? <span className="text-green-500 font-normal ml-1">✅ Sent</span> : null}{job.gallerySentAt ? <span className={`font-normal ml-1 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>· emailed {job.gallerySentAt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span> : null}</p>
                           <div className="space-y-1.5">
                             <input type="url" placeholder="Paste Pixieset, WeTransfer or Drive link..."
                               value={inputVal}
@@ -14878,7 +14964,51 @@ The Eyecon Moments Team
                       );
                     })()}
 
+                    {/* Client address prompt for ready-to-send jobs */}
+                    {isJobFullyComplete(job) && !isArchived && !job.jobSent && job.gallerySentAt && (() => {
+                      const daysSinceSent = Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000);
+                      const hasOpenRevision = revisions.some(r => !r.completed && r.title.toLowerCase().includes(job.jobName.toLowerCase()));
+                      const readyToSend = daysSinceSent >= 30 && !hasOpenRevision;
+                      if (!readyToSend) return null;
+                      return (
+                        <div className={`mb-3 p-3 rounded-lg border-2 ${darkMode ? 'bg-amber-900 border-amber-600' : 'bg-amber-50 border-amber-300'}`}>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-800'}`}>
+                            📬 Ready to post — gallery sent {daysSinceSent} days ago, no revisions
+                          </p>
+                          {job.clientAddress ? (
+                            <div className="flex items-center gap-2">
+                              <p className={`text-xs flex-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📮 {job.clientAddress}</p>
+                              <button onClick={() => saveClientAddress(job.id, '')} className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>Edit</button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Client's home address (for posting memory stick)"
+                                defaultValue=""
+                                onBlur={e => { if (e.target.value.trim()) saveClientAddress(job.id, e.target.value.trim()); }}
+                                className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400' : 'bg-white border-amber-300 placeholder-gray-400'}`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div className="flex gap-2">
+                      {isJobFullyComplete(job) && !isArchived && !job.jobSent && (
+                        <button onClick={() => {
+                          if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
+                          markJobSent(job.id);
+                        }} className="flex-1 px-3 py-2 rounded text-sm font-semibold bg-green-500 text-white hover:bg-green-600">
+                          📬 Mark as Sent
+                        </button>
+                      )}
+                      {job.jobSent && (
+                        <span className="flex-1 px-3 py-2 rounded text-sm font-semibold text-center bg-green-100 text-green-700">
+                          ✅ Sent
+                        </span>
+                      )}
                       <button onClick={() => toggleArchiveJob(job.id)}
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
                         <Archive /> {isArchived ? 'Unarchive' : 'Archive'}
@@ -15333,6 +15463,9 @@ The Eyecon Moments Team
                       const body = encodeURIComponent(emailBody);
                       openMail(`mailto:${encodeURIComponent(galleryEmailModal.email)}?subject=${subject}&body=${body}`);
                       logActivity('Gallery email sent', gemJob?.jobName || '', galleryEmailModal.email);
+                      const _gSentAt = new Date().toISOString();
+                      db.from('jobs').update({ gallery_sent_at: _gSentAt }).eq('id', galleryEmailModal.jobId);
+                      setEditingJobs(prev => prev.map(j => j.id === galleryEmailModal.jobId ? { ...j, gallerySentAt: new Date(_gSentAt) } : j));
                       setGalleryEmailModal(null);
                     }}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity ${(!galleryEmailModal.email || !galleryEmailModal.driveLink) ? 'opacity-40 cursor-not-allowed' : ''}`}
