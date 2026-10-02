@@ -1275,6 +1275,7 @@ function EyeconMoments() {
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [inquiryLogInput, setInquiryLogInput] = useState({});
   const [showBookedSection, setShowBookedSection] = useState(false);
+  const [showArchivedSection, setShowArchivedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
@@ -3177,7 +3178,18 @@ function EyeconMoments() {
     setEmployees(prev => prev.map(emp => emp.id === employeeId ? { ...emp, [field]: value } : emp));
   };
 
-  const getFilteredInquiries = () => inquiryFilter === 'all' ? inquiries : inquiries.filter(inq => inq.status === inquiryFilter);
+  const isArchivedInquiry = (i) => {
+    if (i.status === 'declined') return true;
+    if (i.status !== 'booked' && i.eventDate) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      return new Date(i.eventDate) < today;
+    }
+    return false;
+  };
+  const getFilteredInquiries = () => {
+    const active = inquiries.filter(i => !isArchivedInquiry(i));
+    return inquiryFilter === 'all' ? active : active.filter(inq => inq.status === inquiryFilter);
+  };
   const getJobHours = (jobId) => timeEntries.filter(e => e.jobId === jobId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
   const getEmployeeHours = (employeeId) => timeEntries.filter(e => e.employeeId === employeeId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
 
@@ -15737,6 +15749,7 @@ The Eyecon Moments Team
   if (currentView === 'crm') {
     const filteredInquiries = getFilteredInquiries();
     const bookedInquiries = inquiries.filter(i => i.status === 'booked');
+    const archivedInquiries = inquiries.filter(i => isArchivedInquiry(i));
     const pipelineInquiries = filteredInquiries.filter(i => i.status !== 'booked');
 
     // Calculate CRM response stats
@@ -15768,6 +15781,7 @@ The Eyecon Moments Team
     }).length;
     
     const needingResponse = inquiries.filter(i => {
+      if (isArchivedInquiry(i)) return false;
       const daysSince = Math.floor((currentTime - new Date(i.submittedDate)) / (1000 * 60 * 60 * 24));
       return i.status === 'new' && daysSince > 1;
     }).length;
@@ -15838,7 +15852,7 @@ The Eyecon Moments Team
               📸 Add from Screenshot
             </button>
             <div className="flex gap-2 overflow-x-auto">
-              {['all', 'new', 'contacted', 'quoted', 'declined'].map(status => (
+              {['all', 'new', 'contacted', 'quoted'].map(status => (
                 <button key={status} onClick={() => setInquiryFilter(status)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
                     inquiryFilter === status
@@ -15854,6 +15868,7 @@ The Eyecon Moments Team
           {/* Follow-up needed alert */}
           {(() => {
             const needsFollowUp = inquiries.filter(i => {
+              if (isArchivedInquiry(i)) return false;
               if (i.status !== 'quoted') return false;
               const quotedDate = new Date(i.quotedDate || i.submittedDate);
               const daysSinceQuoted = Math.floor((currentTime - quotedDate) / (1000 * 60 * 60 * 24));
@@ -16774,6 +16789,74 @@ www.eyeconmoments.co.uk`;
                             </div>
                           );
                         })()}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Archived — declined + past-date leads */}
+          {archivedInquiries.length > 0 && (
+            <div className={`rounded-lg shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <button
+                onClick={() => setShowArchivedSection(v => !v)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} transition-colors`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-gray-400 text-lg">📁</span>
+                  <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Archived</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                    {archivedInquiries.length}
+                  </span>
+                </span>
+                <span className={`text-lg transition-transform duration-200 ${showArchivedSection ? 'rotate-180' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>▾</span>
+              </button>
+              {showArchivedSection && (
+                <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                  {archivedInquiries.map(inquiry => {
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const datePassed = inquiry.status !== 'booked' && inquiry.eventDate && new Date(inquiry.eventDate) < today;
+                    const archiveReason = inquiry.status === 'declined' ? 'Declined' : datePassed ? 'Date passed' : 'Archived';
+                    return (
+                      <div key={inquiry.id} className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-start gap-3 min-w-0">
+                            {inquiry.contactPhoto
+                              ? <img src={inquiry.contactPhoto} alt="contact" className="w-10 h-10 rounded-lg object-cover border border-gray-300 shrink-0 opacity-60" />
+                              : <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-base shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>📁</div>
+                            }
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{inquiry.customerName}</h3>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  inquiry.status === 'declined'
+                                    ? (darkMode ? 'bg-red-900 text-red-400' : 'bg-red-100 text-red-600')
+                                    : (darkMode ? 'bg-amber-900 text-amber-400' : 'bg-amber-100 text-amber-700')
+                                }`}>{archiveReason}</span>
+                              </div>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {inquiry.eventType}{inquiry.eventDate ? ` — ${formatDate(inquiry.eventDate)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
+                            <button onClick={() => deleteInquiry(inquiry.id)} className="text-red-400 hover:text-red-600 text-xs" title="Delete">🗑️</button>
+                            <select
+                              value={inquiry.status}
+                              onChange={e => updateInquiryStatus(inquiry.id, e.target.value)}
+                              className={`text-xs rounded px-2 py-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                              {['new','contacted','quoted','booked','declined'].map(s => (
+                                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {inquiry.notes && parseInquiryLog(inquiry.notes).original && (
+                          <p className={`text-xs mt-2 line-clamp-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{parseInquiryLog(inquiry.notes).original}</p>
+                        )}
                       </div>
                     );
                   })}
