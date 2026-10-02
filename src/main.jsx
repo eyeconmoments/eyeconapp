@@ -3223,6 +3223,12 @@ function EyeconMoments() {
   };
   const getJobHours = (jobId) => timeEntries.filter(e => e.jobId === jobId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
   const getEmployeeHours = (employeeId) => timeEntries.filter(e => e.employeeId === employeeId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
+  const getLatestProgress = (jobId) => {
+    const entries = timeEntries
+      .filter(e => String(e.jobId) === String(jobId) && e.progressPercent !== null && e.clockOut)
+      .sort((a, b) => new Date(b.clockOut) - new Date(a.clockOut));
+    return entries.length > 0 ? entries[0].progressPercent : null;
+  };
 
   // Save earnings override helper
   const saveEarningsOverride = (key, val) => {
@@ -6137,6 +6143,23 @@ Notes: ${j.notes || 'none'}`;
                               <option value="in-progress">In Progress</option>
                             </select>
                           )}
+                          {(() => {
+                            const photoDone = job.photoStatus === 'completed';
+                            const reported = photoDone ? 100 : (getLatestProgress(job.id) ?? 0);
+                            return (
+                              <div className="mt-2">
+                                <div className="flex justify-between items-center mb-0.5">
+                                  <span className={`text-xs ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>Progress</span>
+                                  <span className={`text-xs font-semibold ${photoDone ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                                    {photoDone ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
+                                  </span>
+                                </div>
+                                <div className={`w-full rounded-full h-1.5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                  <div className={`h-1.5 rounded-full transition-all ${photoDone ? 'bg-green-500' : 'bg-orange-400'}`} style={{width:`${reported}%`}} />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                       {job.hasVideo && job.stages.filter(s => s.assignedTo === currentUser.id).map(stage => (
@@ -10187,14 +10210,7 @@ Notes: ${j.notes || 'none'}`;
                   const byShootDate = (a, b) => new Date(a.shootDate || 0) - new Date(b.shootDate || 0);
                   const photoJobs = activeJobsList.filter(j => j.hasPhotos).sort(byShootDate);
                   const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages).sort(byShootDate);
-                  // Latest reported progress for any job: take the highest progressPercent
-                  // from clock-out entries (prefer most recent non-null)
-                  const getLatestProgress = (jobId) => {
-                    const entries = timeEntries
-                      .filter(e => String(e.jobId) === String(jobId) && e.progressPercent !== null && e.clockOut)
-                      .sort((a, b) => new Date(b.clockOut) - new Date(a.clockOut));
-                    return entries.length > 0 ? entries[0].progressPercent : null;
-                  };
+                  // getLatestProgress is defined at component level
                   const ProgressBar = ({ pct, color }) => (
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                       <div className={`h-1.5 rounded-full transition-all ${color}`} style={{width:`${pct}%`}} />
@@ -14530,6 +14546,15 @@ The Eyecon Moments Team
                                 {isAdmin && photoLoc.setAt && <div className="opacity-60 text-xs">Logged {new Date(photoLoc.setAt).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}</div>}
                               </div>
                             )}
+                            <div className="mt-2">
+                              <div className="flex justify-between items-center mb-0.5">
+                                <span className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Progress</span>
+                                <span className="text-xs font-semibold text-green-600">✅ 100%</span>
+                              </div>
+                              <div className={`w-full rounded-full h-1.5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                <div className="h-1.5 rounded-full bg-green-500 w-full" />
+                              </div>
+                            </div>
                           </div>
                         </div>
                         );
@@ -14558,6 +14583,23 @@ The Eyecon Moments Team
                             <option value={0}>Unassigned</option>
                             {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                           </select>
+                          {(() => {
+                            const photoDone = job.photoStatus === 'completed';
+                            const reported = photoDone ? 100 : (getLatestProgress(job.id) ?? 0);
+                            return (
+                              <div className="mt-2">
+                                <div className="flex justify-between items-center mb-0.5">
+                                  <span className={`text-xs ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>Progress</span>
+                                  <span className={`text-xs font-semibold ${photoDone ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                                    {photoDone ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
+                                  </span>
+                                </div>
+                                <div className={`w-full rounded-full h-1.5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                  <div className={`h-1.5 rounded-full transition-all ${photoDone ? 'bg-green-500' : 'bg-orange-400'}`} style={{width:`${reported}%`}} />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )
                     )}
