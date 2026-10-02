@@ -46,6 +46,7 @@ const rowToJob = (r) => ({
   videoEditHours: r.video_edit_hours || 0, photoEditHours: r.photo_edit_hours || 0,
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
+  holdUntil: r.hold_until ? new Date(r.hold_until) : null,
   wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
   driveFolderId: (r.file_locations || []).find(f => f.type === 'drive_folder')?.id || null,
   driveFolderUrl: (r.file_locations || []).find(f => f.type === 'drive_folder')?.url || null,
@@ -89,6 +90,11 @@ ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS gallery_sent_at timestamptz,
   ADD COLUMN IF NOT EXISTS client_address text,
   ADD COLUMN IF NOT EXISTS job_sent boolean DEFAULT false;
+*/
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS hold_until timestamptz;
 */
 
 
@@ -1283,6 +1289,7 @@ function EyeconMoments() {
   const [jobSearchQuery, setJobSearchQuery] = useState('');
   const [archivedJobIds, setArchivedJobIds] = useState([]);
   const [archivedJobsData, setArchivedJobsData] = useState([]); // full job objects for archived jobs (Files search)
+  const [showOnHoldSection, setShowOnHoldSection] = useState(false);
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [inquiryLogInput, setInquiryLogInput] = useState({});
   const [showBookedSection, setShowBookedSection] = useState(false);
@@ -2287,6 +2294,8 @@ function EyeconMoments() {
     const videoDone = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
     return photoDone && videoDone;
   };
+  const isJobOnHold = (job) => job.holdUntil && new Date(job.holdUntil) > new Date();
+  const isHoldExpired = (job) => job.holdUntil && new Date(job.holdUntil) <= new Date();
   const showNotification = (title, body) => {
     try {
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -2407,10 +2416,10 @@ function EyeconMoments() {
     return () => clearInterval(interval);
   }, [currentUser, timeEntries]);
 
-  const getOverdueJobs = () => editingJobs.filter(job => { const d = getDaysUntilDeadline(job.deadline); return isFinite(d) && d < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job); });
+  const getOverdueJobs = () => editingJobs.filter(job => { const d = getDaysUntilDeadline(job.deadline); return isFinite(d) && d < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job) && !isJobOnHold(job); });
   const getDueSoonJobs = () => editingJobs.filter(job => {
     const days = getDaysUntilDeadline(job.deadline);
-    return days >= 0 && days <= 7 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job);
+    return days >= 0 && days <= 7 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job) && !isJobOnHold(job);
   });
 
   // Team Workload Calculator
@@ -2611,6 +2620,41 @@ function EyeconMoments() {
     if (!isArchived) {
       window.__toast(`"${job?.jobName}" archived. Find it in Jobs → Show Archived or the Files tab.`, 'info', 6000);
     }
+  };
+
+  const putJobOnHold = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const holdNote = `\n[${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}] Put on hold (awaiting payment) — resumes ${until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const newNotes = (job.notes || '') + holdNote;
+    await db.from('jobs').update({ hold_until: until.toISOString(), notes: newNotes }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, holdUntil: until, notes: newNotes } : j));
+    logActivity('Job put on hold', job.jobName, '30-day payment hold');
+    window.__toast?.(`"${job.jobName}" on hold for 30 days.`, 'info', 5000);
+  };
+
+  const resumeJobFromHold = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const resumeNote = `\n[${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}] Hold lifted — paid, job resumed`;
+    const newNotes = (job.notes || '') + resumeNote;
+    await db.from('jobs').update({ hold_until: null, notes: newNotes }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, holdUntil: null, notes: newNotes } : j));
+    logActivity('Job resumed from hold', job.jobName, 'Payment received');
+    window.__toast?.(`"${job.jobName}" resumed.`, 'success', 4000);
+  };
+
+  const extendJobHold = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const holdNote = `\n[${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}] Hold extended — still awaiting payment, resumes ${until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const newNotes = (job.notes || '') + holdNote;
+    await db.from('jobs').update({ hold_until: until.toISOString(), notes: newNotes }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, holdUntil: until, notes: newNotes } : j));
+    logActivity('Job hold extended', job.jobName, '30-day extension');
+    window.__toast?.(`"${job.jobName}" hold extended 30 days.`, 'info', 4000);
   };
 
   const markJobSent = async (jobId) => {
@@ -10156,6 +10200,7 @@ Notes: ${j.notes || 'none'}`;
             const _dashTodayMidnight = new Date(); _dashTodayMidnight.setHours(0, 0, 0, 0);
             const activeJobsList = editingJobs.filter(job => {
               if (archivedJobIds.includes(job.id)) return false;
+              if (isJobOnHold(job)) return false;
               if (job.shootDate) { const sd = new Date(job.shootDate); sd.setHours(0,0,0,0); if (sd >= _dashTodayMidnight) return false; }
               return true;
             });
@@ -10389,6 +10434,56 @@ Notes: ${j.notes || 'none'}`;
                     </div>
                   );
                 })()}
+              </div>
+            );
+          })()}
+
+          {/* On Hold — collapsible section on Home */}
+          {(() => {
+            const onHoldJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id) && isJobOnHold(j));
+            const expiredHoldJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id) && isHoldExpired(j));
+            if (onHoldJobs.length === 0 && expiredHoldJobs.length === 0) return null;
+            const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+            return (
+              <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800 border border-orange-700' : 'bg-orange-50 border border-orange-200'}`}>
+                <button className="w-full flex justify-between items-center" onClick={() => setShowOnHoldSection(p => !p)}>
+                  <h3 className={`font-bold ${darkMode ? 'text-orange-300' : 'text-orange-800'}`}>⏸ On Hold ({onHoldJobs.length + expiredHoldJobs.length})</h3>
+                  <span className={`text-xs ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{showOnHoldSection ? '▲ Hide' : '▼ Show'}</span>
+                </button>
+                {showOnHoldSection && (
+                  <div className="mt-3 space-y-2">
+                    {expiredHoldJobs.map(job => (
+                      <div key={job.id} className={`p-3 rounded-lg border-2 ${darkMode ? 'bg-yellow-900 border-yellow-500' : 'bg-yellow-50 border-yellow-400'}`}>
+                        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                        <p className={`text-xs mb-2 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>⚠️ Hold expired — awaiting your decision</p>
+                        {isAdmin && (
+                          <div className="flex gap-2">
+                            <button onClick={() => resumeJobFromHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">✅ Paid, start job</button>
+                            <button onClick={() => extendJobHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600">⏸ Extend 30 days</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {onHoldJobs.map(job => (
+                      <div key={job.id} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-white border border-orange-200'}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-100 text-orange-700'}`}>
+                            until {job.holdUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </span>
+                        </div>
+                        {isAdmin && (
+                          <div className="flex gap-2 mt-2">
+                            <button onClick={() => resumeJobFromHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">✅ Paid, start job</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -14148,12 +14243,15 @@ The Eyecon Moments Team
   if (currentView === 'jobs') {
     const filteredJobs = editingJobs.filter(job => {
       if (!showArchived && archivedJobIds.includes(job.id)) return false;
+      if (isJobOnHold(job) || isHoldExpired(job)) return false;
       if (jobSearchQuery) {
         const query = jobSearchQuery.toLowerCase();
         return job.jobName.toLowerCase().includes(query) || job.customerName.toLowerCase().includes(query);
       }
       return true;
     });
+    const onHoldJobsList = editingJobs.filter(job => !archivedJobIds.includes(job.id) && (isJobOnHold(job) || isHoldExpired(job)))
+      .filter(job => !jobSearchQuery || job.jobName.toLowerCase().includes(jobSearchQuery.toLowerCase()) || job.customerName.toLowerCase().includes(jobSearchQuery.toLowerCase()));
 
     // Jobs ready to post: complete, gallery sent 30+ days ago, no open revisions, not sent/archived
     const readyToSendJobs = editingJobs.filter(job => {
@@ -14506,6 +14604,43 @@ The Eyecon Moments Team
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* On Hold Section — Jobs tab */}
+          {!jobsPipelineView && onHoldJobsList.length > 0 && (
+            <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800 border border-orange-700' : 'bg-orange-50 border border-orange-200'}`}>
+              <button className="w-full flex justify-between items-center" onClick={() => setShowOnHoldSection(p => !p)}>
+                <h3 className={`font-bold ${darkMode ? 'text-orange-300' : 'text-orange-800'}`}>⏸ On Hold ({onHoldJobsList.length})</h3>
+                <span className={`text-xs ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{showOnHoldSection ? '▲ Hide' : '▼ Show'}</span>
+              </button>
+              {showOnHoldSection && (
+                <div className="mt-3 space-y-2">
+                  {onHoldJobsList.map(job => {
+                    const expired = isHoldExpired(job);
+                    return (
+                      <div key={job.id} className={`p-3 rounded-lg border-2 ${expired ? (darkMode ? 'bg-yellow-900 border-yellow-500' : 'bg-yellow-50 border-yellow-400') : (darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-orange-200')}`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                          </div>
+                          {expired
+                            ? <span className={`text-xs px-2 py-0.5 rounded font-semibold ${darkMode ? 'bg-yellow-800 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}>⚠️ Hold expired</span>
+                            : <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-100 text-orange-700'}`}>until {job.holdUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                          }
+                        </div>
+                        {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                          <div className="flex gap-2">
+                            <button onClick={() => resumeJobFromHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">✅ Paid, start job</button>
+                            {expired && <button onClick={() => extendJobHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600">⏸ Extend 30 days</button>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -15008,6 +15143,11 @@ The Eyecon Moments Team
                         <span className="flex-1 px-3 py-2 rounded text-sm font-semibold text-center bg-green-100 text-green-700">
                           ✅ Sent
                         </span>
+                      )}
+                      {!isArchived && !job.jobSent && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                        <button onClick={() => putJobOnHold(job.id)} className="flex-1 px-3 py-2 rounded text-sm bg-orange-100 text-orange-700 hover:bg-orange-200 whitespace-nowrap">
+                          ⏸ On hold
+                        </button>
                       )}
                       <button onClick={() => toggleArchiveJob(job.id)}
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
@@ -18693,7 +18833,7 @@ Eyecon Moments
     });
     
     // Overall completion calculations
-    const activeJobsList = pastJobs.filter(job => !archivedJobIds.includes(job.id));
+    const activeJobsList = pastJobs.filter(job => !archivedJobIds.includes(job.id) && !isJobOnHold(job));
     
     // Photo completion
     const totalPhotoJobs = activeJobsList.filter(j => j.hasPhotos).length;
