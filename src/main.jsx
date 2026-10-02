@@ -45,6 +45,7 @@ const rowToJob = (r) => ({
   numVideographers: r.num_videographers || 0, numPhotographers: r.num_photographers || 0,
   videoEditHours: r.video_edit_hours || 0, photoEditHours: r.photo_edit_hours || 0,
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
+  projectFilesLog: r.project_files_log || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
   wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
   driveFolderId: (r.file_locations || []).find(f => f.type === 'drive_folder')?.id || null,
@@ -1182,6 +1183,8 @@ function EyeconMoments() {
   const [parkedItineraries, setParkedItineraries] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_parked_itins') || '[]'); } catch(e) { return []; } });
   const [showParkedItins, setShowParkedItins] = useState(false);
   const [fileOverrideModal, setFileOverrideModal] = useState(null); // { jobId, locationIndex, drive, path, notes }
+  const [pfLogModal, setPfLogModal] = useState(null); // { jobId } — project files log entry modal
+  const [projectFileForm, setProjectFileForm] = useState({ fileType: 'Premiere', hardware: '', drive: '', path: '', note: '' });
   const [earningsBreakdownModal, setEarningsBreakdownModal] = useState(null); // employeeId
   const [earningsOverrides, setEarningsOverrides] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_earnings_overrides') || '{}'); } catch(e) { return {}; } });
   const [editingEarningsKey, setEditingEarningsKey] = useState(null); // key being edited
@@ -2713,8 +2716,25 @@ function EyeconMoments() {
     setFileOverrideModal(null);
   };
 
+  const addProjectFileEntry = async () => {
+    if (!pfLogModal) return;
+    const { jobId } = pfLogModal;
+    const job = [...editingJobs, ...archivedJobsData].find(j => j.id === jobId);
+    if (!job) return;
+    const entry = {
+      ...projectFileForm,
+      addedBy: currentUser?.name || 'Unknown',
+      addedAt: new Date().toISOString(),
+    };
+    const newLog = [...(job.projectFilesLog || []), entry];
+    await db.from('jobs').update({ project_files_log: newLog }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, projectFilesLog: newLog } : j));
+    setPfLogModal(null);
+    setProjectFileForm({ fileType: 'Premiere', hardware: '', drive: '', path: '', note: '' });
+  };
+
   const hideChangeHistoryItem = (changeId) => {
-    setFileChangeHistory(fileChangeHistory.map(change => 
+    setFileChangeHistory(fileChangeHistory.map(change =>
       change.id === changeId ? { ...change, visible: false } : change
     ));
   };
@@ -7295,6 +7315,116 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 )}
               </div>
+
+              {/* Project Files Log */}
+              {(() => {
+                const pfJobs = allJobsForEmpFiles.filter(j => (j.projectFilesLog || []).length > 0 || true);
+                const pfEntries = allJobsForEmpFiles.flatMap(j =>
+                  (j.projectFilesLog || []).map((e, i) => ({ ...e, jobId: j.id, jobName: j.jobName, entryIdx: i }))
+                );
+                const myJobs = allJobsForEmpFiles.filter(j => !archivedJobIds.includes(j.id));
+                if (pfEntries.length === 0 && !pfLogModal) return (
+                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗂️ Project Files Log</h3>
+                      {myJobs.length > 0 && (
+                        <button onClick={() => setPfLogModal({ jobId: myJobs[0].id })}
+                          className="text-xs px-3 py-1 rounded bg-indigo-600 text-white font-semibold">+ Add</button>
+                      )}
+                    </div>
+                    <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No project file entries yet.</p>
+                  </div>
+                );
+                return (
+                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗂️ Project Files Log</h3>
+                      {myJobs.length > 0 && (
+                        <button onClick={() => setPfLogModal({ jobId: myJobs[0].id })}
+                          className="text-xs px-3 py-1 rounded bg-indigo-600 text-white font-semibold">+ Add</button>
+                      )}
+                    </div>
+                    {pfEntries.length === 0 ? (
+                      <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No entries yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pfEntries.map((e, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{e.jobName}</p>
+                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                                  📁 {e.fileType}{e.hardware ? ` · ${hardwareLocations.find(h=>h.id===e.hardware)?.name||e.hardware}` : ''}{e.drive ? ` / ${e.drive}` : ''}
+                                </p>
+                                {e.path && <p className={`text-xs font-mono mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{e.path}</p>}
+                                {e.note && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {e.note}</p>}
+                              </div>
+                              <p className={`text-xs whitespace-nowrap ml-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                👤 {e.addedBy}<br/>{new Date(e.addedAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Add Project File Log Entry Modal (employee) */}
+              {pfLogModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                    <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                      <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>🗂️ Log Project File</h3>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{[...editingJobs,...archivedJobsData].find(j=>j.id===pfLogModal.jobId)?.jobName}</p>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>File Type</label>
+                        <select value={projectFileForm.fileType} onChange={e => setProjectFileForm(p=>({...p,fileType:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                          {['Premiere','Lightroom','Resolve','Photoshop','After Effects','Final Cut','Other'].map(t=><option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Machine</label>
+                        <select value={projectFileForm.hardware} onChange={e => setProjectFileForm(p=>({...p,hardware:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                          <option value="">Select machine...</option>
+                          {hardwareLocations.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
+                        <select value={projectFileForm.drive} onChange={e => setProjectFileForm(p=>({...p,drive:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                          <option value="">Select drive...</option>
+                          {allDrives.map(d=><option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Path (optional)</label>
+                        <input type="text" placeholder="e.g. /Projects/2025/JobName.prproj"
+                          value={projectFileForm.path} onChange={e => setProjectFileForm(p=>({...p,path:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Note (optional)</label>
+                        <textarea rows={2} placeholder="Any notes..."
+                          value={projectFileForm.note} onChange={e => setProjectFileForm(p=>({...p,note:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <button onClick={() => { setPfLogModal(null); setProjectFileForm({ fileType:'Premiere', hardware:'', drive:'', path:'', note:'' }); }}
+                          className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                        <button onClick={addProjectFileEntry}
+                          className="py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">💾 Save</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -17902,6 +18032,112 @@ Eyecon Moments
               </>
             );
           })()}
+
+          {/* Project Files Log (admin) */}
+          {(() => {
+            const allJobsForPf = [...editingJobs, ...archivedJobsData];
+            const pfEntries = allJobsForPf.flatMap(j =>
+              (j.projectFilesLog || []).map((e, i) => ({ ...e, jobId: j.id, jobName: j.jobName, entryIdx: i }))
+            );
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗂️ Project Files Log</h3>
+                  <button
+                    onClick={() => {
+                      const job = editingJobs.find(j => !archivedJobIds.includes(j.id));
+                      if (!job) { window.__toast?.('No active job found', 'info'); return; }
+                      setPfLogModal({ jobId: job.id });
+                    }}
+                    className="text-xs px-3 py-1 rounded bg-indigo-600 text-white font-semibold">+ Add Entry</button>
+                </div>
+                {pfEntries.length === 0 ? (
+                  <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No project file entries yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pfEntries.map((e, idx) => (
+                      <div key={idx} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{e.jobName}</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                              📁 {e.fileType}{e.hardware ? ` · ${hardwareLocations.find(h=>h.id===e.hardware)?.name||e.hardware}` : ''}{e.drive ? ` / ${e.drive}` : ''}
+                            </p>
+                            {e.path && <p className={`text-xs font-mono mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{e.path}</p>}
+                            {e.note && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {e.note}</p>}
+                          </div>
+                          <p className={`text-xs whitespace-nowrap ml-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            👤 {e.addedBy}<br/>{new Date(e.addedAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Add Project File Log Entry Modal (admin) */}
+          {pfLogModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>🗂️ Log Project File</h3>
+                  <div className="mt-2">
+                    <select value={pfLogModal.jobId}
+                      onChange={e => setPfLogModal(p => ({ ...p, jobId: Number(e.target.value) || e.target.value }))}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      {[...editingJobs, ...archivedJobsData].map(j => <option key={j.id} value={j.id}>{j.jobName}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>File Type</label>
+                    <select value={projectFileForm.fileType} onChange={e => setProjectFileForm(p=>({...p,fileType:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      {['Premiere','Lightroom','Resolve','Photoshop','After Effects','Final Cut','Other'].map(t=><option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Machine</label>
+                    <select value={projectFileForm.hardware} onChange={e => setProjectFileForm(p=>({...p,hardware:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="">Select machine...</option>
+                      {hardwareLocations.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
+                    <select value={projectFileForm.drive} onChange={e => setProjectFileForm(p=>({...p,drive:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="">Select drive...</option>
+                      {allDrives.map(d=><option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Path (optional)</label>
+                    <input type="text" placeholder="e.g. /Projects/2025/JobName.prproj"
+                      value={projectFileForm.path} onChange={e => setProjectFileForm(p=>({...p,path:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Note (optional)</label>
+                    <textarea rows={2} placeholder="Any notes..."
+                      value={projectFileForm.note} onChange={e => setProjectFileForm(p=>({...p,note:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button onClick={() => { setPfLogModal(null); setProjectFileForm({ fileType:'Premiere', hardware:'', drive:'', path:'', note:'' }); }}
+                      className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                    <button onClick={addProjectFileEntry}
+                      className="py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">💾 Save</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
