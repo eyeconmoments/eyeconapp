@@ -2109,6 +2109,10 @@ function EyeconMoments() {
     if (newStatus === 'completed') {
       const stage = job.stages.find(s => s.id === stageId);
       const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      sendActivityPush('✅ Stage Completed', `${stageLabel} done on ${job.jobName}`);
+      if (stage?.assignedTo && stage.assignedTo !== currentUser?.id) {
+        sendPushToEmployee(stage.assignedTo, '✅ Stage Marked Complete', `Your "${stageLabel}" stage on ${job.jobName} has been marked complete`);
+      }
       setProjectFileModal({ jobId, jobName: job.jobName, stageName: stage?.name || '', stageLabel });
       // If this stage already has a drive file (prior session), queue goto prompt for the next stage
       const existingFile = (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === stage?.name);
@@ -2126,6 +2130,11 @@ function EyeconMoments() {
     const newStages = job.stages.map(s => s.id === stageId ? { ...s, assignedTo: parseInt(employeeId) } : s);
     await db.from('jobs').update({ stages: newStages }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, stages: newStages } : j));
+    if (employeeId) {
+      const stage = job.stages.find(s => s.id === stageId);
+      const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      sendPushToEmployee(parseInt(employeeId), '🎬 Stage Assigned', `You've been assigned "${stageLabel}" on ${job.jobName}`);
+    }
   };
 
   const updatePhotoStatus = async (jobId, newStatus) => {
@@ -2891,6 +2900,7 @@ function EyeconMoments() {
     }]).select().single();
     if (error) { alert('Failed to save: ' + error.message); return; }
     setInquiries(prev => [rowToInquiry(data), ...prev]);
+    sendActivityPush('📥 New CRM Lead', `${crmAIEditForm.name} added via Instagram scan`);
     setShowCRMAIModal(false); setCrmAIImage(null); setCrmAIExtracted(null); setCrmAIEditForm(null);
     alert('Contact added to CRM!');
   };
@@ -17121,6 +17131,7 @@ Eyecon Moments
                     }]).select().single();
                     if (!error && data) {
                       setInquiries(prev => [rowToInquiry(data), ...prev]);
+                      sendActivityPush('📥 New CRM Lead', `${addContactForm.name.trim()} added to CRM`);
                       setShowAddContactModal(false);
                     } else {
                       alert('Save failed: ' + (error?.message || 'unknown error'));
@@ -20561,6 +20572,7 @@ Eyecon Moments
           }]).select().single();
           if (!error && data) {
             setInquiries(prev => [rowToInquiry(data), ...prev]);
+            sendActivityPush('📥 New CRM Lead', `${quoteData.clientName} added as "Quoted"`);
             alert('✅ New CRM lead created as "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
           } else {
             alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');
