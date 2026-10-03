@@ -58,6 +58,9 @@ const rowToJob = (r) => ({
   gallerySentAt: r.gallery_sent_at ? new Date(r.gallery_sent_at) : null,
   clientAddress: r.client_address || '',
   jobSent: r.job_sent || false,
+  aiEdited: r.ai_edited || false,
+  aiEditedBy: r.ai_edited_by || null,
+  aiEditedAt: r.ai_edited_at ? new Date(r.ai_edited_at) : null,
 });
 
 const rowToEmployee = (r) => ({
@@ -96,6 +99,14 @@ ALTER TABLE jobs
 /*
 -- Run in Supabase SQL editor:
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS hold_until timestamptz;
+*/
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS ai_edited boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ai_edited_by text,
+  ADD COLUMN IF NOT EXISTS ai_edited_at timestamptz;
 */
 
 
@@ -2674,6 +2685,16 @@ function EyeconMoments() {
   const saveClientAddress = async (jobId, address) => {
     await db.from('jobs').update({ client_address: address }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, clientAddress: address } : j));
+  };
+
+  const toggleAiEdited = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const newVal = !job.aiEdited;
+    const by = newVal ? (currentUser?.name || 'Unknown') : null;
+    const at = newVal ? new Date().toISOString() : null;
+    await db.from('jobs').update({ ai_edited: newVal, ai_edited_by: by, ai_edited_at: at }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, aiEdited: newVal, aiEditedBy: by, aiEditedAt: at ? new Date(at) : null } : j));
   };
 
     const addFileLocation = async (jobId) => {
@@ -6235,12 +6256,21 @@ Notes: ${j.notes || 'none'}`;
                     <div key={job.id} className={`border-2 rounded-lg p-3 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1">
-                          <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</h3>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</h3>
+                            {job.aiEdited && <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500 text-white font-semibold">🤖 AI Edited</span>}
+                          </div>
                           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{job.customerName}</p>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded ${isOverdue ? 'bg-red-100 text-red-700' : isDueSoon ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}`}>
-                          {isOverdue ? `${Math.abs(daysUntil)}d overdue` : isDueSoon ? `Due in ${daysUntil}d` : `${daysUntil}d left`}
-                        </span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`text-xs px-2 py-1 rounded ${isOverdue ? 'bg-red-100 text-red-700' : isDueSoon ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}`}>
+                            {isOverdue ? `${Math.abs(daysUntil)}d overdue` : isDueSoon ? `Due in ${daysUntil}d` : `${daysUntil}d left`}
+                          </span>
+                          <button onClick={() => toggleAiEdited(job.id)}
+                            className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors ${job.aiEdited ? 'bg-violet-500 text-white border-violet-500' : (darkMode ? 'bg-gray-700 text-gray-400 border-gray-600' : 'bg-gray-100 text-gray-500 border-gray-300')}`}>
+                            🤖 {job.aiEdited ? 'AI ✓' : 'AI?'}
+                          </button>
+                        </div>
                       </div>
                       {job.hasPhotos && job.photoAssignedTo === currentUser.id && (
                         <div className={`mb-2 p-2 ${darkMode ? 'bg-purple-900' : 'bg-purple-50'} rounded`}>
@@ -11194,7 +11224,10 @@ Notes: ${j.notes || 'none'}`;
                     <div key={job.id} className="p-3 rounded-lg" style={{background:'rgba(239,68,68,0.15)'}}>
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-bold text-sm text-white">{job.jobName}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold text-sm text-white">{job.jobName}</p>
+                            {job.aiEdited && <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-500 text-white font-semibold">🤖 AI</span>}
+                          </div>
                           <p className="text-xs" style={{color:'rgba(255,255,255,0.6)'}}>{job.customerName}</p>
                           <button
                             onClick={() => {
@@ -11239,7 +11272,10 @@ Notes: ${j.notes || 'none'}`;
               <div className="px-3 pb-3 space-y-1.5">
                 {dueSoonJobs.map(job => (
                   <div key={job.id} className="flex justify-between items-center p-2 rounded-lg" style={{background:'rgba(234,179,8,0.1)'}}>
-                    <span className="text-sm text-white font-medium">{job.jobName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-white font-medium">{job.jobName}</span>
+                      {job.aiEdited && <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-500 text-white font-semibold">🤖</span>}
+                    </div>
                     <span className="text-xs" style={{color:'#fde047'}}>Due in {getDaysUntilDeadline(job.deadline)} days</span>
                   </div>
                 ))}
@@ -14702,7 +14738,10 @@ The Eyecon Moments Team
                         <div className="space-y-2 max-h-96 overflow-y-auto">
                           {jobsInStage.map(job => (
                             <div key={job.id} className={`${darkMode ? 'bg-gray-600' : 'bg-white'} rounded p-2 shadow-sm`}>
-                              <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                              <div className="flex items-start justify-between gap-1 mb-0.5">
+                                <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                                {job.aiEdited && <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-violet-500 text-white font-semibold">🤖 AI</span>}
+                              </div>
                               <span className={`inline-block text-xs px-1.5 py-0.5 rounded mb-1 ${job.jobType === 'photo' ? 'bg-blue-100 text-blue-700' : job.jobType === 'video' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}`}>{job.jobType === 'photo' ? '📷 Photo' : job.jobType === 'video' ? '🎬 Video' : '📷🎬 Photo+Video'}</span>
                               {job.stages.filter(s => s.status === 'completed' && s.completedBy).length > 0 && (
                                 <div className={`mt-1 mb-1 space-y-0.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -14916,6 +14955,18 @@ The Eyecon Moments Team
                         )}
                         <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{getJobHours(job.id)}h logged</p>
                       </div>
+                    </div>
+                    {/* AI Edited toggle + badge */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <button onClick={() => toggleAiEdited(job.id)}
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-semibold border transition-colors ${job.aiEdited ? 'bg-violet-500 text-white border-violet-500' : (darkMode ? 'bg-gray-700 text-gray-300 border-gray-600 hover:border-violet-400' : 'bg-gray-100 text-gray-600 border-gray-300 hover:border-violet-400')}`}>
+                        🤖 {job.aiEdited ? 'AI Edited' : 'Mark AI Edited'}
+                      </button>
+                      {job.aiEdited && job.aiEditedBy && (
+                        <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          by {job.aiEditedBy}{job.aiEditedAt ? ` · ${job.aiEditedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mb-3">
                       <span className={`text-xs font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Coverage:</span>
