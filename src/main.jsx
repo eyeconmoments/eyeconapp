@@ -3294,6 +3294,25 @@ function EyeconMoments() {
     if (updatedEmp) setCurrentUser({ ...updatedEmp, feedback: updatedFeedback });
   };
 
+  const deleteFeedback = async (toId, feedbackId) => {
+    const emp = employees.find(e => e.id === toId);
+    if (!emp) return;
+    const updatedFeedback = (emp.feedback || []).filter(f => f.id !== feedbackId);
+    const { error } = await db.from('employees').update({ feedback: updatedFeedback }).eq('id', toId);
+    if (error) { alert('Failed to delete feedback: ' + error.message); return; }
+    setEmployees(prev => prev.map(e => e.id === toId ? { ...e, feedback: updatedFeedback } : e));
+  };
+
+  const purgeExpiredFeedback = async () => {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const toUpdate = employees.filter(e => (e.feedback || []).some(f => f.sentAt < cutoff));
+    for (const emp of toUpdate) {
+      const updatedFeedback = (emp.feedback || []).filter(f => f.sentAt >= cutoff);
+      const { error } = await db.from('employees').update({ feedback: updatedFeedback }).eq('id', emp.id);
+      if (!error) setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, feedback: updatedFeedback } : e));
+    }
+  };
+
   const updateEmployeeDetails = async (employeeId, field, value) => {
     const fieldMap = { hourlyRate: 'hourly_rate', emergencyContact: 'emergency_contact', emergencyPhone: 'emergency_phone', canBeAssigned: 'can_be_assigned' };
     const dbField = fieldMap[field] || field;
@@ -21842,6 +21861,13 @@ Eyecon Moments
   if (currentView === 'feedback') {
     const isAdminView = currentUser?.role === 'admin';
 
+    // Auto-purge entries older than 30 days (admin only, runs once per view)
+    if (isAdminView) {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const hasExpired = employees.some(e => (e.feedback || []).some(f => f.sentAt < cutoff));
+      if (hasExpired) purgeExpiredFeedback();
+    }
+
     const allSentFeedback = isAdminView
       ? employees.flatMap(emp => (emp.feedback || []).map(f => ({ ...f, toName: emp.name, toId: emp.id })))
           .sort((a,b) => new Date(b.sentAt) - new Date(a.sentAt))
@@ -21967,6 +21993,12 @@ Eyecon Moments
                     <button onClick={() => acknowledgeFeedback(f.id)}
                       className="mt-3 w-full py-2 rounded-lg bg-green-500 text-white text-sm font-semibold hover:bg-green-600">
                       ✅ Acknowledge
+                    </button>
+                  )}
+                  {isAdminView && (
+                    <button onClick={() => { if (confirm('Delete this feedback?')) deleteFeedback(f.toId, f.id); }}
+                      className={`mt-3 w-full py-1.5 rounded-lg text-xs font-semibold ${darkMode ? 'bg-red-900 text-red-300 hover:bg-red-800' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>
+                      🗑 Delete
                     </button>
                   )}
                 </div>
