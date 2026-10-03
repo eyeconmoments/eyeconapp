@@ -45,7 +45,9 @@ const rowToJob = (r) => ({
   numVideographers: r.num_videographers || 0, numPhotographers: r.num_photographers || 0,
   videoEditHours: r.video_edit_hours || 0, photoEditHours: r.photo_edit_hours || 0,
   customPrice: r.custom_price, fileLocations: r.file_locations || [],
+  projectFilesLog: r.project_files_log || [],
   stages: r.stages || [], itinerary: r.itinerary, archived: r.archived || false,
+  holdUntil: r.hold_until ? new Date(r.hold_until) : null,
   wageEntries: r.wage_entries || [], clientToken: r.client_token || null,
   driveFolderId: (r.file_locations || []).find(f => f.type === 'drive_folder')?.id || null,
   driveFolderUrl: (r.file_locations || []).find(f => f.type === 'drive_folder')?.url || null,
@@ -53,6 +55,9 @@ const rowToJob = (r) => ({
   finalPaymentReceived: r.final_payment_received || (r.wage_entries || []).some(e => e.type === 'final_payment' && e.received) || false,
   finalPaymentDate: r.final_payment_date || (r.wage_entries || []).find(e => e.type === 'final_payment')?.date || null,
   finalPaymentBy: r.final_payment_by || (r.wage_entries || []).find(e => e.type === 'final_payment')?.by || null,
+  gallerySentAt: r.gallery_sent_at ? new Date(r.gallery_sent_at) : null,
+  clientAddress: r.client_address || '',
+  jobSent: r.job_sent || false,
 });
 
 const rowToEmployee = (r) => ({
@@ -78,6 +83,19 @@ ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS final_payment_received boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS final_payment_date timestamptz,
   ADD COLUMN IF NOT EXISTS final_payment_by text;
+*/
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs
+  ADD COLUMN IF NOT EXISTS gallery_sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS client_address text,
+  ADD COLUMN IF NOT EXISTS job_sent boolean DEFAULT false;
+*/
+
+/*
+-- Run in Supabase SQL editor:
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS hold_until timestamptz;
 */
 
 
@@ -1171,6 +1189,8 @@ function EyeconMoments() {
   const [parkedItineraries, setParkedItineraries] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_parked_itins') || '[]'); } catch(e) { return []; } });
   const [showParkedItins, setShowParkedItins] = useState(false);
   const [fileOverrideModal, setFileOverrideModal] = useState(null); // { jobId, locationIndex, drive, path, notes }
+  const [pfLogModal, setPfLogModal] = useState(null); // { jobId } — project files log entry modal
+  const [projectFileForm, setProjectFileForm] = useState({ fileType: 'Premiere', hardware: '', drive: '', path: '', note: '' });
   const [earningsBreakdownModal, setEarningsBreakdownModal] = useState(null); // employeeId
   const [earningsOverrides, setEarningsOverrides] = useState(() => { try { return JSON.parse(localStorage.getItem('eyecon_earnings_overrides') || '{}'); } catch(e) { return {}; } });
   const [editingEarningsKey, setEditingEarningsKey] = useState(null); // key being edited
@@ -1205,6 +1225,8 @@ function EyeconMoments() {
   const [reportWeekOffset, setReportWeekOffset] = useState(0); // 0=current week, -1=last week, etc.
   const [myItinerariesOpen, setMyItinerariesOpen] = useState(false); // collapsed by default
   const [progressDetailOpen, setProgressDetailOpen] = useState(false);
+  const [driveLinkPromptJob, setDriveLinkPromptJob] = useState(null); // { id, jobName, currentUrl } — prompt to add/open Drive link
+  const [jobProgressTooltip, setJobProgressTooltip] = useState(null); // { jobId, x, y } — hover tooltip
   const [availCalMonth, setAvailCalMonth] = useState(new Date().getMonth());
   const [availCalYear, setAvailCalYear] = useState(new Date().getFullYear());
   const [upcomingCalMonth, setUpcomingCalMonth] = useState(new Date().getMonth());
@@ -1270,16 +1292,20 @@ function EyeconMoments() {
   const [jobSearchQuery, setJobSearchQuery] = useState('');
   const [archivedJobIds, setArchivedJobIds] = useState([]);
   const [archivedJobsData, setArchivedJobsData] = useState([]); // full job objects for archived jobs (Files search)
+  const [showOnHoldSection, setShowOnHoldSection] = useState(false);
   const [inquiryFilter, setInquiryFilter] = useState('all');
   const [inquiryLogInput, setInquiryLogInput] = useState({});
   const [showBookedSection, setShowBookedSection] = useState(false);
+  const [showArchivedSection, setShowArchivedSection] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedWages, setShowArchivedWages] = useState(false);
   const [wagesEmpFilter, setWagesEmpFilter] = useState('all');
   const [wagesPeriodFilter, setWagesPeriodFilter] = useState('all');
   const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
   const [showClockInPrompt, setShowClockInPrompt] = useState(false);
-  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null);
+  const [autoClockOutInfo, setAutoClockOutInfo] = useState(null); // { date, hoursWorked, entryId }
+  const [autoClockOutProgress, setAutoClockOutProgress] = useState(50);
+  const [autoClockOutNote, setAutoClockOutNote] = useState('');
   const [clockInPickingJob, setClockInPickingJob] = useState(false);
   const [clockInGeneralDesc, setClockInGeneralDesc] = useState('');
   const [clockOutBannerDismissed, setClockOutBannerDismissed] = useState(false);
@@ -1838,8 +1864,11 @@ function EyeconMoments() {
           setTimeEntries(prev => prev.map(e => e.id === openEntry.id ? { ...e, clockOut: fivePmThatDay, hoursWorked: hours } : e));
           setAutoClockOutInfo({
             date: fivePmThatDay.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
-            hoursWorked: hours
+            hoursWorked: hours,
+            entryId: openEntry.id
           });
+          setAutoClockOutProgress(50);
+          setAutoClockOutNote('');
         }
       }
 
@@ -2027,6 +2056,22 @@ function EyeconMoments() {
     }
   };
 
+  const saveAutoClockOutQualification = async () => {
+    if (!autoClockOutInfo?.entryId) return;
+    const updateData = { progress_percent: autoClockOutProgress };
+    if (autoClockOutNote.trim()) updateData.progress_note = autoClockOutNote.trim();
+    await db.from('time_entries').update(updateData).eq('id', autoClockOutInfo.entryId);
+    setTimeEntries(prev => prev.map(e => e.id === autoClockOutInfo.entryId
+      ? { ...e, progressPercent: autoClockOutProgress, progressNote: autoClockOutNote.trim() || null }
+      : e));
+  };
+
+  const dismissAutoClockOutInfo = () => {
+    setAutoClockOutInfo(null);
+    setAutoClockOutProgress(50);
+    setAutoClockOutNote('');
+  };
+
   const initiateClockOut = (entryId) => {
     const entry = timeEntries.find(e => e.id === entryId);
     let defaultPercent = 0;
@@ -2107,6 +2152,10 @@ function EyeconMoments() {
     if (newStatus === 'completed') {
       const stage = job.stages.find(s => s.id === stageId);
       const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      sendActivityPush('✅ Stage Completed', `${stageLabel} done on ${job.jobName}`);
+      if (stage?.assignedTo && stage.assignedTo !== currentUser?.id) {
+        sendPushToEmployee(stage.assignedTo, '✅ Stage Marked Complete', `Your "${stageLabel}" stage on ${job.jobName} has been marked complete`);
+      }
       setProjectFileModal({ jobId, jobName: job.jobName, stageName: stage?.name || '', stageLabel });
       // If this stage already has a drive file (prior session), queue goto prompt for the next stage
       const existingFile = (job.fileLocations || []).find(f => f.type === 'drive_project_file' && f.stageName === stage?.name);
@@ -2124,6 +2173,11 @@ function EyeconMoments() {
     const newStages = job.stages.map(s => s.id === stageId ? { ...s, assignedTo: parseInt(employeeId) } : s);
     await db.from('jobs').update({ stages: newStages }).eq('id', jobId);
     setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, stages: newStages } : j));
+    if (employeeId) {
+      const stage = job.stages.find(s => s.id === stageId);
+      const stageLabel = stage ? stage.name.split(',')[0].trim() : 'Stage';
+      sendPushToEmployee(parseInt(employeeId), '🎬 Stage Assigned', `You've been assigned "${stageLabel}" on ${job.jobName}`);
+    }
   };
 
   const updatePhotoStatus = async (jobId, newStatus) => {
@@ -2243,6 +2297,8 @@ function EyeconMoments() {
     const videoDone = !job.hasVideo || (job.stages.length > 0 && job.stages.every(s => s.status === 'completed'));
     return photoDone && videoDone;
   };
+  const isJobOnHold = (job) => job.holdUntil && new Date(job.holdUntil) > new Date();
+  const isHoldExpired = (job) => job.holdUntil && new Date(job.holdUntil) <= new Date();
   const showNotification = (title, body) => {
     try {
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -2363,10 +2419,10 @@ function EyeconMoments() {
     return () => clearInterval(interval);
   }, [currentUser, timeEntries]);
 
-  const getOverdueJobs = () => editingJobs.filter(job => { const d = getDaysUntilDeadline(job.deadline); return isFinite(d) && d < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job); });
+  const getOverdueJobs = () => editingJobs.filter(job => { const d = getDaysUntilDeadline(job.deadline); return isFinite(d) && d < 0 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job) && !isJobOnHold(job); });
   const getDueSoonJobs = () => editingJobs.filter(job => {
     const days = getDaysUntilDeadline(job.deadline);
-    return days >= 0 && days <= 7 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job);
+    return days >= 0 && days <= 7 && !archivedJobIds.includes(job.id) && !isJobFullyComplete(job) && !isJobOnHold(job);
   });
 
   // Team Workload Calculator
@@ -2569,6 +2625,57 @@ function EyeconMoments() {
     }
   };
 
+  const putJobOnHold = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const holdNote = `\n[${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}] Put on hold (awaiting payment) — resumes ${until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const newNotes = (job.notes || '') + holdNote;
+    await db.from('jobs').update({ hold_until: until.toISOString(), notes: newNotes }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, holdUntil: until, notes: newNotes } : j));
+    logActivity('Job put on hold', job.jobName, '30-day payment hold');
+    window.__toast?.(`"${job.jobName}" on hold for 30 days.`, 'info', 5000);
+  };
+
+  const resumeJobFromHold = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const resumeNote = `\n[${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}] Hold lifted — paid, job resumed`;
+    const newNotes = (job.notes || '') + resumeNote;
+    await db.from('jobs').update({ hold_until: null, notes: newNotes }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, holdUntil: null, notes: newNotes } : j));
+    logActivity('Job resumed from hold', job.jobName, 'Payment received');
+    window.__toast?.(`"${job.jobName}" resumed.`, 'success', 4000);
+  };
+
+  const extendJobHold = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const holdNote = `\n[${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}] Hold extended — still awaiting payment, resumes ${until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const newNotes = (job.notes || '') + holdNote;
+    await db.from('jobs').update({ hold_until: until.toISOString(), notes: newNotes }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, holdUntil: until, notes: newNotes } : j));
+    logActivity('Job hold extended', job.jobName, '30-day extension');
+    window.__toast?.(`"${job.jobName}" hold extended 30 days.`, 'info', 4000);
+  };
+
+  const markJobSent = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    await db.from('jobs').update({ job_sent: true, archived: true }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, jobSent: true, archived: true } : j));
+    setArchivedJobIds(prev => [...new Set([...prev, jobId])]);
+    setArchivedJobsData(prev => [...prev, { ...job, jobSent: true, archived: true }]);
+    logActivity('Memory stick sent', job.jobName, '');
+    window.__toast(`"${job.jobName}" marked as sent and archived.`, 'success', 5000);
+  };
+
+  const saveClientAddress = async (jobId, address) => {
+    await db.from('jobs').update({ client_address: address }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, clientAddress: address } : j));
+  };
+
     const addFileLocation = async (jobId) => {
     if (!newDrive) { alert('Please select a drive'); return; }
     const job = editingJobs.find(j => j.id === jobId);
@@ -2653,8 +2760,25 @@ function EyeconMoments() {
     setFileOverrideModal(null);
   };
 
+  const addProjectFileEntry = async () => {
+    if (!pfLogModal) return;
+    const { jobId } = pfLogModal;
+    const job = [...editingJobs, ...archivedJobsData].find(j => j.id === jobId);
+    if (!job) return;
+    const entry = {
+      ...projectFileForm,
+      addedBy: currentUser?.name || 'Unknown',
+      addedAt: new Date().toISOString(),
+    };
+    const newLog = [...(job.projectFilesLog || []), entry];
+    await db.from('jobs').update({ project_files_log: newLog }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, projectFilesLog: newLog } : j));
+    setPfLogModal(null);
+    setProjectFileForm({ fileType: 'Premiere', hardware: '', drive: '', path: '', note: '' });
+  };
+
   const hideChangeHistoryItem = (changeId) => {
-    setFileChangeHistory(fileChangeHistory.map(change => 
+    setFileChangeHistory(fileChangeHistory.map(change =>
       change.id === changeId ? { ...change, visible: false } : change
     ));
   };
@@ -2890,6 +3014,7 @@ function EyeconMoments() {
     }]).select().single();
     if (error) { alert('Failed to save: ' + error.message); return; }
     setInquiries(prev => [rowToInquiry(data), ...prev]);
+    sendActivityPush('📥 New CRM Lead', `${crmAIEditForm.name} added via Instagram scan`);
     setShowCRMAIModal(false); setCrmAIImage(null); setCrmAIExtracted(null); setCrmAIEditForm(null);
     alert('Contact added to CRM!');
   };
@@ -3176,9 +3301,26 @@ function EyeconMoments() {
     setEmployees(prev => prev.map(emp => emp.id === employeeId ? { ...emp, [field]: value } : emp));
   };
 
-  const getFilteredInquiries = () => inquiryFilter === 'all' ? inquiries : inquiries.filter(inq => inq.status === inquiryFilter);
+  const isArchivedInquiry = (i) => {
+    if (i.status === 'declined') return true;
+    if (i.status !== 'booked' && i.eventDate) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      return new Date(i.eventDate) < today;
+    }
+    return false;
+  };
+  const getFilteredInquiries = () => {
+    const active = inquiries.filter(i => !isArchivedInquiry(i));
+    return inquiryFilter === 'all' ? active : active.filter(inq => inq.status === inquiryFilter);
+  };
   const getJobHours = (jobId) => timeEntries.filter(e => e.jobId === jobId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
   const getEmployeeHours = (employeeId) => timeEntries.filter(e => e.employeeId === employeeId && e.hoursWorked).reduce((acc, e) => acc + e.hoursWorked, 0);
+  const getLatestProgress = (jobId) => {
+    const entries = timeEntries
+      .filter(e => String(e.jobId) === String(jobId) && e.progressPercent !== null && e.clockOut)
+      .sort((a, b) => new Date(b.clockOut) - new Date(a.clockOut));
+    return entries.length > 0 ? entries[0].progressPercent : null;
+  };
 
   // Save earnings override helper
   const saveEarningsOverride = (key, val) => {
@@ -5631,16 +5773,49 @@ Notes: ${j.notes || 'none'}`;
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
             <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
               {autoClockOutInfo && (
-                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
-                  <div className="flex items-start gap-3">
+                <div className="p-5" style={{borderBottom: showClockInPrompt ? '1px solid rgba(193,167,106,0.15)' : undefined}}>
+                  <div className="flex items-start gap-3 mb-4">
                     <span className="text-2xl">⏰</span>
                     <div>
-                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Did you forget to clock out?</h3>
                       <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
-                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                        You were auto clocked out on <span className="text-white font-medium">{autoClockOutInfo.date}</span> — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> was logged. What progress did you make?
                       </p>
-                      <p className="text-xs mt-1" style={{color:'#6a7d90'}}>Check your hours tab if this doesn't look right.</p>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <span className={`text-4xl font-bold tabular-nums ${autoClockOutProgress >= 80 ? 'text-green-400' : autoClockOutProgress >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {autoClockOutProgress}%
+                      </span>
+                    </div>
+                    <input type="range" min="0" max="100" step="5"
+                      value={autoClockOutProgress}
+                      onChange={e => setAutoClockOutProgress(Number(e.target.value))}
+                      className="w-full" style={{accentColor:'#C1A76A'}} />
+                    <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.1)'}}>
+                      <div className={`h-full rounded-full transition-all ${autoClockOutProgress >= 80 ? 'bg-green-500' : autoClockOutProgress >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{width: autoClockOutProgress + '%'}} />
+                    </div>
+                    <input type="text" placeholder="Add a note (optional)"
+                      value={autoClockOutNote}
+                      onChange={e => setAutoClockOutNote(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white"
+                      style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} />
+                    {!showClockInPrompt && (
+                      <>
+                        <button
+                          onClick={async () => { await saveAutoClockOutQualification(); dismissAutoClockOutInfo(); }}
+                          className="w-full py-3 rounded-xl font-bold text-sm"
+                          style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}>
+                          ✓ Save Progress
+                        </button>
+                        <button onClick={dismissAutoClockOutInfo}
+                          className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                          Skip
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -5702,9 +5877,10 @@ Notes: ${j.notes || 'none'}`;
                           <button
                             disabled={isDisabled}
                             onClick={async () => {
+                              if (autoClockOutInfo) await saveAutoClockOutQualification();
                               const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                               const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                              setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                              setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc('');
                               if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                             }}
                             className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
@@ -5720,7 +5896,7 @@ Notes: ${j.notes || 'none'}`;
                         );
                       })()}
                       <button
-                        onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                        onClick={() => { setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm"
                         style={{color:'#8a9bb0'}}
                       >
@@ -5730,17 +5906,6 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 );
               })()}
-              {!showClockInPrompt && autoClockOutInfo && (
-                <div className="p-4">
-                  <button
-                    onClick={() => setAutoClockOutInfo(null)}
-                    className="w-full py-2.5 rounded-xl text-sm"
-                    style={{color:'#8a9bb0'}}
-                  >
-                    Got it
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -6077,6 +6242,23 @@ Notes: ${j.notes || 'none'}`;
                               <option value="in-progress">In Progress</option>
                             </select>
                           )}
+                          {(() => {
+                            const photoDone = job.photoStatus === 'completed';
+                            const reported = photoDone ? 100 : (getLatestProgress(job.id) ?? 0);
+                            return (
+                              <div className="mt-2">
+                                <div className="flex justify-between items-center mb-0.5">
+                                  <span className={`text-xs ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>Progress</span>
+                                  <span className={`text-xs font-semibold ${photoDone ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                                    {photoDone ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
+                                  </span>
+                                </div>
+                                <div className={`w-full rounded-full h-1.5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                  <div className={`h-1.5 rounded-full transition-all ${photoDone ? 'bg-green-500' : 'bg-orange-400'}`} style={{width:`${reported}%`}} />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                       {job.hasVideo && job.stages.filter(s => s.assignedTo === currentUser.id).map(stage => (
@@ -7185,6 +7367,116 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 )}
               </div>
+
+              {/* Project Files Log */}
+              {(() => {
+                const pfJobs = allJobsForEmpFiles.filter(j => (j.projectFilesLog || []).length > 0 || true);
+                const pfEntries = allJobsForEmpFiles.flatMap(j =>
+                  (j.projectFilesLog || []).map((e, i) => ({ ...e, jobId: j.id, jobName: j.jobName, entryIdx: i }))
+                );
+                const myJobs = allJobsForEmpFiles.filter(j => !archivedJobIds.includes(j.id));
+                if (pfEntries.length === 0 && !pfLogModal) return (
+                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗂️ Project Files Log</h3>
+                      {myJobs.length > 0 && (
+                        <button onClick={() => setPfLogModal({ jobId: myJobs[0].id })}
+                          className="text-xs px-3 py-1 rounded bg-indigo-600 text-white font-semibold">+ Add</button>
+                      )}
+                    </div>
+                    <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No project file entries yet.</p>
+                  </div>
+                );
+                return (
+                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗂️ Project Files Log</h3>
+                      {myJobs.length > 0 && (
+                        <button onClick={() => setPfLogModal({ jobId: myJobs[0].id })}
+                          className="text-xs px-3 py-1 rounded bg-indigo-600 text-white font-semibold">+ Add</button>
+                      )}
+                    </div>
+                    {pfEntries.length === 0 ? (
+                      <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No entries yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pfEntries.map((e, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{e.jobName}</p>
+                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                                  📁 {e.fileType}{e.hardware ? ` · ${hardwareLocations.find(h=>h.id===e.hardware)?.name||e.hardware}` : ''}{e.drive ? ` / ${e.drive}` : ''}
+                                </p>
+                                {e.path && <p className={`text-xs font-mono mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{e.path}</p>}
+                                {e.note && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {e.note}</p>}
+                              </div>
+                              <p className={`text-xs whitespace-nowrap ml-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                👤 {e.addedBy}<br/>{new Date(e.addedAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Add Project File Log Entry Modal (employee) */}
+              {pfLogModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                    <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                      <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>🗂️ Log Project File</h3>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{[...editingJobs,...archivedJobsData].find(j=>j.id===pfLogModal.jobId)?.jobName}</p>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>File Type</label>
+                        <select value={projectFileForm.fileType} onChange={e => setProjectFileForm(p=>({...p,fileType:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                          {['Premiere','Lightroom','Resolve','Photoshop','After Effects','Final Cut','Other'].map(t=><option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Machine</label>
+                        <select value={projectFileForm.hardware} onChange={e => setProjectFileForm(p=>({...p,hardware:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                          <option value="">Select machine...</option>
+                          {hardwareLocations.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
+                        <select value={projectFileForm.drive} onChange={e => setProjectFileForm(p=>({...p,drive:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                          <option value="">Select drive...</option>
+                          {allDrives.map(d=><option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Path (optional)</label>
+                        <input type="text" placeholder="e.g. /Projects/2025/JobName.prproj"
+                          value={projectFileForm.path} onChange={e => setProjectFileForm(p=>({...p,path:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Note (optional)</label>
+                        <textarea rows={2} placeholder="Any notes..."
+                          value={projectFileForm.note} onChange={e => setProjectFileForm(p=>({...p,note:e.target.value}))}
+                          className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <button onClick={() => { setPfLogModal(null); setProjectFileForm({ fileType:'Premiere', hardware:'', drive:'', path:'', note:'' }); }}
+                          className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                        <button onClick={addProjectFileEntry}
+                          className="py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">💾 Save</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -7657,15 +7949,49 @@ Notes: ${j.notes || 'none'}`;
           <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
             <div className="rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{background:'#1a2535', border:'1px solid rgba(193,167,106,0.25)'}}>
               {autoClockOutInfo && (
-                <div className="p-5" style={{borderBottom:'1px solid rgba(193,167,106,0.15)'}}>
-                  <div className="flex items-start gap-3">
+                <div className="p-5" style={{borderBottom: showClockInPrompt ? '1px solid rgba(193,167,106,0.15)' : undefined}}>
+                  <div className="flex items-start gap-3 mb-4">
                     <span className="text-2xl">⏰</span>
                     <div>
-                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Auto clocked out</h3>
+                      <h3 className="font-semibold text-base" style={{color:'#C1A76A'}}>Did you forget to clock out?</h3>
                       <p className="text-sm mt-1" style={{color:'#8a9bb0'}}>
-                        You were clocked out at <span className="text-white font-medium">7:00 PM</span> on {autoClockOutInfo.date} — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> logged.
+                        You were auto clocked out on <span className="text-white font-medium">{autoClockOutInfo.date}</span> — <span className="text-white font-medium">{autoClockOutInfo.hoursWorked}h</span> was logged. What progress did you make?
                       </p>
                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <span className={`text-4xl font-bold tabular-nums ${autoClockOutProgress >= 80 ? 'text-green-400' : autoClockOutProgress >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {autoClockOutProgress}%
+                      </span>
+                    </div>
+                    <input type="range" min="0" max="100" step="5"
+                      value={autoClockOutProgress}
+                      onChange={e => setAutoClockOutProgress(Number(e.target.value))}
+                      className="w-full" style={{accentColor:'#C1A76A'}} />
+                    <div className="h-2 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.1)'}}>
+                      <div className={`h-full rounded-full transition-all ${autoClockOutProgress >= 80 ? 'bg-green-500' : autoClockOutProgress >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{width: autoClockOutProgress + '%'}} />
+                    </div>
+                    <input type="text" placeholder="Add a note (optional)"
+                      value={autoClockOutNote}
+                      onChange={e => setAutoClockOutNote(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white"
+                      style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', outline:'none'}} />
+                    {!showClockInPrompt && (
+                      <>
+                        <button
+                          onClick={async () => { await saveAutoClockOutQualification(); dismissAutoClockOutInfo(); }}
+                          className="w-full py-3 rounded-xl font-bold text-sm"
+                          style={{background:'linear-gradient(135deg,#C1A76A,#e8d4a0)', color:'#1a2535'}}>
+                          ✓ Save Progress
+                        </button>
+                        <button onClick={dismissAutoClockOutInfo}
+                          className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
+                          Skip
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -7722,9 +8048,10 @@ Notes: ${j.notes || 'none'}`;
                           <button
                             disabled={isDisabled2}
                             onClick={async () => {
+                              if (autoClockOutInfo) await saveAutoClockOutQualification();
                               const jobId = clockInPickingJob === 'general' ? null : parseInt(clockInPickingJob);
                               const desc = clockInPickingJob === 'general' ? clockInGeneralDesc.trim() : null;
-                              setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc('');
+                              setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc('');
                               if (jobId === null) { await handleClockIn(null, desc); } else { initiateClockIn(jobId); }
                             }}
                             className="w-full py-4 rounded-xl font-bold text-base transition-opacity"
@@ -7735,7 +8062,7 @@ Notes: ${j.notes || 'none'}`;
                           </button>
                         );
                       })()}
-                      <button onClick={() => { setShowClockInPrompt(false); setAutoClockOutInfo(null); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
+                      <button onClick={() => { setShowClockInPrompt(false); dismissAutoClockOutInfo(); setClockInPickingJob(false); setClockInGeneralDesc(''); }}
                         className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>
                         Skip for now
                       </button>
@@ -7743,11 +8070,6 @@ Notes: ${j.notes || 'none'}`;
                   </div>
                 );
               })()}
-              {!showClockInPrompt && autoClockOutInfo && (
-                <div className="p-4">
-                  <button onClick={() => setAutoClockOutInfo(null)} className="w-full py-2.5 rounded-xl text-sm" style={{color:'#8a9bb0'}}>Got it</button>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -10050,6 +10372,7 @@ Notes: ${j.notes || 'none'}`;
             const _dashTodayMidnight = new Date(); _dashTodayMidnight.setHours(0, 0, 0, 0);
             const activeJobsList = editingJobs.filter(job => {
               if (archivedJobIds.includes(job.id)) return false;
+              if (isJobOnHold(job)) return false;
               if (job.shootDate) { const sd = new Date(job.shootDate); sd.setHours(0,0,0,0); if (sd >= _dashTodayMidnight) return false; }
               return true;
             });
@@ -10128,16 +10451,10 @@ Notes: ${j.notes || 'none'}`;
 
                 {/* Job breakdown detail */}
                 {progressDetailOpen && (() => {
-                  const photoJobs = activeJobsList.filter(j => j.hasPhotos);
-                  const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages);
-                  // Latest reported progress for any job: take the highest progressPercent
-                  // from clock-out entries (prefer most recent non-null)
-                  const getLatestProgress = (jobId) => {
-                    const entries = timeEntries
-                      .filter(e => String(e.jobId) === String(jobId) && e.progressPercent !== null && e.clockOut)
-                      .sort((a, b) => new Date(b.clockOut) - new Date(a.clockOut));
-                    return entries.length > 0 ? entries[0].progressPercent : null;
-                  };
+                  const byShootDate = (a, b) => new Date(a.shootDate || 0) - new Date(b.shootDate || 0);
+                  const photoJobs = activeJobsList.filter(j => j.hasPhotos).sort(byShootDate);
+                  const videoJobs = activeJobsList.filter(j => j.hasVideo && j.stages).sort(byShootDate);
+                  // getLatestProgress is defined at component level
                   const ProgressBar = ({ pct, color }) => (
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                       <div className={`h-1.5 rounded-full transition-all ${color}`} style={{width:`${pct}%`}} />
@@ -10153,15 +10470,54 @@ Notes: ${j.notes || 'none'}`;
                             {photoJobs.map(job => {
                               const done = job.photoStatus === 'completed';
                               const reported = done ? 100 : (getLatestProgress(job.id) ?? 0);
+                              const assigneeName = job.photoAssignedTo ? getEmployeeName(job.photoAssignedTo) : null;
+                              const completedEntry = (job.wageEntries || []).find(e => e.type === 'photo' && e.employeeId === job.photoAssignedTo);
+                              const completedAt = completedEntry?.submittedAt;
                               return (
-                                <div key={job.id} className="text-xs py-1.5 px-2 rounded" style={{background: done ? '#f0fdf4' : '#fef9f0'}}>
+                                <div key={job.id} className="text-xs py-1.5 px-2 rounded relative group" style={{background: done ? '#f0fdf4' : '#fef9f0'}}>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
+                                    <button
+                                      className="text-gray-800 truncate flex-1 mr-2 text-left hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                                      title={job.driveFolderUrl ? 'Open Google Drive folder' : 'Add Google Drive link'}
+                                      onClick={() => {
+                                        if (job.driveFolderUrl) {
+                                          window.open(job.driveFolderUrl, '_blank', 'noopener');
+                                        } else {
+                                          setDriveLinkPromptJob({ id: job.id, jobName: job.jobName, currentUrl: '' });
+                                        }
+                                      }}
+                                      onMouseEnter={() => setJobProgressTooltip({ jobId: job.id })}
+                                      onMouseLeave={() => setJobProgressTooltip(null)}
+                                    >
+                                      {job.driveFolderUrl ? '☁️ ' : '🔗 '}{job.jobName}
+                                    </button>
                                     <span className={`font-bold shrink-0 ${done ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
                                       {done ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
                                     </span>
                                   </div>
                                   <ProgressBar pct={reported} color={done ? 'bg-green-500' : 'bg-orange-400'} />
+                                  {/* Hover history tooltip */}
+                                  {jobProgressTooltip?.jobId === job.id && (
+                                    <div
+                                      className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2.5 min-w-48 max-w-64 pointer-events-none"
+                                      style={{top: '100%', left: 0, marginTop: 4}}
+                                    >
+                                      <p className="font-bold text-gray-800 mb-1.5 text-xs">{job.jobName}</p>
+                                      {assigneeName && (
+                                        <p className="text-gray-600 text-xs">📸 Assigned to: <span className="font-medium">{assigneeName}</span></p>
+                                      )}
+                                      <p className="text-gray-600 text-xs mt-0.5">
+                                        Status: <span className={`font-medium ${done ? 'text-green-600' : job.photoStatus === 'in-progress' ? 'text-orange-500' : 'text-gray-400'}`}>
+                                          {done ? 'Completed' : job.photoStatus === 'in-progress' ? 'In Progress' : 'Not Started'}
+                                        </span>
+                                      </p>
+                                      {done && completedAt && (
+                                        <p className="text-gray-500 text-xs mt-0.5">✅ Done {new Date(completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                      )}
+                                      {!job.driveFolderUrl && <p className="text-orange-500 text-xs mt-1">⚠️ No Drive folder — click to add</p>}
+                                      {job.driveFolderUrl && <p className="text-blue-500 text-xs mt-1">Click to open Drive folder</p>}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -10186,16 +10542,61 @@ Notes: ${j.notes || 'none'}`;
                               const pct = allDone ? 100 : reportedOnStage !== null
                                 ? Math.min(99, Math.round(stageBase + (reportedOnStage / 100) * stageSlice))
                                 : stageBase;
+                              const completedStages = job.stages.filter(s => s.status === 'completed');
                               return (
-                                <div key={job.id} className="text-xs py-1.5 px-2 rounded" style={{background: allDone ? '#f0fdf4' : '#fef9f0'}}>
+                                <div key={job.id} className="text-xs py-1.5 px-2 rounded relative" style={{background: allDone ? '#f0fdf4' : '#fef9f0'}}>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-gray-800 truncate flex-1 mr-2">{job.jobName}</span>
+                                    <button
+                                      className="text-gray-800 truncate flex-1 mr-2 text-left hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                                      title={job.driveFolderUrl ? 'Open Google Drive folder' : 'Add Google Drive link'}
+                                      onClick={() => {
+                                        if (job.driveFolderUrl) {
+                                          window.open(job.driveFolderUrl, '_blank', 'noopener');
+                                        } else {
+                                          setDriveLinkPromptJob({ id: job.id, jobName: job.jobName, currentUrl: '' });
+                                        }
+                                      }}
+                                      onMouseEnter={() => setJobProgressTooltip({ jobId: job.id })}
+                                      onMouseLeave={() => setJobProgressTooltip(null)}
+                                    >
+                                      {job.driveFolderUrl ? '☁️ ' : '🔗 '}{job.jobName}
+                                    </button>
                                     <span className={`font-bold shrink-0 ${allDone ? 'text-green-600' : pct > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
                                       {allDone ? '✅ 100%' : `${pct}%`}
                                       <span className="font-normal text-gray-400 ml-1">({doneStages}/{totalStages})</span>
                                     </span>
                                   </div>
                                   <ProgressBar pct={pct} color={allDone ? 'bg-green-500' : 'bg-blue-500'} />
+                                  {/* Hover history tooltip */}
+                                  {jobProgressTooltip?.jobId === job.id && (
+                                    <div
+                                      className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2.5 min-w-48 max-w-64 pointer-events-none"
+                                      style={{top: '100%', left: 0, marginTop: 4}}
+                                    >
+                                      <p className="font-bold text-gray-800 mb-1.5 text-xs">{job.jobName}</p>
+                                      {completedStages.length > 0 ? (
+                                        <div className="space-y-0.5">
+                                          {completedStages.map(s => (
+                                            <p key={s.id} className="text-gray-600 text-xs">
+                                              ✅ <span className="font-medium">{s.name.split(',')[0]}</span>
+                                              {s.completedBy && <span className="text-gray-500"> — {s.completedBy}</span>}
+                                              {s.completedAt && <span className="text-gray-400"> · {new Date(s.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-gray-400 text-xs">No stages completed yet</p>
+                                      )}
+                                      {currentStage && (
+                                        <p className="text-blue-500 text-xs mt-1">
+                                          🔄 <span className="font-medium">{currentStage.name.split(',')[0]}</span> in progress
+                                          {currentStage.assignedTo && <span className="text-gray-500"> — {getEmployeeName(currentStage.assignedTo)}</span>}
+                                        </p>
+                                      )}
+                                      {!job.driveFolderUrl && <p className="text-orange-500 text-xs mt-1">⚠️ No Drive folder — click to add</p>}
+                                      {job.driveFolderUrl && <p className="text-blue-500 text-xs mt-1">Click to open Drive folder</p>}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -10205,6 +10606,56 @@ Notes: ${j.notes || 'none'}`;
                     </div>
                   );
                 })()}
+              </div>
+            );
+          })()}
+
+          {/* On Hold — collapsible section on Home */}
+          {(() => {
+            const onHoldJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id) && isJobOnHold(j));
+            const expiredHoldJobs = editingJobs.filter(j => !archivedJobIds.includes(j.id) && isHoldExpired(j));
+            if (onHoldJobs.length === 0 && expiredHoldJobs.length === 0) return null;
+            const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+            return (
+              <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800 border border-orange-700' : 'bg-orange-50 border border-orange-200'}`}>
+                <button className="w-full flex justify-between items-center" onClick={() => setShowOnHoldSection(p => !p)}>
+                  <h3 className={`font-bold ${darkMode ? 'text-orange-300' : 'text-orange-800'}`}>⏸ On Hold ({onHoldJobs.length + expiredHoldJobs.length})</h3>
+                  <span className={`text-xs ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{showOnHoldSection ? '▲ Hide' : '▼ Show'}</span>
+                </button>
+                {showOnHoldSection && (
+                  <div className="mt-3 space-y-2">
+                    {expiredHoldJobs.map(job => (
+                      <div key={job.id} className={`p-3 rounded-lg border-2 ${darkMode ? 'bg-yellow-900 border-yellow-500' : 'bg-yellow-50 border-yellow-400'}`}>
+                        <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                        <p className={`text-xs mb-2 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>⚠️ Hold expired — awaiting your decision</p>
+                        {isAdmin && (
+                          <div className="flex gap-2">
+                            <button onClick={() => resumeJobFromHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">✅ Paid, start job</button>
+                            <button onClick={() => extendJobHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600">⏸ Extend 30 days</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {onHoldJobs.map(job => (
+                      <div key={job.id} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-white border border-orange-200'}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-100 text-orange-700'}`}>
+                            until {job.holdUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </span>
+                        </div>
+                        {isAdmin && (
+                          <div className="flex gap-2 mt-2">
+                            <button onClick={() => resumeJobFromHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">✅ Paid, start job</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -11046,6 +11497,44 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
         </div>
+
+        {/* Drive link prompt — add/open Google Drive folder from progress list */}
+        {driveLinkPromptJob && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-5 max-w-sm w-full shadow-2xl`}>
+              <div className="text-3xl text-center mb-2">☁️</div>
+              <h2 className={`text-base font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Add Google Drive Link</h2>
+              <p className={`text-xs text-center mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{driveLinkPromptJob.jobName}</p>
+              <input
+                type="url"
+                value={driveLinkPromptJob.currentUrl}
+                onChange={e => setDriveLinkPromptJob(p => ({ ...p, currentUrl: e.target.value }))}
+                placeholder="https://drive.google.com/drive/folders/..."
+                className={`w-full px-3 py-2.5 rounded-lg text-sm border mb-4 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400'}`}
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setDriveLinkPromptJob(null)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Cancel</button>
+                <button
+                  disabled={!driveLinkPromptJob.currentUrl.trim()}
+                  onClick={async () => {
+                    const url = driveLinkPromptJob.currentUrl.trim();
+                    if (!url) return;
+                    const jobId = driveLinkPromptJob.id;
+                    const existing = editingJobs.find(j => j.id === jobId);
+                    const newLocs = [...(existing?.fileLocations || []).filter(f => f.type !== 'drive_folder'), { type: 'drive_folder', url }];
+                    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, driveFolderUrl: url, fileLocations: newLocs } : j));
+                    await db.from('jobs').update({ file_locations: newLocs }).eq('id', jobId);
+                    setDriveLinkPromptJob(null);
+                    window.open(url, '_blank', 'noopener');
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity ${!driveLinkPromptJob.currentUrl.trim() ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  style={{background:'var(--gold)'}}>Save &amp; Open</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -13926,11 +14415,24 @@ The Eyecon Moments Team
   if (currentView === 'jobs') {
     const filteredJobs = editingJobs.filter(job => {
       if (!showArchived && archivedJobIds.includes(job.id)) return false;
+      if (isJobOnHold(job) || isHoldExpired(job)) return false;
       if (jobSearchQuery) {
         const query = jobSearchQuery.toLowerCase();
         return job.jobName.toLowerCase().includes(query) || job.customerName.toLowerCase().includes(query);
       }
       return true;
+    });
+    const onHoldJobsList = editingJobs.filter(job => !archivedJobIds.includes(job.id) && (isJobOnHold(job) || isHoldExpired(job)))
+      .filter(job => !jobSearchQuery || job.jobName.toLowerCase().includes(jobSearchQuery.toLowerCase()) || job.customerName.toLowerCase().includes(jobSearchQuery.toLowerCase()));
+
+    // Jobs ready to post: complete, gallery sent 30+ days ago, no open revisions, not sent/archived
+    const readyToSendJobs = editingJobs.filter(job => {
+      if (archivedJobIds.includes(job.id) || job.jobSent) return false;
+      if (!isJobFullyComplete(job)) return false;
+      if (!job.gallerySentAt) return false;
+      const daysSince = Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000);
+      if (daysSince < 30) return false;
+      return !revisions.some(r => !r.completed && r.title.toLowerCase().includes(job.jobName.toLowerCase()));
     });
 
     // Pipeline stages for Kanban
@@ -14228,6 +14730,92 @@ The Eyecon Moments Team
             </div>
           )}
           
+          {/* Ready to Send Section */}
+          {!jobsPipelineView && readyToSendJobs.length > 0 && (
+            <div className={`rounded-lg border-2 p-4 ${darkMode ? 'bg-amber-900 border-amber-600' : 'bg-amber-50 border-amber-300'}`}>
+              <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-amber-300' : 'text-amber-800'}`}>
+                📬 Ready to Send ({readyToSendJobs.length})
+                <span className={`text-xs font-normal ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>— gallery sent 30+ days ago, no revisions outstanding</span>
+              </h3>
+              <div className="space-y-2">
+                {readyToSendJobs.map(job => (
+                  <div key={job.id} className={`rounded-lg p-3 border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-amber-200'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                        {job.gallerySentAt && (
+                          <p className={`text-xs mt-0.5 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                            Gallery sent {Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000)} days ago
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={() => {
+                        if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
+                        markJobSent(job.id);
+                      }} className="whitespace-nowrap px-3 py-1.5 rounded text-sm font-semibold bg-green-500 text-white hover:bg-green-600 flex-shrink-0">
+                        📬 Mark as Sent
+                      </button>
+                    </div>
+                    {job.clientAddress ? (
+                      <div className={`mt-2 flex items-center gap-2`}>
+                        <p className={`text-xs flex-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📮 {job.clientAddress}</p>
+                        <button onClick={() => saveClientAddress(job.id, '')} className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>Edit</button>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          placeholder="Enter client's home address to post memory stick…"
+                          defaultValue=""
+                          onBlur={e => { if (e.target.value.trim()) saveClientAddress(job.id, e.target.value.trim()); }}
+                          className={`w-full px-2 py-1.5 rounded border text-xs ${darkMode ? 'bg-gray-700 border-gray-500 text-white placeholder-gray-500' : 'bg-white border-amber-300 placeholder-gray-400'}`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* On Hold Section — Jobs tab */}
+          {!jobsPipelineView && onHoldJobsList.length > 0 && (
+            <div className={`rounded-lg shadow p-4 ${darkMode ? 'bg-gray-800 border border-orange-700' : 'bg-orange-50 border border-orange-200'}`}>
+              <button className="w-full flex justify-between items-center" onClick={() => setShowOnHoldSection(p => !p)}>
+                <h3 className={`font-bold ${darkMode ? 'text-orange-300' : 'text-orange-800'}`}>⏸ On Hold ({onHoldJobsList.length})</h3>
+                <span className={`text-xs ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{showOnHoldSection ? '▲ Hide' : '▼ Show'}</span>
+              </button>
+              {showOnHoldSection && (
+                <div className="mt-3 space-y-2">
+                  {onHoldJobsList.map(job => {
+                    const expired = isHoldExpired(job);
+                    return (
+                      <div key={job.id} className={`p-3 rounded-lg border-2 ${expired ? (darkMode ? 'bg-yellow-900 border-yellow-500' : 'bg-yellow-50 border-yellow-400') : (darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-orange-200')}`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                          </div>
+                          {expired
+                            ? <span className={`text-xs px-2 py-0.5 rounded font-semibold ${darkMode ? 'bg-yellow-800 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}>⚠️ Hold expired</span>
+                            : <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? 'bg-orange-900 text-orange-300' : 'bg-orange-100 text-orange-700'}`}>until {job.holdUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                          }
+                        </div>
+                        {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                          <div className="flex gap-2">
+                            <button onClick={() => resumeJobFromHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-green-500 text-white hover:bg-green-600">✅ Paid, start job</button>
+                            {expired && <button onClick={() => extendJobHold(job.id)} className="flex-1 py-1.5 rounded text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600">⏸ Extend 30 days</button>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Job List */}
           {!jobsPipelineView && (
           <div className="space-y-3">
@@ -14317,27 +14905,53 @@ The Eyecon Moments Team
                       </select>
                     </div>
                     {job.hasPhotos && (
-                      job.photoStatus === 'completed' ? (
-                        <div className={`mb-3 px-3 py-2 rounded-lg flex items-center justify-between ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">✅</span>
-                            <div>
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>📸 Photo Editing — Done</span>
-                              {job.photoAssignedTo > 0 && (
-                                <span className={`text-xs ml-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                  {employees.find(e => e.id === job.photoAssignedTo)?.name || ''}
-                                </span>
-                              )}
+                      job.photoStatus === 'completed' ? (() => {
+                        const photoWage = (job.wageEntries || []).find(e => e.type === 'photo' && e.employeeId === job.photoAssignedTo);
+                        const photoCompletedAt = photoWage?.submittedAt ? new Date(photoWage.submittedAt) : null;
+                        const photoLoc = (job.fileLocations || []).find(f => !f.type && (f.stage === 'Photo Editing' || f.stageName === 'Photo Editing'));
+                        const photoHrs = job.photoAssignedTo
+                          ? timeEntries.filter(t => String(t.jobId) === String(job.id) && t.employeeId === job.photoAssignedTo && t.hoursWorked).reduce((a, t) => a + t.hoursWorked, 0)
+                          : 0;
+                        const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+                        return (
+                        <div className={`mb-3 p-2 rounded-lg ${darkMode ? 'bg-green-900 border border-green-700' : 'bg-green-50 border border-green-200'}`}>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className={`text-xs font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>📸 Photo Editing</span>
+                            <select value={job.photoStatus} onChange={(e) => updatePhotoStatus(job.id, e.target.value)}
+                              className={`text-xs px-2 py-1 rounded border ${getStatusColor(job.photoStatus)}`}>
+                              <option value="not-started">Not Started</option>
+                              <option value="in-progress">In Progress</option>
+                              <option value="completed">Completed</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1 mt-1">
+                            <p className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                              ✓ {employees.find(e => e.id === job.photoAssignedTo)?.name || photoWage?.employeeName || 'Unknown'}
+                              {photoCompletedAt && ` · ${photoCompletedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })} ${photoCompletedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+                              {isAdmin && photoHrs > 0 && ` · ${photoHrs.toFixed(1)}h`}
+                            </p>
+                            {photoLoc && (photoLoc.hardware || photoLoc.drive || photoLoc.path || photoLoc.filename) && (
+                              <div className={`text-xs rounded px-2 py-1 ${darkMode ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800'}`}>
+                                {photoLoc.hardware && <span className="font-medium">💻 {photoLoc.hardware}</span>}
+                                {photoLoc.drive && <span className="ml-1">· {photoLoc.drive}</span>}
+                                {photoLoc.path && <span className="ml-1 opacity-75">· {photoLoc.path}</span>}
+                                {photoLoc.filename && <div className="mt-0.5 opacity-90">📁 {photoLoc.filename}</div>}
+                                {isAdmin && photoLoc.setAt && <div className="opacity-60 text-xs">Logged {new Date(photoLoc.setAt).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}</div>}
+                              </div>
+                            )}
+                            <div className="mt-2">
+                              <div className="flex justify-between items-center mb-0.5">
+                                <span className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Progress</span>
+                                <span className="text-xs font-semibold text-green-600">✅ 100%</span>
+                              </div>
+                              <div className={`w-full rounded-full h-1.5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                <div className="h-1.5 rounded-full bg-green-500 w-full" />
+                              </div>
                             </div>
                           </div>
-                          <select value={job.photoStatus} onChange={(e) => updatePhotoStatus(job.id, e.target.value)}
-                            className={`text-xs px-2 py-1 rounded border ${getStatusColor(job.photoStatus)}`}>
-                            <option value="not-started">Not Started</option>
-                            <option value="in-progress">In Progress</option>
-                            <option value="completed">Completed</option>
-                          </select>
                         </div>
-                      ) : (
+                        );
+                      })() : (
                         <div className={`mb-3 p-3 ${darkMode ? 'bg-purple-900' : 'bg-purple-50'} rounded-lg`}>
                           <div className="flex justify-between items-center mb-2">
                             <span className={`font-semibold text-sm ${darkMode ? 'text-purple-200' : ''}`}><Camera /> Photo Editing</span>
@@ -14362,6 +14976,23 @@ The Eyecon Moments Team
                             <option value={0}>Unassigned</option>
                             {employees.filter(e => e.role === 'employee' || e.canBeAssigned).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                           </select>
+                          {(() => {
+                            const photoDone = job.photoStatus === 'completed';
+                            const reported = photoDone ? 100 : (getLatestProgress(job.id) ?? 0);
+                            return (
+                              <div className="mt-2">
+                                <div className="flex justify-between items-center mb-0.5">
+                                  <span className={`text-xs ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>Progress</span>
+                                  <span className={`text-xs font-semibold ${photoDone ? 'text-green-600' : reported > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                                    {photoDone ? '✅ 100%' : reported > 0 ? `${reported}%` : '⏳ 0%'}
+                                  </span>
+                                </div>
+                                <div className={`w-full rounded-full h-1.5 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                  <div className={`h-1.5 rounded-full transition-all ${photoDone ? 'bg-green-500' : 'bg-orange-400'}`} style={{width:`${reported}%`}} />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )
                     )}
@@ -14623,7 +15254,7 @@ The Eyecon Moments Team
                       const saveDlv = (link, sent) => { localStorage.setItem(dlvKey, JSON.stringify({ link, sent })); refreshLocal(); };
                       return (
                         <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📤 Gallery / Delivery Link {dlv?.sent ? <span className="text-green-500 font-normal ml-1">✅ Sent</span> : null}</p>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>📤 Gallery / Delivery Link {dlv?.sent ? <span className="text-green-500 font-normal ml-1">✅ Sent</span> : null}{job.gallerySentAt ? <span className={`font-normal ml-1 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>· emailed {job.gallerySentAt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span> : null}</p>
                           <div className="space-y-1.5">
                             <input type="url" placeholder="Paste Pixieset, WeTransfer or Drive link..."
                               value={inputVal}
@@ -14640,7 +15271,56 @@ The Eyecon Moments Team
                       );
                     })()}
 
+                    {/* Client address prompt for ready-to-send jobs */}
+                    {isJobFullyComplete(job) && !isArchived && !job.jobSent && job.gallerySentAt && (() => {
+                      const daysSinceSent = Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000);
+                      const hasOpenRevision = revisions.some(r => !r.completed && r.title.toLowerCase().includes(job.jobName.toLowerCase()));
+                      const readyToSend = daysSinceSent >= 30 && !hasOpenRevision;
+                      if (!readyToSend) return null;
+                      return (
+                        <div className={`mb-3 p-3 rounded-lg border-2 ${darkMode ? 'bg-amber-900 border-amber-600' : 'bg-amber-50 border-amber-300'}`}>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-amber-300' : 'text-amber-800'}`}>
+                            📬 Ready to post — gallery sent {daysSinceSent} days ago, no revisions
+                          </p>
+                          {job.clientAddress ? (
+                            <div className="flex items-center gap-2">
+                              <p className={`text-xs flex-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📮 {job.clientAddress}</p>
+                              <button onClick={() => saveClientAddress(job.id, '')} className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>Edit</button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Client's home address (for posting memory stick)"
+                                defaultValue=""
+                                onBlur={e => { if (e.target.value.trim()) saveClientAddress(job.id, e.target.value.trim()); }}
+                                className={`flex-1 px-2 py-1 rounded border text-xs ${darkMode ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400' : 'bg-white border-amber-300 placeholder-gray-400'}`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div className="flex gap-2">
+                      {isJobFullyComplete(job) && !isArchived && !job.jobSent && (
+                        <button onClick={() => {
+                          if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
+                          markJobSent(job.id);
+                        }} className="flex-1 px-3 py-2 rounded text-sm font-semibold bg-green-500 text-white hover:bg-green-600">
+                          📬 Mark as Sent
+                        </button>
+                      )}
+                      {job.jobSent && (
+                        <span className="flex-1 px-3 py-2 rounded text-sm font-semibold text-center bg-green-100 text-green-700">
+                          ✅ Sent
+                        </span>
+                      )}
+                      {!isArchived && !job.jobSent && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                        <button onClick={() => putJobOnHold(job.id)} className="flex-1 px-3 py-2 rounded text-sm bg-orange-100 text-orange-700 hover:bg-orange-200 whitespace-nowrap">
+                          ⏸ On hold
+                        </button>
+                      )}
                       <button onClick={() => toggleArchiveJob(job.id)}
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
                         <Archive /> {isArchived ? 'Unarchive' : 'Archive'}
@@ -15095,6 +15775,9 @@ The Eyecon Moments Team
                       const body = encodeURIComponent(emailBody);
                       openMail(`mailto:${encodeURIComponent(galleryEmailModal.email)}?subject=${subject}&body=${body}`);
                       logActivity('Gallery email sent', gemJob?.jobName || '', galleryEmailModal.email);
+                      const _gSentAt = new Date().toISOString();
+                      db.from('jobs').update({ gallery_sent_at: _gSentAt }).eq('id', galleryEmailModal.jobId);
+                      setEditingJobs(prev => prev.map(j => j.id === galleryEmailModal.jobId ? { ...j, gallerySentAt: new Date(_gSentAt) } : j));
                       setGalleryEmailModal(null);
                     }}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity ${(!galleryEmailModal.email || !galleryEmailModal.driveLink) ? 'opacity-40 cursor-not-allowed' : ''}`}
@@ -15637,6 +16320,7 @@ The Eyecon Moments Team
   if (currentView === 'crm') {
     const filteredInquiries = getFilteredInquiries();
     const bookedInquiries = inquiries.filter(i => i.status === 'booked');
+    const archivedInquiries = inquiries.filter(i => isArchivedInquiry(i));
     const pipelineInquiries = filteredInquiries.filter(i => i.status !== 'booked');
 
     // Calculate CRM response stats
@@ -15668,6 +16352,7 @@ The Eyecon Moments Team
     }).length;
     
     const needingResponse = inquiries.filter(i => {
+      if (isArchivedInquiry(i)) return false;
       const daysSince = Math.floor((currentTime - new Date(i.submittedDate)) / (1000 * 60 * 60 * 24));
       return i.status === 'new' && daysSince > 1;
     }).length;
@@ -15738,7 +16423,7 @@ The Eyecon Moments Team
               📸 Add from Screenshot
             </button>
             <div className="flex gap-2 overflow-x-auto">
-              {['all', 'new', 'contacted', 'quoted', 'declined'].map(status => (
+              {['all', 'new', 'contacted', 'quoted'].map(status => (
                 <button key={status} onClick={() => setInquiryFilter(status)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
                     inquiryFilter === status
@@ -15754,6 +16439,7 @@ The Eyecon Moments Team
           {/* Follow-up needed alert */}
           {(() => {
             const needsFollowUp = inquiries.filter(i => {
+              if (isArchivedInquiry(i)) return false;
               if (i.status !== 'quoted') return false;
               const quotedDate = new Date(i.quotedDate || i.submittedDate);
               const daysSinceQuoted = Math.floor((currentTime - quotedDate) / (1000 * 60 * 60 * 24));
@@ -16681,6 +17367,74 @@ www.eyeconmoments.co.uk`;
               )}
             </div>
           )}
+
+          {/* Archived — declined + past-date leads */}
+          {archivedInquiries.length > 0 && (
+            <div className={`rounded-lg shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <button
+                onClick={() => setShowArchivedSection(v => !v)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-left ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} transition-colors`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-gray-400 text-lg">📁</span>
+                  <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Archived</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                    {archivedInquiries.length}
+                  </span>
+                </span>
+                <span className={`text-lg transition-transform duration-200 ${showArchivedSection ? 'rotate-180' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>▾</span>
+              </button>
+              {showArchivedSection && (
+                <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                  {archivedInquiries.map(inquiry => {
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const datePassed = inquiry.status !== 'booked' && inquiry.eventDate && new Date(inquiry.eventDate) < today;
+                    const archiveReason = inquiry.status === 'declined' ? 'Declined' : datePassed ? 'Date passed' : 'Archived';
+                    return (
+                      <div key={inquiry.id} className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-start gap-3 min-w-0">
+                            {inquiry.contactPhoto
+                              ? <img src={inquiry.contactPhoto} alt="contact" className="w-10 h-10 rounded-lg object-cover border border-gray-300 shrink-0 opacity-60" />
+                              : <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-base shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>📁</div>
+                            }
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{inquiry.customerName}</h3>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  inquiry.status === 'declined'
+                                    ? (darkMode ? 'bg-red-900 text-red-400' : 'bg-red-100 text-red-600')
+                                    : (darkMode ? 'bg-amber-900 text-amber-400' : 'bg-amber-100 text-amber-700')
+                                }`}>{archiveReason}</span>
+                              </div>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {inquiry.eventType}{inquiry.eventDate ? ` — ${formatDate(inquiry.eventDate)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
+                            <button onClick={() => deleteInquiry(inquiry.id)} className="text-red-400 hover:text-red-600 text-xs" title="Delete">🗑️</button>
+                            <select
+                              value={inquiry.status}
+                              onChange={e => updateInquiryStatus(inquiry.id, e.target.value)}
+                              className={`text-xs rounded px-2 py-1 border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                              {['new','contacted','quoted','booked','declined'].map(s => (
+                                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        {inquiry.notes && parseInquiryLog(inquiry.notes).original && (
+                          <p className={`text-xs mt-2 line-clamp-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{parseInquiryLog(inquiry.notes).original}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
           {/* CRM Screenshot AI Modal */}
@@ -17021,6 +17775,7 @@ Eyecon Moments
                     }]).select().single();
                     if (!error && data) {
                       setInquiries(prev => [rowToInquiry(data), ...prev]);
+                      sendActivityPush('📥 New CRM Lead', `${addContactForm.name.trim()} added to CRM`);
                       setShowAddContactModal(false);
                     } else {
                       alert('Save failed: ' + (error?.message || 'unknown error'));
@@ -17459,6 +18214,112 @@ Eyecon Moments
               </>
             );
           })()}
+
+          {/* Project Files Log (admin) */}
+          {(() => {
+            const allJobsForPf = [...editingJobs, ...archivedJobsData];
+            const pfEntries = allJobsForPf.flatMap(j =>
+              (j.projectFilesLog || []).map((e, i) => ({ ...e, jobId: j.id, jobName: j.jobName, entryIdx: i }))
+            );
+            return (
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4`}>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>🗂️ Project Files Log</h3>
+                  <button
+                    onClick={() => {
+                      const job = editingJobs.find(j => !archivedJobIds.includes(j.id));
+                      if (!job) { window.__toast?.('No active job found', 'info'); return; }
+                      setPfLogModal({ jobId: job.id });
+                    }}
+                    className="text-xs px-3 py-1 rounded bg-indigo-600 text-white font-semibold">+ Add Entry</button>
+                </div>
+                {pfEntries.length === 0 ? (
+                  <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No project file entries yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pfEntries.map((e, idx) => (
+                      <div key={idx} className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className={`font-semibold text-sm ${darkMode ? 'text-white' : ''}`}>{e.jobName}</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
+                              📁 {e.fileType}{e.hardware ? ` · ${hardwareLocations.find(h=>h.id===e.hardware)?.name||e.hardware}` : ''}{e.drive ? ` / ${e.drive}` : ''}
+                            </p>
+                            {e.path && <p className={`text-xs font-mono mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{e.path}</p>}
+                            {e.note && <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📝 {e.note}</p>}
+                          </div>
+                          <p className={`text-xs whitespace-nowrap ml-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            👤 {e.addedBy}<br/>{new Date(e.addedAt).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'2-digit'})}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Add Project File Log Entry Modal (admin) */}
+          {pfLogModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-full max-w-sm`}>
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : ''}`}>
+                  <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>🗂️ Log Project File</h3>
+                  <div className="mt-2">
+                    <select value={pfLogModal.jobId}
+                      onChange={e => setPfLogModal(p => ({ ...p, jobId: Number(e.target.value) || e.target.value }))}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      {[...editingJobs, ...archivedJobsData].map(j => <option key={j.id} value={j.id}>{j.jobName}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>File Type</label>
+                    <select value={projectFileForm.fileType} onChange={e => setProjectFileForm(p=>({...p,fileType:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      {['Premiere','Lightroom','Resolve','Photoshop','After Effects','Final Cut','Other'].map(t=><option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Machine</label>
+                    <select value={projectFileForm.hardware} onChange={e => setProjectFileForm(p=>({...p,hardware:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="">Select machine...</option>
+                      {hardwareLocations.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Drive</label>
+                    <select value={projectFileForm.drive} onChange={e => setProjectFileForm(p=>({...p,drive:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                      <option value="">Select drive...</option>
+                      {allDrives.map(d=><option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Path (optional)</label>
+                    <input type="text" placeholder="e.g. /Projects/2025/JobName.prproj"
+                      value={projectFileForm.path} onChange={e => setProjectFileForm(p=>({...p,path:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Note (optional)</label>
+                    <textarea rows={2} placeholder="Any notes..."
+                      value={projectFileForm.note} onChange={e => setProjectFileForm(p=>({...p,note:e.target.value}))}
+                      className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button onClick={() => { setPfLogModal(null); setProjectFileForm({ fileType:'Premiere', hardware:'', drive:'', path:'', note:'' }); }}
+                      className={`py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                    <button onClick={addProjectFileEntry}
+                      className="py-2 rounded-lg font-semibold bg-indigo-600 text-white hover:bg-indigo-700">💾 Save</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -18250,7 +19111,7 @@ Eyecon Moments
     });
     
     // Overall completion calculations
-    const activeJobsList = pastJobs.filter(job => !archivedJobIds.includes(job.id));
+    const activeJobsList = pastJobs.filter(job => !archivedJobIds.includes(job.id) && !isJobOnHold(job));
     
     // Photo completion
     const totalPhotoJobs = activeJobsList.filter(j => j.hasPhotos).length;
@@ -20461,6 +21322,7 @@ Eyecon Moments
           }]).select().single();
           if (!error && data) {
             setInquiries(prev => [rowToInquiry(data), ...prev]);
+            sendActivityPush('📥 New CRM Lead', `${quoteData.clientName} added as "Quoted"`);
             alert('✅ New CRM lead created as "Quoted" with a 7-day follow-up reminder.\n\nYour mail app will open — remember to attach the PDF!');
           } else {
             alert('⚠️ Your mail app will open — remember to attach the PDF!\n\n(CRM save failed: ' + (error?.message || 'unknown error') + ')');
