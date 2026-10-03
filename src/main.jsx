@@ -5271,13 +5271,27 @@ Notes: ${j.notes || 'none'}`;
           if (modal.selectedJobId) {
             const job2 = editingJobs.find(j => j.id === modal.selectedJobId);
             if (job2) await logWageEntry(job2, entry2);
+            // Also record in time_entries so it shows on the weekly timesheet
+            if (job2 && hours2 > 0) {
+              const shootDate2 = job2.shootDate ? new Date(job2.shootDate) : new Date();
+              const [sh2, sm2] = actualStart2.split(':').map(Number);
+              const [eh2, em2] = actualEnd2.split(':').map(Number);
+              const ciDate2 = new Date(shootDate2); ciDate2.setHours(sh2, sm2, 0, 0);
+              const coDate2 = new Date(shootDate2); coDate2.setHours(eh2, em2, 0, 0);
+              const teEntry2 = { employee_id: currentUser.id, job_id: modal.selectedJobId, clock_in: ciDate2.toISOString(), clock_out: coDate2.toISOString(), hours_worked: parseFloat(hours2.toFixed(2)), description: 'Shoot day' };
+              const { data: teData2 } = await db.from('time_entries').insert([teEntry2]).select();
+              if (teData2?.[0]) {
+                const mapped2 = { id: teData2[0].id, employeeId: teData2[0].employee_id, jobId: teData2[0].job_id, clockIn: new Date(teData2[0].clock_in), clockOut: new Date(teData2[0].clock_out), hoursWorked: teData2[0].hours_worked, description: teData2[0].description };
+                setTimeEntries(prev => [mapped2, ...prev]);
+              }
+            }
           } else {
             const adhoc2 = JSON.parse(localStorage.getItem('eyecon_adhoc_wages') || '[]');
             adhoc2.push(entry2);
             localStorage.setItem('eyecon_adhoc_wages', JSON.stringify(adhoc2));
           }
           setWageSubmitModal(null);
-          alert(isOverride2 ? 'Submitted — waiting for admin approval.' : 'Shoot wage logged successfully.');
+          alert(isOverride2 ? 'Submitted — waiting for admin approval.' : 'Shoot logged successfully.');
         };
         return (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-[9999]">
@@ -6227,6 +6241,42 @@ Notes: ${j.notes || 'none'}`;
                         <span className={`text-xs font-bold px-2 py-1 rounded ml-3 whitespace-nowrap ${isOverdue ? 'bg-red-500 text-white' : days <= 3 ? 'bg-orange-500 text-white' : 'bg-yellow-400 text-yellow-900'}`}>
                           {isOverdue ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d left`}
                         </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Today's Shoots */}
+          {(() => {
+            const todayMid3 = new Date(); todayMid3.setHours(0,0,0,0);
+            const todayEnd3 = new Date(); todayEnd3.setHours(23,59,59,999);
+            const todayShootJobs = editingJobs.filter(j => {
+              if (archivedJobIds.includes(j.id) || !j.shootDate) return false;
+              const s = new Date(j.shootDate); s.setHours(0,0,0,0);
+              return s.getTime() === todayMid3.getTime();
+            });
+            if (todayShootJobs.length === 0) return null;
+            return (
+              <div className={`${darkMode ? 'bg-gray-800 border-blue-700' : 'bg-blue-50 border-blue-300'} rounded-lg shadow border-2 p-4`}>
+                <h2 className={`font-bold text-base mb-3 ${darkMode ? 'text-blue-300' : 'text-blue-800'}`}>📷 Today's Shoot{todayShootJobs.length > 1 ? 's' : ''}</h2>
+                <div className="space-y-2">
+                  {todayShootJobs.map(job => {
+                    const myEntry3 = (job.wageEntries || []).find(e => e.type === 'shoot' && e.employeeId === currentUser.id);
+                    return (
+                      <div key={job.id} className={`flex items-center justify-between gap-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                        <div className="min-w-0">
+                          <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                          <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
+                          {myEntry3 && <p className={`text-xs mt-0.5 font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>✓ Logged {myEntry3.actualStart}–{myEntry3.actualEnd}</p>}
+                        </div>
+                        <button
+                          onClick={() => setWageSubmitModal({ selectedJobId: job.id, actualStart: job.itinerary?.startTime || '10:00', actualEnd: job.itinerary?.endTime || '22:00', isOverride: false, overrideAmount: 0, overrideReason: '', customJobName: '', notes: '', ranOver: false, extraHours: '', extraOverrideAmount: '' })}
+                          className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap ${myEntry3 ? (darkMode ? 'bg-green-800 text-green-300' : 'bg-green-100 text-green-700') : 'bg-blue-500 text-white'}`}>
+                          {myEntry3 ? '📷 Re-log' : '📷 Log Shoot'}
+                        </button>
                       </div>
                     );
                   })}
@@ -14977,6 +15027,24 @@ The Eyecon Moments Team
                         <option value="video">Video Only</option>
                       </select>
                     </div>
+                    {/* Shoot Attendance */}
+                    {(() => {
+                      const shootEntries3 = (job.wageEntries || []).filter(e => e.type === 'shoot');
+                      if (shootEntries3.length === 0) return null;
+                      return (
+                        <div className={`mb-3 p-2 rounded-lg ${darkMode ? 'bg-blue-900 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
+                          <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>📷 Shoot Attendance</p>
+                          <div className="space-y-1">
+                            {shootEntries3.map((e3, i3) => (
+                              <div key={i3} className={`flex items-center justify-between text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <span className="font-medium">{e3.employeeName}</span>
+                                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>{e3.actualStart}–{e3.actualEnd} · {e3.hoursWorked?.toFixed(1)}h</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {job.hasPhotos && (
                       job.photoStatus === 'completed' ? (() => {
                         const photoWage = (job.wageEntries || []).find(e => e.type === 'photo' && e.employeeId === job.photoAssignedTo);
