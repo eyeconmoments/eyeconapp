@@ -12340,6 +12340,18 @@ The Eyecon Moments Team
               <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>➕ Add Upcoming Shoot</h2>
               <div className="space-y-3">
                 <div>
+                  <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Is this Photo, Video, or Both? *</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[{val:'photo',label:'📷 Photo'},{val:'photo-video',label:'📷🎬 Both'},{val:'video',label:'🎬 Video'}].map(({val,label}) => (
+                      <button key={val} type="button"
+                        onClick={() => setUpcomingManualJob(p=>({...p, jobType:val, hasPhotos:val!=='video', hasVideo:val!=='photo'}))}
+                        className={`py-3 rounded-lg font-semibold text-sm border-2 transition-all ${upcomingManualJob.jobType===val ? 'border-blue-500 bg-blue-500 text-white' : darkMode ? 'border-gray-600 bg-gray-700 text-gray-200 hover:border-blue-400' : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name *</label>
                   <input type="text" value={upcomingManualJob.jobName} onChange={e => setUpcomingManualJob(p => ({...p, jobName: e.target.value}))}
                     placeholder="e.g. Aisha & Imran Wedding" className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
@@ -12360,15 +12372,6 @@ The Eyecon Moments Team
                     <input type="date" value={upcomingManualJob.deadline} onChange={e => setUpcomingManualJob(p => ({...p, deadline: e.target.value}))}
                       className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
                   </div>
-                </div>
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Type</label>
-                  <select value={upcomingManualJob.jobType} onChange={e => setUpcomingManualJob(p => ({...p, jobType: e.target.value, hasPhotos: e.target.value !== 'video', hasVideo: e.target.value !== 'photo'}))}
-                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
-                    <option value="photo-video">Photo + Video</option>
-                    <option value="photo">Photo Only</option>
-                    <option value="video">Video Only</option>
-                  </select>
                 </div>
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Notes / Location</label>
@@ -15481,6 +15484,18 @@ The Eyecon Moments Team
               <h2 className={`text-xl font-bold mb-4 ${darkMode ? 'text-white' : ''}`}>➕ Add New Job</h2>
               <div className="space-y-3">
                 <div>
+                  <label className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Is this Photo, Video, or Both? *</label>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {[{val:'photo',label:'📷 Photo'},{val:'photo-video',label:'📷🎬 Both'},{val:'video',label:'🎬 Video'}].map(({val,label}) => (
+                      <button key={val} type="button"
+                        onClick={() => setManualJob(p=>({...p, jobType:val, hasPhotos:val!=='video', hasVideo:val!=='photo'}))}
+                        className={`py-3 rounded-lg font-semibold text-sm border-2 transition-all ${manualJob.jobType===val ? 'border-blue-500 bg-blue-500 text-white' : darkMode ? 'border-gray-600 bg-gray-700 text-gray-200 hover:border-blue-400' : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
                   <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Name *</label>
                   <input type="text" value={manualJob.jobName} onChange={e => setManualJob(p=>({...p,jobName:e.target.value}))}
                     placeholder="e.g. Aisha & Imran Wedding" className={`w-full mt-1 px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : ''}`} />
@@ -15501,15 +15516,6 @@ The Eyecon Moments Team
                     <input type="date" value={manualJob.deadline} onChange={e => setManualJob(p=>({...p,deadline:e.target.value}))}
                       className={`w-full mt-1 px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : ''}`} />
                   </div>
-                </div>
-                <div>
-                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Job Type</label>
-                  <select value={manualJob.jobType} onChange={e => setManualJob(p=>({...p, jobType:e.target.value, hasPhotos:e.target.value!=='video', hasVideo:e.target.value!=='photo'}))}
-                    className={`w-full mt-1 px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 text-white border-gray-600' : ''}`}>
-                    <option value="photo-video">Photo + Video</option>
-                    <option value="photo">Photo Only</option>
-                    <option value="video">Video Only</option>
-                  </select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
