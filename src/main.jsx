@@ -15302,7 +15302,8 @@ The Eyecon Moments Team
                       );
                     })()}
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
                       {isJobFullyComplete(job) && !isArchived && !job.jobSent && (
                         <button onClick={() => {
                           if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
@@ -15325,6 +15326,8 @@ The Eyecon Moments Team
                         className={`flex-1 px-3 py-2 rounded text-sm ${isArchived ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>
                         <Archive /> {isArchived ? 'Unarchive' : 'Archive'}
                       </button>
+                      </div>
+                      <div className="flex gap-1.5">
                       <button title="Send gallery / delivery email to client" onClick={() => {
                         const inqMatch = inquiries.find(i => i.customerName?.toLowerCase() === job.customerName?.toLowerCase());
                         const savedDlv = (() => { try { return JSON.parse(localStorage.getItem(`eyecon_delivery_${job.id}`) || 'null'); } catch { return null; } })();
@@ -15400,6 +15403,7 @@ The Eyecon Moments Team
                       }} className="px-3 py-2 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200" title="Permanently delete (cannot be undone)">
                         🗑️
                       </button>
+                      </div>
                     </div>
                   </div>
                 </div>
