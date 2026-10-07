@@ -1349,6 +1349,10 @@ function EyeconMoments() {
   const [gmailSaveEmail, setGmailSaveEmail] = useState({});
   const [gmailExpandedBody, setGmailExpandedBody] = useState({});
   const [gmailEmailPrompt, setGmailEmailPrompt] = useState(null); // [{jobId, jobName, email}]
+  const [consultationReplies, setConsultationReplies] = useState([]); // [{jobId, jobName, customerName, email, proposedDate, proposedTime, rawText, messageId}]
+  const [consultationScanning, setConsultationScanning] = useState(false);
+  const [consultationScanModal, setConsultationScanModal] = useState(false);
+  const [creatingConsultEvent, setCreatingConsultEvent] = useState(null); // jobId being created
   const DEPOSIT_IMPORTS = [
     { customer: 'Rania', event: 'Nikkah', amount: '475.00', date: '2026-07-28', paid: true, note: 'Deposit' },
     { customer: 'Sadiyah', event: 'Wedding', amount: '412.15', date: '2026-07-24', paid: true, note: 'Deposit' },
@@ -3579,7 +3583,7 @@ function EyeconMoments() {
   const GOOGLE_CLIENT_ID = '177896696760-5ruieeb59dp9av5qq5oms4ukih1g3bla.apps.googleusercontent.com'; // User needs to add this
   const GOOGLE_API_KEY = 'AIzaSyC-q_SPGSK6ZZAisv0NzXDWAJAuG9ZGzNk'; // User needs to add this
   const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
-  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.file";
+  const SCOPES = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file";
 
   const initGoogleCalendar = () => new Promise(async (resolve, reject) => {
     try {
@@ -3675,6 +3679,161 @@ function EyeconMoments() {
       }
     });
     client.requestAccessToken();
+  };
+
+  const CONSULT_SUBJECT = 'Eyecon Moments — Consultation Booking';
+
+  const scanConsultationReplies = () => {
+    if (!window.google?.accounts?.oauth2) {
+      alert('Google services not loaded yet. Please connect Google Calendar first, then try again.');
+      return;
+    }
+    setConsultationScanning(true);
+    setConsultationReplies([]);
+
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar',
+      error_callback: (err) => {
+        setConsultationScanning(false);
+        if (err.type !== 'popup_closed') alert('Google sign-in error: ' + err.type);
+      },
+      callback: async (response) => {
+        if (response.error) { setConsultationScanning(false); return; }
+        try {
+          window.gapi?.client?.setToken?.(response);
+        } catch(_) {}
+        const tok = response.access_token;
+        try {
+          // Find threads where we sent a consultation booking email
+          const sentQ = encodeURIComponent(`subject:"${CONSULT_SUBJECT}" in:sent`);
+          const sentResp = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages?q=${sentQ}&maxResults=30`, {
+            headers: { Authorization: `Bearer ${tok}` }
+          });
+          const sentData = await sentResp.json();
+          const sentMsgs = sentData.messages || [];
+          if (!sentMsgs.length) { setConsultationScanning(false); setConsultationScanModal(true); return; }
+
+          const results = [];
+          for (const sentMsg of sentMsgs) {
+            const sentDetail = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${sentMsg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=To&metadataHeaders=Thread-Id`, {
+              headers: { Authorization: `Bearer ${tok}` }
+            }).then(r => r.json());
+            const hdrs = sentDetail.payload?.headers || [];
+            const toHdr = hdrs.find(h => h.name === 'To')?.value || '';
+            const threadId = sentDetail.threadId;
+
+            // Get all messages in this thread
+            const threadResp = await fetch(`https://www.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`, {
+              headers: { Authorization: `Bearer ${tok}` }
+            });
+            const threadData = await threadResp.json();
+            const threadMsgs = threadData.messages || [];
+            // Only look at replies (messages after the first)
+            if (threadMsgs.length < 2) continue;
+            const reply = threadMsgs[threadMsgs.length - 1];
+            const replyHdrs = reply.payload?.headers || [];
+            const fromHdr = replyHdrs.find(h => h.name === 'From')?.value || '';
+            // Skip if the last message is from us (no client reply yet)
+            if (fromHdr.includes('eyecon.moments@gmail.com')) continue;
+
+            const replyBody = decodeGmailBody(reply.payload);
+            const snippet = reply.snippet || '';
+            const combined = replyBody || snippet;
+
+            // Match job by email
+            const inq = inquiries.find(i => i.email && toHdr.includes(i.email));
+            const jobName = inq?.customerName || toHdr;
+
+            // Use Claude to extract a proposed date/time from the reply
+            let proposedDate = null;
+            let proposedTime = null;
+            try {
+              const aiResp = await fetch('/.netlify/functions/claude-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'claude-haiku-4-5-20251001',
+                  max_tokens: 200,
+                  messages: [{
+                    role: 'user',
+                    content: `Extract the proposed date and time for a consultation meeting from this email reply. Today is ${new Date().toDateString()}. Reply ONLY with JSON: {"date":"YYYY-MM-DD","time":"HH:MM"} or {"date":null,"time":null} if no date is found.\n\nEmail:\n${combined.slice(0, 1000)}`
+                  }]
+                })
+              });
+              const aiData = await aiResp.json();
+              const aiText = aiData.content?.[0]?.text || '';
+              const match = aiText.match(/\{[^}]+\}/);
+              if (match) {
+                const parsed = JSON.parse(match[0]);
+                proposedDate = parsed.date || null;
+                proposedTime = parsed.time || null;
+              }
+            } catch(_) {}
+
+            results.push({
+              jobId: inq?.id || threadId,
+              jobName,
+              customerName: inq?.customerName || jobName,
+              email: toHdr,
+              proposedDate,
+              proposedTime,
+              rawText: combined.slice(0, 500),
+              threadId,
+              tok
+            });
+          }
+          setConsultationReplies(results);
+        } catch(e) {
+          console.error('Consultation scan error:', e);
+          alert('Scan failed: ' + e.message);
+        }
+        setConsultationScanning(false);
+        setConsultationScanModal(true);
+      }
+    });
+    client.requestAccessToken();
+  };
+
+  const createConsultationCalendarEvent = async (reply) => {
+    setCreatingConsultEvent(reply.jobId);
+    try {
+      if (!reply.proposedDate) { alert('No date found in this reply.'); setCreatingConsultEvent(null); return; }
+      const dateStr = reply.proposedDate;
+      const timeStr = reply.proposedTime || '10:00';
+      const startDt = new Date(`${dateStr}T${timeStr}:00`);
+      const endDt = new Date(startDt.getTime() + 60 * 60 * 1000); // 1 hour
+
+      // Ensure we have a write token
+      if (!window.gapi?.client?.getToken?.()?.access_token && reply.tok) {
+        try { window.gapi?.client?.setToken?.({ access_token: reply.tok }); } catch(_) {}
+      }
+
+      const event = {
+        summary: `Consultation — ${reply.customerName}`,
+        description: `Consultation booked via email reply.\n\nClient replied:\n${reply.rawText}`,
+        start: { dateTime: startDt.toISOString(), timeZone: 'Europe/London' },
+        end: { dateTime: endDt.toISOString(), timeZone: 'Europe/London' },
+        colorId: '6', // Tangerine — distinct from shoot events
+        attendees: reply.email ? [{ email: reply.email.replace(/.*<(.+)>.*/, '$1').trim() }] : []
+      };
+
+      const resp = await window.gapi.client.calendar.events.insert({
+        calendarId: 'primary',
+        resource: event,
+        sendUpdates: 'all'
+      });
+      if (resp.result?.id) {
+        alert(`✅ Consultation added to your calendar for ${startDt.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })} at ${timeStr}.`);
+        setConsultationReplies(prev => prev.filter(r => r.jobId !== reply.jobId));
+      } else {
+        alert('Calendar event creation failed. Check Google Calendar permissions.');
+      }
+    } catch(e) {
+      console.error('Calendar event error:', e);
+      alert('Failed to create calendar event: ' + e.message);
+    }
+    setCreatingConsultEvent(null);
   };
 
   const scanGmailForDeposits = (prefillEmails = {}) => {
@@ -5441,6 +5600,8 @@ Notes: ${j.notes || 'none'}`;
         const greeting = (mlJob.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim() || 'there';
         const emailSubj = encodeURIComponent(`Eyecon Moments — Your Personalised Link`);
         const emailBod = encodeURIComponent(`Hi ${greeting},\n\nBefore your consultation, we thought it'd be great for you to have a look at this link — it gives us a chance to understand your vision and what you have in mind for the day:\n\n${url}\n\nDon't worry, we'll be in touch soon to arrange a consultation date with you. We can't wait to hear all about it!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+        const consultSubj = encodeURIComponent(CONSULT_SUBJECT);
+        const consultBod = encodeURIComponent(`Hi ${greeting},\n\nWe'd love to book in your consultation with Eyecon Moments! We just need to find a time that works best for you.\n\nWhen do you think would suit you? Feel free to suggest a few dates and times and we'll do our best to accommodate you.\n\nLooking forward to hearing from you!\n\nWarm regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
         return (
           <div className="fixed inset-0 bg-black bg-opacity-60 z-[9999] flex items-end justify-center" onClick={() => setClientLinkModal(null)}>
             <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
@@ -5460,13 +5621,60 @@ Notes: ${j.notes || 'none'}`;
                 </button>
                 <button onClick={() => { openMail(`mailto:${clientEmail}?subject=${emailSubj}&body=${emailBod}`); setClientLinkModal(null); }}
                   className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-gray-800 text-white text-sm font-medium hover:bg-gray-700">
-                  📧 {clientEmail ? `Email — ${clientEmail}` : 'Email to client'}
+                  📧 Pre-fill consultation link — {clientEmail || 'no email on file'}
+                </button>
+                <button onClick={() => { openGmail(clientEmail, decodeURIComponent(consultSubj), decodeURIComponent(consultBod)); setClientLinkModal(null); }}
+                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-white text-sm font-medium">
+                  📅 Ask when suits for consultation
                 </button>
               </div>
             </div>
           </div>
         );
       })()}
+
+      {/* ── Global: Consultation Reply Scan Modal ────────────────────────────── */}
+      {consultationScanModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999] flex items-end justify-center" onClick={() => setConsultationScanModal(false)}>
+          <div className="bg-gray-900 rounded-t-2xl w-full max-w-lg p-5 pb-8 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-bold text-lg">📅 Consultation Replies</h3>
+              <button onClick={() => setConsultationScanModal(false)} className="text-gray-400 text-2xl leading-none">×</button>
+            </div>
+            {consultationReplies.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-6">No client replies found to consultation booking emails.</p>
+            ) : (
+              <div className="space-y-3">
+                {consultationReplies.map((r, i) => (
+                  <div key={i} className="bg-gray-800 rounded-xl p-4">
+                    <p className="text-white font-semibold text-sm">{r.customerName}</p>
+                    <p className="text-gray-400 text-xs mb-2">{r.email}</p>
+                    {r.proposedDate ? (
+                      <p className="text-green-400 text-sm mb-1">📅 Proposed: {r.proposedDate}{r.proposedTime ? ` at ${r.proposedTime}` : ''}</p>
+                    ) : (
+                      <p className="text-yellow-400 text-xs mb-1">⚠️ No specific date found in reply</p>
+                    )}
+                    <p className="text-gray-500 text-xs line-clamp-2 mb-3">{r.rawText}</p>
+                    <button
+                      disabled={!r.proposedDate || creatingConsultEvent === r.jobId}
+                      onClick={() => createConsultationCalendarEvent(r)}
+                      className={`w-full py-2.5 rounded-lg text-sm font-semibold ${r.proposedDate ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
+                    >
+                      {creatingConsultEvent === r.jobId ? 'Adding to calendar…' : '➕ Add to calendar (tangerine)'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => { setConsultationScanModal(false); scanConsultationReplies(); }}
+              className="mt-4 w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium"
+            >
+              🔄 Scan again
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Global: Final Payment Modal (accessible from any view) ─────────── */}
       {finalPaymentModal && (() => {
@@ -12681,6 +12889,7 @@ The Eyecon Moments Team
                 }} disabled={gmailScanning} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{gmailScanning ? `⏳ ${gmailScanStatus || 'Connecting…'}` : '📥 Scan Gmail'}</button>
                 <button onClick={() => setShowUpcomingManualModal(true)} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold">➕ Add Job</button>
                 <button onClick={() => setShowUpcomingAIModal(true)} className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold">📸 Screenshot</button>
+                <button onClick={() => { if (consultationScanning) return; scanConsultationReplies(); }} disabled={consultationScanning} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold disabled:opacity-60">{consultationScanning ? '⏳ Scanning…' : '📅 Consult replies'}</button>
               </div>
             </div>
 
