@@ -17461,6 +17461,27 @@ www.eyeconmoments.co.uk`;
                   </button>
                 )}
 
+                {/* Follow-up email button for contacted (pre-quote) leads */}
+                {inquiry.status === 'contacted' && (
+                  <button
+                    onClick={() => {
+                      const firstName = inquiry.customerName.split(' ')[0];
+                      const subject = `Following up — Eyecon Moments`;
+                      const body = `Hi ${firstName},\n\nI hope you're doing well.\n\nI'm following up on my previous email regarding your wedding coverage quote to see if you have any questions or if you'd like to make any adjustments.\n\nPlease let me know if you are still interested in discussing the details or if you would like to move forward.\n\nKind regards,\nEyecon Moments\n📞 07957 450570\n✉️ eyecon.moments@gmail.com\n🌐 www.eyeconmoments.co.uk`;
+                      openMail(`mailto:${encodeURIComponent(inquiry.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                      const _stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                      const _noteEntry = `[Follow-up email sent — ${_stamp}]`;
+                      const _newNotes = [inquiry.notes || '', _noteEntry].filter(Boolean).join('\n');
+                      db.from('inquiries').update({ notes: _newNotes }).eq('id', inquiry.id);
+                      setInquiries(prev => prev.map(i => i.id === inquiry.id ? { ...i, notes: _newNotes } : i));
+                      logActivity('Follow-up email sent', inquiry.customerName, 'Email');
+                    }}
+                    className="mt-3 w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold"
+                  >
+                    📧 Send Follow-Up Email
+                  </button>
+                )}
+
                 {/* Follow-up button for quoted inquiries — RAG coloured */}
                 {inquiry.status === 'quoted' && (() => {
                   const lastDate = inquiry.followUpDate ? new Date(inquiry.followUpDate) : null;
