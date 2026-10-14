@@ -9644,6 +9644,13 @@ Notes: ${j.notes || 'none'}`;
               );
             };
 
+            // Upcoming jobs — future shoots more than 3 days away (any payment status)
+            const upcomingJobs = editingJobs.filter(j => {
+              if (archivedJobIds.includes(j.id) || !j.shootDate) return false;
+              const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
+              return shoot > threeDaysAhead;
+            }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
+
             // Search results across ALL jobs
             const searchTerm = paymentSearch.trim().toLowerCase();
             const searchResults = searchTerm.length >= 2
@@ -9681,6 +9688,15 @@ Notes: ${j.notes || 'none'}`;
                 {!searchTerm && needsPayment.length > 0 && (
                   <div className="space-y-2">
                     {needsPayment.map(j => renderPaymentJobRow(j))}
+                  </div>
+                )}
+                {/* Upcoming — future shoots always shown */}
+                {!searchTerm && upcomingJobs.length > 0 && (
+                  <div>
+                    <p className={`text-xs font-semibold mb-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📆 Upcoming — {upcomingJobs.length} job{upcomingJobs.length > 1 ? 's' : ''}</p>
+                    <div className="space-y-2">
+                      {upcomingJobs.map(j => renderPaymentJobRow(j))}
+                    </div>
                   </div>
                 )}
               </div>
