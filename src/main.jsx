@@ -18054,8 +18054,8 @@ Eyecon Moments
                   const cdvt = d.videoType ?? quoteData.videoType ?? 'dual';
                   const cdnp = d.numPhotographers ?? quoteData.numPhotographers ?? 1;
                   const services = [
-                    cdv ? `${cdvt === 'single' ? '1' : '2'} videographer${cdvt !== 'single' ? 's' : ''}` : null,
-                    cdp ? `${cdnp} photographer${cdnp !== 1 ? 's' : ''}` : null,
+                    cdv ? (cdvt === 'single' ? '1 videographer' : '1-2 videographers as appropriate') : null,
+                    cdp ? (cdnp >= 2 ? '1-2 photographers as appropriate' : '1 photographer') : null,
                     d.drone ? 'drone' : null,
                   ].filter(Boolean).join(', ');
                   const venue = d.location ? ` @ ${d.location}${d.postcode ? ' (' + d.postcode + ')' : ''}` : '';
@@ -21535,8 +21535,8 @@ Eyecon Moments
         const dvt = day.videoType ?? quoteData.videoType ?? 'dual';
         const dnp = day.numPhotographers ?? quoteData.numPhotographers ?? 1;
         ctu('DAY '+(idx+1), y, {size:11, style:'bold'}); y += 12;
-        if (dv) { const vr = dvt === 'single' ? 125 : 150; ct('Videography: £'+(h*vr*pm).toFixed(2), y, {size:11}); y += 8; }
-        if (dp) { const pr=dnp>=2?150:125; ct('Photography: £'+(h*pr*pm).toFixed(2), y, {size:11}); y += 8; }
+        if (dv) { const vCrewLabel = dvt === 'single' ? '1 Videographer' : '1-2 Videographers as appropriate'; ct(vCrewLabel, y, {size:11}); y += 8; }
+        if (dp) { const pCrewLabel = dnp >= 2 ? '1-2 Photographers as appropriate' : '1 Photographer'; ct(pCrewLabel, y, {size:11}); y += 8; }
         if (day.drone) { ct('Drone Coverage: £100.00', y, {size:11}); y += 8; }
         const dayDist = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist>0) { ct('Travel: £'+(dayDist*0.9).toFixed(2), y, {size:11}); y += 8; }
@@ -21563,8 +21563,8 @@ Eyecon Moments
         const pm2 = shortBkg2 ? 1.2 : 1;
         doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...BLACK);
         const lines = [];
-        if (dv2) { const vr2 = dvt2 === 'single' ? 125 : 150; lines.push('Videography: £'+(h*vr2*pm2).toFixed(2)); }
-        if (dp2) { const pr2=dnp2>=2?150:125; lines.push('Photography: £'+(h*pr2*pm2).toFixed(2)); }
+        if (dv2) { lines.push(dvt2 === 'single' ? '1 Videographer' : '1-2 Videographers as appropriate'); }
+        if (dp2) { lines.push(dnp2 >= 2 ? '1-2 Photographers as appropriate' : '1 Photographer'); }
         if (day.drone) lines.push('Drone Coverage: £100.00');
         const dayDist2 = (day.distance !== undefined ? day.distance : quoteData.distance)||0;
         if (dayDist2>0) lines.push('Travel: £'+(dayDist2*0.9).toFixed(2));
@@ -21625,7 +21625,9 @@ Eyecon Moments
       if (hasVideo) {
         y = overflowCheck(y, 80); // heading + 5 items ≈ 75mm
         y += 6; ctu('Cinematography', y, {size:11, style:'bold'}); y += 11;
-        ['1 or 2 Videographers (as appropriate)','A full-length cinematic film recorded in 4k',
+        const maxVType = quoteData.dates.some(d => (d.videoType ?? quoteData.videoType ?? 'dual') !== 'single') ? 'dual' : 'single';
+        const vCrewLine = maxVType === 'single' ? '1 Videographer' : '1-2 Videographers as appropriate';
+        [vCrewLine,'A full-length cinematic film recorded in 4k',
          'A cinematic trailer',"A highlights reel of the day's events",'A personalised engraved memory stick'
         ].forEach(item => { ct(item, y, {size:9.5}); y += 6.5; });
       }
@@ -21633,7 +21635,8 @@ Eyecon Moments
         y = overflowCheck(y, 55); // heading + 3 items ≈ 50mm
         y += 8; ctu('Photography', y, {size:11, style:'bold'}); y += 11;
         const np = Math.max(...quoteData.dates.map(d => d.numPhotographers ?? quoteData.numPhotographers ?? 1));
-        [np+' Photographer'+(np>1?'s':''),'Unlimited photos','All photos are edited and returned digitally'
+        const pCrewLine = np >= 2 ? '1-2 Photographers as appropriate' : '1 Photographer';
+        [pCrewLine,'Unlimited photos','All photos are edited and returned digitally'
         ].forEach(item => { ct(item, y, {size:9.5}); y += 6.5; });
       }
 
