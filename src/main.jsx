@@ -1387,6 +1387,8 @@ function EyeconMoments() {
   const [venueAuto, setVenueAuto] = useState({ active: false, dayIdx: null, builderKey: '', suggestions: [], loading: false });
   const [homePanel, setHomePanel] = useState(null);
   const [showRecentPaid, setShowRecentPaid] = useState(false);
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [showImportedJobs, setShowImportedJobs] = useState(false);
   const [logSearch, setLogSearch] = useState('');
   const logActivity = (action, jobName = '', details = '') => {
     const entry = { id: Date.now(), ts: new Date().toISOString(), action, jobName, details };
@@ -9551,7 +9553,7 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
-          {/* Final Payment Due — jobs within 3 days ahead or up to 60 days past, no final payment */}
+          {/* Final Payment Due — jobs within 3 days ahead or up to 180 days past, no final payment */}
           {(() => {
             if (homePanel !== 'payment') return null;
             const today = new Date(); today.setHours(0,0,0,0);
@@ -9569,71 +9571,197 @@ Notes: ${j.notes || 'none'}`;
               if (total > 0 && depositPaid >= total) return false;
               return true;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
-            if (needsPayment.length === 0) return null;
+
+            // Helper to render a job row with Remind/Receipt/Log buttons
+            const renderPaymentJobRow = (j, opts = {}) => {
+              const dep = getJobDeposit(j);
+              const total = getJobAgreedTotal(j);
+              const depositPaid = parseFloat(dep?.amount || 0);
+              const remaining = total > 0 ? Math.max(0, total - depositPaid) : null;
+              const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
+              const clientEmail = clientInq?.email || '';
+              const firstName = (j.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim().split(' ')[0] || 'there';
+              const balanceStr = remaining !== null ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
+              const reminderSubj = encodeURIComponent(`Your Outstanding Balance — ${j.jobName}`);
+              const reminderBody = encodeURIComponent(`Hi ${firstName},\n\nThank you so much for having us — it was a pleasure to be part of your day.\n\nWe just wanted to drop you a quick message as ${balanceStr} is now due. Please feel free to transfer at your earliest convenience, and don't hesitate to get in touch if you have any questions.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+              const receiptSubj = encodeURIComponent(`Payment Receipt — ${j.jobName}`);
+              const finalEntry = (j.wageEntries || []).find(e => e.type === 'final_payment');
+              const finalAmt = parseFloat(finalEntry?.amount || 0);
+              const receiptAmt = finalAmt > 0 ? `£${finalAmt.toFixed(2)}` : (remaining !== null ? `£${(total - depositPaid).toFixed(2)}` : 'the payment');
+              const receiptBody = encodeURIComponent(`Hi ${firstName},\n\nThank you for your payment of ${receiptAmt} for ${j.jobName}.\n\nThis email serves as your receipt. If you have any questions, please don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+              const shootMid = j.shootDate ? new Date(j.shootDate) : null;
+              if (shootMid) shootMid.setHours(0,0,0,0);
+              const daysUntil = shootMid ? Math.round((shootMid - today) / (1000*60*60*24)) : null;
+              const dueLabel = daysUntil !== null && daysUntil >= 0
+                ? daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil}d`
+                : null;
+              const isPaid = j.finalPaymentReceived;
+              return (
+                <div key={j.id} className="flex justify-between items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
+                      {dueLabel && <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-amber-500 bg-opacity-20 text-amber-400 shrink-0">{dueLabel}</span>}
+                      {isPaid && <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-green-500 bg-opacity-20 text-green-400 shrink-0">✓ Paid</span>}
+                    </div>
+                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
+                      {!isPaid && remaining !== null && depositPaid > 0
+                        ? ` · £${total.toFixed(0)} total · £${depositPaid.toFixed(0)} dep · £${remaining.toFixed(0)} left`
+                        : ''}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                    {!isPaid && (
+                      <button onClick={() => openMail(`mailto:${clientEmail}?subject=${reminderSubj}&body=${reminderBody}`)}
+                        title={clientEmail ? `Send reminder to ${clientEmail}` : 'No email on file'}
+                        className="text-xs px-2 py-1.5 bg-blue-500 bg-opacity-20 text-blue-300 border border-blue-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
+                        📧 Remind
+                      </button>
+                    )}
+                    <button onClick={() => openMail(`mailto:${clientEmail}?subject=${receiptSubj}&body=${receiptBody}`)}
+                      title={clientEmail ? `Send receipt to ${clientEmail}` : 'No email on file'}
+                      className="text-xs px-2 py-1.5 bg-purple-500 bg-opacity-20 text-purple-300 border border-purple-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
+                      🧾 Receipt
+                    </button>
+                    {!isPaid && (
+                      <button onClick={() => {
+                        const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
+                        setFinalPaymentModal({
+                          jobId: j.id,
+                          totalPrice: total,
+                          depositPaid,
+                          finalAmount: remaining !== null && remaining > 0 ? remaining.toFixed(2) : '',
+                          overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
+                          notes: '',
+                        });
+                      }} className="text-xs px-2 py-1.5 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600">
+                        💷 Log
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            };
+
+            // Search results across ALL jobs
+            const searchTerm = paymentSearch.trim().toLowerCase();
+            const searchResults = searchTerm.length >= 2
+              ? editingJobs.filter(j =>
+                  !archivedJobIds.includes(j.id) &&
+                  (j.jobName || '').toLowerCase().includes(searchTerm)
+                ).sort((a, b) => new Date(a.shootDate || 0) - new Date(b.shootDate || 0)).slice(0, 8)
+              : [];
+
             return (
-              <div className="rounded-lg border-l-4 border-green-500 bg-green-900/20 p-3">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="rounded-lg border-l-4 border-green-500 bg-green-900/20 p-3 space-y-3">
+                <div className="flex items-center gap-2">
                   <span className="text-xl">💷</span>
                   <p className="font-semibold text-green-400">Final payment due — {needsPayment.length} job{needsPayment.length > 1 ? 's' : ''}</p>
                 </div>
-                <div className="space-y-2">
-                  {needsPayment.map(j => {
-                    const dep = getJobDeposit(j);
-                    const total = getJobAgreedTotal(j);
-                    const depositPaid = parseFloat(dep?.amount || 0);
-                    // Only show a specific remaining amount when we actually know the total price
-                    const remaining = total > 0 ? Math.max(0, total - depositPaid) : null;
-                    const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
-                    const clientEmail = clientInq?.email || '';
-                    const firstName = (j.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim().split(' ')[0] || 'there';
-                    const balanceStr = remaining !== null ? `£${remaining.toFixed(2)}` : 'the outstanding balance';
-                    const reminderSubj = encodeURIComponent(`Your Outstanding Balance — ${j.jobName}`);
-                    const reminderBody = encodeURIComponent(`Hi ${firstName},\n\nThank you so much for having us — it was a pleasure to be part of your day.\n\nWe just wanted to drop you a quick message as ${balanceStr} is now due. Please feel free to transfer at your earliest convenience, and don't hesitate to get in touch if you have any questions.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
-                    const shootMid = j.shootDate ? new Date(j.shootDate) : null;
-                    if (shootMid) shootMid.setHours(0,0,0,0);
-                    const daysUntil = shootMid ? Math.round((shootMid - today) / (1000*60*60*24)) : null;
-                    const isUpcomingJob = daysUntil !== null && daysUntil >= 0;
-                    const dueLabel = isUpcomingJob
-                      ? daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`
-                      : null;
-                    return (
-                      <div key={j.id} className="flex justify-between items-center gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
-                            {dueLabel && <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-amber-500 bg-opacity-20 text-amber-400 shrink-0">{dueLabel}</span>}
-                          </div>
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
-                            {remaining !== null && depositPaid > 0
-                              ? ` · £${total.toFixed(0)} total · £${depositPaid.toFixed(0)} dep · £${remaining.toFixed(0)} left`
-                              : ''}
-                          </p>
-                        </div>
-                        <div className="flex gap-1.5 shrink-0">
-                          <button onClick={() => openMail(`mailto:${clientEmail}?subject=${reminderSubj}&body=${reminderBody}`)}
-                            title={clientEmail ? `Send reminder to ${clientEmail}` : 'Send reminder (add email address)'}
-                            className="text-xs px-2.5 py-1.5 bg-blue-500 bg-opacity-20 text-blue-300 border border-blue-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
-                            📧 Remind
-                          </button>
-                          <button onClick={() => {
-                            const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
-                            setFinalPaymentModal({
-                              jobId: j.id,
-                              totalPrice: total,
-                              depositPaid,
-                              finalAmount: remaining !== null && remaining > 0 ? remaining.toFixed(2) : '',
-                              overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
-                              notes: '',
-                            });
-                          }} className="text-xs px-3 py-1.5 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600">
-                            💷 Log
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                {/* Search any job */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={paymentSearch}
+                    onChange={e => setPaymentSearch(e.target.value)}
+                    placeholder="Search any job…"
+                    className={`w-full text-sm px-3 py-1.5 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`}
+                  />
+                  {paymentSearch && <button onClick={() => setPaymentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">✕</button>}
                 </div>
+                {searchTerm.length >= 2 && (
+                  <div className="space-y-2">
+                    {searchResults.length === 0
+                      ? <p className="text-xs text-gray-400">No jobs found.</p>
+                      : searchResults.map(j => renderPaymentJobRow(j))
+                    }
+                  </div>
+                )}
+                {!searchTerm && needsPayment.length > 0 && (
+                  <div className="space-y-2">
+                    {needsPayment.map(j => renderPaymentJobRow(j))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Imported Jobs — jobs from Google Calendar, collapsible */}
+          {(() => {
+            if (homePanel !== 'payment') return null;
+            const today = new Date(); today.setHours(0,0,0,0);
+            const importedJobs = editingJobs
+              .filter(j => !archivedJobIds.includes(j.id) && j.calendarEventId)
+              .sort((a, b) => new Date(a.shootDate || 0) - new Date(b.shootDate || 0));
+            if (importedJobs.length === 0) return null;
+            return (
+              <div className="rounded-lg border-l-4 border-blue-500 bg-blue-900/10 p-3">
+                <button onClick={() => setShowImportedJobs(v => !v)} className="flex items-center gap-2 w-full text-left mb-1">
+                  <span className="text-base">📅</span>
+                  <p className="font-semibold text-blue-400 text-sm flex-1">Imported jobs — {importedJobs.length}</p>
+                  <span className="text-blue-500 text-xs">{showImportedJobs ? '▲ hide' : '▼ show'}</span>
+                </button>
+                {showImportedJobs && (
+                  <div className="space-y-2 mt-2">
+                    {importedJobs.map(j => {
+                      const dep = getJobDeposit(j);
+                      const total = getJobAgreedTotal(j);
+                      const depositPaid = parseFloat(dep?.amount || 0);
+                      const remaining = total > 0 ? Math.max(0, total - depositPaid) : null;
+                      const clientInq = inquiries.find(i => i.customerName?.toLowerCase() === j.customerName?.toLowerCase());
+                      const clientEmail = clientInq?.email || '';
+                      const firstName = (j.customerName || '').replace(/\s+(wedding|walima|nikaah|nikkah|mehndi|engagement|event|reception|party|shoot|video|photo|single|dual|shooter|x\d+).*$/i, '').trim().split(' ')[0] || 'there';
+                      const receiptSubj = encodeURIComponent(`Payment Receipt — ${j.jobName}`);
+                      const finalEntry = (j.wageEntries || []).find(e => e.type === 'final_payment');
+                      const finalAmt = parseFloat(finalEntry?.amount || 0);
+                      const receiptAmt = finalAmt > 0 ? `£${finalAmt.toFixed(2)}` : (remaining !== null ? `£${(total - depositPaid).toFixed(2)}` : 'the payment');
+                      const receiptBody = encodeURIComponent(`Hi ${firstName},\n\nThank you for your payment of ${receiptAmt} for ${j.jobName}.\n\nThis email serves as your receipt. If you have any questions, please don't hesitate to get in touch.\n\nKind regards,\nEyecon Moments\nPhone: 07957 450570\nEmail: eyecon.moments@gmail.com`);
+                      const shootMid = j.shootDate ? new Date(j.shootDate) : null;
+                      if (shootMid) shootMid.setHours(0,0,0,0);
+                      const daysUntil = shootMid ? Math.round((shootMid - today) / (1000*60*60*24)) : null;
+                      const dueLabel = daysUntil !== null
+                        ? daysUntil === 0 ? 'Today' : daysUntil > 0 ? `In ${daysUntil}d` : `${Math.abs(daysUntil)}d ago`
+                        : null;
+                      return (
+                        <div key={j.id} className="flex justify-between items-center gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{j.jobName}</p>
+                              {dueLabel && <span className={`text-xs px-1.5 py-0.5 rounded font-bold shrink-0 ${daysUntil >= 0 ? 'bg-amber-500 bg-opacity-20 text-amber-400' : 'bg-gray-500 bg-opacity-20 text-gray-400'}`}>{dueLabel}</span>}
+                              {j.finalPaymentReceived && <span className="text-xs px-1.5 py-0.5 rounded font-bold bg-green-500 bg-opacity-20 text-green-400 shrink-0">✓ Paid</span>}
+                            </div>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : ''}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                            <button onClick={() => openMail(`mailto:${clientEmail}?subject=${receiptSubj}&body=${receiptBody}`)}
+                              title={clientEmail ? `Send receipt to ${clientEmail}` : 'No email on file'}
+                              className="text-xs px-2 py-1.5 bg-purple-500 bg-opacity-20 text-purple-300 border border-purple-400 border-opacity-40 rounded-lg font-semibold hover:bg-opacity-30">
+                              🧾 Receipt
+                            </button>
+                            {!j.finalPaymentReceived && (
+                              <button onClick={() => {
+                                const priorOT = (j.wageEntries || []).find(e => e.type === 'shoot' && e.ranOver && e.extraAmount > 0);
+                                setFinalPaymentModal({
+                                  jobId: j.id,
+                                  totalPrice: total,
+                                  depositPaid,
+                                  finalAmount: remaining !== null && remaining > 0 ? remaining.toFixed(2) : '',
+                                  overtime: priorOT ? priorOT.extraAmount.toFixed(2) : '',
+                                  notes: '',
+                                });
+                              }} className="text-xs px-2 py-1.5 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600">
+                                💷 Log
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })()}
