@@ -58,6 +58,7 @@ const rowToJob = (r) => ({
   gallerySentAt: r.gallery_sent_at ? new Date(r.gallery_sent_at) : null,
   clientAddress: r.client_address || '',
   jobSent: r.job_sent || false,
+  rtso: r.rtso || false,
   aiEdited: r.ai_edited || false,
   aiEditedBy: r.ai_edited_by || null,
   aiEditedAt: r.ai_edited_at ? new Date(r.ai_edited_at) : null,
@@ -93,7 +94,8 @@ ALTER TABLE jobs
 ALTER TABLE jobs
   ADD COLUMN IF NOT EXISTS gallery_sent_at timestamptz,
   ADD COLUMN IF NOT EXISTS client_address text,
-  ADD COLUMN IF NOT EXISTS job_sent boolean DEFAULT false;
+  ADD COLUMN IF NOT EXISTS job_sent boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS rtso boolean DEFAULT false;
 */
 
 /*
@@ -2686,6 +2688,15 @@ function EyeconMoments() {
     setArchivedJobsData(prev => [...prev, { ...job, jobSent: true, archived: true }]);
     logActivity('Memory stick sent', job.jobName, '');
     window.__toast(`"${job.jobName}" marked as sent and archived.`, 'success', 5000);
+  };
+
+  const markAsRTSO = async (jobId) => {
+    const job = editingJobs.find(j => j.id === jobId);
+    if (!job) return;
+    await db.from('jobs').update({ rtso: true }).eq('id', jobId);
+    setEditingJobs(prev => prev.map(j => j.id === jobId ? { ...j, rtso: true } : j));
+    logActivity('Marked RTSO', job.jobName, 'Film sent and files approved by customer');
+    window.__toast(`"${job.jobName}" marked as RTSO.`, 'success', 4000);
   };
 
   const saveClientAddress = async (jobId, address) => {
@@ -14886,15 +14897,17 @@ The Eyecon Moments Team
     const onHoldJobsList = editingJobs.filter(job => !archivedJobIds.includes(job.id) && (isJobOnHold(job) || isHoldExpired(job)))
       .filter(job => !jobSearchQuery || job.jobName.toLowerCase().includes(jobSearchQuery.toLowerCase()) || job.customerName.toLowerCase().includes(jobSearchQuery.toLowerCase()));
 
-    // Jobs ready to post: complete, gallery sent 30+ days ago, no open revisions, not sent/archived
-    const readyToSendJobs = editingJobs.filter(job => {
+    // RTSO: manually marked, or complete + gallery sent 30+ days ago with no open revisions
+    const rtsoJobs = editingJobs.filter(job => {
       if (archivedJobIds.includes(job.id) || job.jobSent) return false;
+      if (job.rtso) return true;
       if (!isJobFullyComplete(job)) return false;
       if (!job.gallerySentAt) return false;
       const daysSince = Math.floor((Date.now() - job.gallerySentAt.getTime()) / 86400000);
       if (daysSince < 30) return false;
       return !revisions.some(r => !r.completed && r.title.toLowerCase().includes(job.jobName.toLowerCase()));
     });
+    const readyToSendJobs = rtsoJobs;
 
     // Pipeline stages for Kanban
     const pipelineStages = [
@@ -15194,19 +15207,22 @@ The Eyecon Moments Team
             </div>
           )}
           
-          {/* Ready to Send Section */}
-          {!jobsPipelineView && readyToSendJobs.length > 0 && (
+          {/* RTSO Section */}
+          {!jobsPipelineView && rtsoJobs.length > 0 && (
             <div className={`rounded-lg border-2 p-4 ${darkMode ? 'bg-amber-900 border-amber-600' : 'bg-amber-50 border-amber-300'}`}>
               <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-amber-300' : 'text-amber-800'}`}>
-                📬 Ready to Send ({readyToSendJobs.length})
-                <span className={`text-xs font-normal ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>— gallery sent 30+ days ago, no revisions outstanding</span>
+                📦 RTSO ({rtsoJobs.length})
+                <span className={`text-xs font-normal ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>— ready to send off, tick each once posted</span>
               </h3>
               <div className="space-y-2">
-                {readyToSendJobs.map(job => (
+                {rtsoJobs.map(job => (
                   <div key={job.id} className={`rounded-lg p-3 border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-amber-200'}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{job.jobName}</p>
+                          {job.rtso && <span className="text-xs px-1.5 py-0.5 rounded font-semibold bg-purple-500 text-white">RTSO</span>}
+                        </div>
                         <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{job.customerName}</p>
                         {job.gallerySentAt && (
                           <p className={`text-xs mt-0.5 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
@@ -15218,7 +15234,7 @@ The Eyecon Moments Team
                         if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
                         markJobSent(job.id);
                       }} className="whitespace-nowrap px-3 py-1.5 rounded text-sm font-semibold bg-green-500 text-white hover:bg-green-600 flex-shrink-0">
-                        📬 Mark as Sent
+                        ✅ Sent — archive
                       </button>
                     </div>
                     {job.clientAddress ? (
@@ -15798,12 +15814,25 @@ The Eyecon Moments Team
 
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2">
+                      {!isArchived && !job.jobSent && !job.rtso && (currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+                        <button onClick={() => {
+                          if (!window.confirm(`Mark "${job.jobName}" as RTSO? This means the film has been sent and the customer has approved the files.`)) return;
+                          markAsRTSO(job.id);
+                        }} className="flex-1 px-3 py-2 rounded text-sm font-semibold bg-purple-500 text-white hover:bg-purple-600">
+                          📦 RTSO
+                        </button>
+                      )}
+                      {job.rtso && !job.jobSent && !isArchived && (
+                        <span className="flex-1 px-3 py-2 rounded text-sm font-semibold text-center bg-purple-100 text-purple-700">
+                          📦 RTSO
+                        </span>
+                      )}
                       {isJobFullyComplete(job) && !isArchived && !job.jobSent && (
                         <button onClick={() => {
                           if (!window.confirm(`Mark "${job.jobName}" as sent and archive it?`)) return;
                           markJobSent(job.id);
                         }} className="flex-1 px-3 py-2 rounded text-sm font-semibold bg-green-500 text-white hover:bg-green-600">
-                          📬 Mark as Sent
+                          ✅ Mark as Sent
                         </button>
                       )}
                       {job.jobSent && (
