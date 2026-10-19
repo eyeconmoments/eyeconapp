@@ -9392,7 +9392,7 @@ Notes: ${j.notes || 'none'}`;
             const today = new Date(); today.setHours(0,0,0,0);
             const counts = {
               payment:   editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||j.finalPaymentReceived||!j.shootDate)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const d3=new Date(today);d3.setDate(today.getDate()+3);if(s>d3)return false;const dep=getJobDeposit(j);const total=getJobAgreedTotal(j);const depositPaid=parseFloat(dep?.amount||0);if(total>0&&depositPaid>=total)return false;return true; }).length,
-              itinerary: editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||!j.shootDate||j.itinerary?.preItinerarySent)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const c=new Date(today);c.setDate(today.getDate()+18);return s>today&&s<=c; }).length,
+              itinerary: editingJobs.filter(j => { if(archivedJobIds.includes(j.id)||!j.shootDate||j.itinerary?.preItinerarySent||j.itinerary?.clientDraft)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);const c=new Date(today);c.setDate(today.getDate()+18);return s>today&&s<=c; }).length,
               backup:    editingJobs.filter(j => { if(j.archived||!j.shootDate)return false; const s=new Date(j.shootDate);s.setHours(0,0,0,0);if(s>today)return false;return !(j.fileLocations||[]).some(l=>l.isBackup||l.drive); }).length,
               deadline:  revisions.filter(r => { if(r.completed)return false; const dl=new Date(r.date);dl.setDate(dl.getDate()+30+(r.extensions||0)*7);dl.setHours(0,0,0,0);return Math.floor((dl-today)/86400000)<=7; }).length,
             };
@@ -10011,7 +10011,7 @@ Notes: ${j.notes || 'none'}`;
             const needsItin = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id)) return false;
               if (!j.shootDate) return false;
-              if (j.itinerary?.preItinerarySent) return false;
+              if (j.itinerary?.preItinerarySent || j.itinerary?.clientDraft) return false;
               const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
               return shoot > today && shoot <= cutoff;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
