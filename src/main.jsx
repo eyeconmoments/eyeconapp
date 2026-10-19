@@ -9655,11 +9655,12 @@ Notes: ${j.notes || 'none'}`;
               );
             };
 
-            // Upcoming jobs — future shoots more than 3 days away (any payment status)
+            // Upcoming jobs — future shoots more than 3 days away, within 30 days (any payment status)
+            const thirtyDaysAhead = new Date(today); thirtyDaysAhead.setDate(today.getDate() + 30);
             const upcomingJobs = editingJobs.filter(j => {
               if (archivedJobIds.includes(j.id) || !j.shootDate) return false;
               const shoot = new Date(j.shootDate); shoot.setHours(0,0,0,0);
-              return shoot > threeDaysAhead;
+              return shoot > threeDaysAhead && shoot <= thirtyDaysAhead;
             }).sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
 
             // Search results across ALL jobs
