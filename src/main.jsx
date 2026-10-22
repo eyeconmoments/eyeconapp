@@ -17519,15 +17519,27 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
                           });
                         };
                         const extractedTimes = extractTimesFromText([inquiry.notes, inquiry.details].join(' '));
+                        const snap = inquiry.quoteSnapshot || (() => { try { const s = localStorage.getItem(`quote_snap_${inquiry.id}`); return s ? JSON.parse(s) : null; } catch { return null; } })();
+                        const snapDates = snap?.dates?.length > 0 ? snap.dates : quoteData.dates;
                         setTimeout(() => {
-                          const numDays = Math.max(1, quoteData.dates.length);
+                          const numDays = Math.max(1, snapDates.length);
                           setBookingNumDays(numDays);
-                          setBookingDays(quoteData.dates.slice(0, numDays).map((qd, i) => ({
-                            date: (i === 0 ? dateISO : null) || qd.date || '',
-                            startTime: qd.startTime && qd.startTime !== '10:00' ? qd.startTime : (i === 0 ? extractedTimes[0] || '10:00' : '10:00'),
-                            endTime: qd.endTime && qd.endTime !== '22:00' ? qd.endTime : (i === 0 ? extractedTimes[1] || '17:00' : '17:00'),
-                            venue: qd.location || '',
-                          })));
+                          setBookingDays(snapDates.slice(0, numDays).map((qd, i) => {
+                            const snapStart = qd.startTime || '';
+                            const snapEnd = qd.endTime || '';
+                            const snapVenue = qd.location || qd.venue || '';
+                            // Use snap times directly; only fall back to text extraction if both are at factory defaults
+                            const bothDefault = snapStart === '10:00' && snapEnd === '22:00';
+                            const startTime = (snapStart && !bothDefault) ? snapStart : (i === 0 ? extractedTimes[0] || '10:00' : '10:00');
+                            const endTime = (snapEnd && !bothDefault) ? snapEnd : (i === 0 ? extractedTimes[1] || '17:00' : '17:00');
+                            const venue = snapVenue;
+                            return {
+                              date: (i === 0 ? dateISO : null) || qd.date || '',
+                              startTime,
+                              endTime,
+                              venue,
+                            };
+                          }));
                           setBookingTotalPrice(total);
                           setBookingDeposit(deposit);
                           setBookingConfirmInquiry({...inquiry});
