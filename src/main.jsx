@@ -12015,11 +12015,13 @@ Notes: ${j.notes || 'none'}`;
   if (currentView === 'upcoming') {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const thirtyDaysOut = new Date(today);
+    thirtyDaysOut.setDate(today.getDate() + 30);
     const upcomingJobsList = editingJobs
       .filter(job => {
         const shootDate = new Date(job.shootDate);
         shootDate.setHours(0, 0, 0, 0);
-        return shootDate >= today && !archivedJobIds.includes(job.id);
+        return shootDate >= today && shootDate <= thirtyDaysOut && !archivedJobIds.includes(job.id);
       })
       .sort((a, b) => new Date(a.shootDate) - new Date(b.shootDate));
     
