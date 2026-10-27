@@ -13916,6 +13916,138 @@ The Eyecon Moments Team
           );
         })()}
 
+        {/* Gmail email prompt — always shown before scan so OAuth fires from a button click */}
+        {gmailEmailPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-sm w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
+              <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📧 Confirm client emails</h2>
+              {gmailEmailPrompt.length === 0 ? (
+                <p className={`text-sm py-4 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No upcoming jobs found.</p>
+              ) : gmailEmailPrompt.every(r => r.hasDeposit) ? (
+                <p className={`text-sm py-4 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>✅ All jobs already have a deposit recorded.</p>
+              ) : (
+                <>
+                  <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Gmail will search each client's emails for a payment. Fill in any missing addresses — they'll be saved to CRM.</p>
+                  <div className="space-y-3">
+                    {gmailEmailPrompt.map((row, i) => (
+                      <div key={row.jobId} className={row.hasDeposit ? 'opacity-40 pointer-events-none' : ''}>
+                        <label className={`block text-xs font-semibold mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {row.customerName} · <span className="font-normal opacity-70">{row.jobName}</span>
+                          {row.hasDeposit && <span className="ml-2 text-green-500">✓ deposit recorded</span>}
+                        </label>
+                        {!row.hasDeposit && (
+                          <input
+                            type="email"
+                            placeholder="their@email.com"
+                            value={row.email}
+                            onChange={e => setGmailEmailPrompt(prev => prev.map((r, j) => j === i ? {...r, email: e.target.value} : r))}
+                            className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} ${row.email ? 'border-green-400' : 'border-amber-400'}`}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setGmailEmailPrompt(null)}
+                  className={`py-2.5 px-4 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                  {gmailEmailPrompt.every(r => r.hasDeposit) ? 'Close' : 'Cancel'}
+                </button>
+                {!gmailEmailPrompt.every(r => r.hasDeposit) && (
+                  <button onClick={() => {
+                    const prefill = {};
+                    gmailEmailPrompt.filter(r => !r.hasDeposit).forEach(r => { if (r.email) prefill[r.jobId] = r.email; });
+                    setGmailEmailPrompt(null);
+                    scanGmailForDeposits(prefill);
+                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>
+                    🔍 Scan Gmail
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {depositImportOpen && (() => {
+          const allJ   = editingJobs.filter(j => !archivedJobIds.includes(j.id));
+          const source = gmailScanResults;
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[85vh] overflow-y-auto`}>
+                <h2 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📥 Gmail Deposits</h2>
+                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {source.length} payment email{source.length !== 1 ? 's' : ''} found · Match each to a job, then Import.
+                </p>
+                {source.length === 0 ? (
+                  <p className={`text-sm text-center py-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No payment emails found in the last 120 days.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {source.map((imp, i) => {
+                      const selectedJobId = depositImportMatches[i] ?? '';
+                      const selectedJob   = selectedJobId ? allJ.find(j => j.id === selectedJobId) : null;
+                      const alreadyDone   = selectedJob && (selectedJob.wageEntries || []).some(e => e.type === 'deposit');
+                      const saveThisEmail = gmailSaveEmail[i] ?? !!imp.email;
+                      return (
+                        <div key={i} className={`p-3 rounded-lg border ${alreadyDone ? 'opacity-50' : ''} ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{imp.customer}</p>
+                              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-1`}>✉ {imp.email}</p>
+                              <div className="flex items-center gap-3">
+                                <span className="text-base font-bold text-green-500">£{imp.amount}</span>
+                                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(imp.date + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</span>
+                              </div>
+                              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} truncate`}>{imp.subject}</p>
+                              {imp.body && (
+                                <button onClick={() => setGmailExpandedBody(p => ({...p, [i]: !p[i]}))}
+                                  className={`text-xs mt-1 underline ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {gmailExpandedBody[i] ? '▲ Hide email' : '▼ Read email'}
+                                </button>
+                              )}
+                              {gmailExpandedBody[i] && imp.body && (
+                                <pre className={`text-xs mt-2 p-2 rounded whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border border-gray-200'}`}>{imp.body}</pre>
+                              )}
+                            </div>
+                            {alreadyDone && <span className="text-xs text-green-500 font-bold whitespace-nowrap shrink-0">✓ Done</span>}
+                          </div>
+                          {/* Job is pre-matched — show as a fixed label, not a dropdown */}
+                          <div className={`text-xs px-2 py-1.5 rounded mb-1.5 ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                            📋 {selectedJob?.jobName || 'Job'}{selectedJob?.shootDate ? ` · ${new Date(selectedJob.shootDate).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}` : ''}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => { setDepositImportOpen(false); setGmailScanResults([]); setDepositImportMatches({}); setGmailSaveEmail({}); }}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>Cancel</button>
+                  <button onClick={async () => {
+                    let saved = 0;
+                    for (let i = 0; i < source.length; i++) {
+                      const imp   = source[i];
+                      const jobId = depositImportMatches[i];
+                      if (!jobId) continue;
+                      const job = allJ.find(j => j.id === jobId);
+                      if (!job) continue;
+                      if ((job.wageEntries || []).some(e => e.type === 'deposit')) continue;
+                      await saveDeposit(jobId, imp.amount, imp.date, true);
+                      logActivity('Deposit imported', job.jobName || '', `£${imp.amount} from ${imp.customer}`);
+                      saved++;
+                    }
+                    alert(`✅ ${saved} deposit${saved !== 1 ? 's' : ''} imported.`);
+                    setDepositImportOpen(false);
+                    setGmailScanResults([]);
+                    setDepositImportMatches({});
+                    setGmailSaveEmail({});
+                  }} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white" style={{background:'var(--gold)'}}>Import Selected</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
     );
   }
