@@ -1307,6 +1307,7 @@ function EyeconMoments() {
   const [archivedJobsData, setArchivedJobsData] = useState([]); // full job objects for archived jobs (Files search)
   const [showOnHoldSection, setShowOnHoldSection] = useState(false);
   const [inquiryFilter, setInquiryFilter] = useState('all');
+  const [crmSearch, setCrmSearch] = useState('');
   const [inquiryLogInput, setInquiryLogInput] = useState({});
   const [showBookedSection, setShowBookedSection] = useState(false);
   const [showArchivedSection, setShowArchivedSection] = useState(false);
@@ -17079,6 +17080,21 @@ The Eyecon Moments Team
             </div>
           </div>
           
+          {/* CRM Search */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-3 flex items-center gap-2`}>
+            <span className="text-gray-400">🔍</span>
+            <input
+              type="text"
+              placeholder="Search by name, email or phone…"
+              value={crmSearch}
+              onChange={e => setCrmSearch(e.target.value)}
+              className={`flex-1 bg-transparent outline-none text-sm ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-800 placeholder-gray-400'}`}
+            />
+            {crmSearch && (
+              <button onClick={() => setCrmSearch('')} className="text-gray-400 hover:text-gray-600 text-xs px-1">✕</button>
+            )}
+          </div>
+
           {/* Filter tabs + Add button */}
           <div className="flex gap-2 items-center flex-wrap">
             <button onClick={() => { setAddContactForm({ name: '', phone: '', email: '', eventType: 'wedding', eventDate: '', notes: '' }); setShowAddContactModal(true); }} className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1">
@@ -17102,7 +17118,7 @@ The Eyecon Moments Team
           </div>
           
           {/* Follow-up needed alert */}
-          {(() => {
+          {!crmSearch.trim() && (() => {
             const needsFollowUp = inquiries.filter(i => {
               if (isArchivedInquiry(i)) return false;
               if (i.status !== 'quoted') return false;
@@ -17580,8 +17596,61 @@ This booking is covered by our standard terms and conditions: www.eyeconmoments.
             );
           })()}
 
+          {/* Search results */}
+          {crmSearch.trim() && (() => {
+            const q = crmSearch.trim().toLowerCase();
+            const results = inquiries.filter(i =>
+              (i.customerName || '').toLowerCase().includes(q) ||
+              (i.email || '').toLowerCase().includes(q) ||
+              (i.phone || '').toLowerCase().includes(q)
+            );
+            if (results.length === 0) return (
+              <div className={`${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500'} rounded-lg shadow p-6 text-center text-sm`}>
+                No customers found for "{crmSearch}"
+              </div>
+            );
+            return (
+              <div className="space-y-3">
+                <p className={`text-xs font-semibold px-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{results.length} result{results.length !== 1 ? 's' : ''}</p>
+                {results.map(inquiry => {
+                  const isBooked = inquiry.status === 'booked';
+                  const statusColors = {
+                    new: darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700',
+                    contacted: darkMode ? 'bg-yellow-900 text-yellow-300' : 'bg-yellow-100 text-yellow-700',
+                    quoted: darkMode ? 'bg-purple-900 text-purple-300' : 'bg-purple-100 text-purple-700',
+                    booked: darkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700',
+                    declined: darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500',
+                  };
+                  return (
+                    <div key={inquiry.id} className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-4 ${isBooked ? 'border-l-4 border-green-500' : ''}`}>
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-start gap-3">
+                          {inquiry.contactPhoto
+                            ? <img src={inquiry.contactPhoto} alt="contact" className="w-11 h-11 rounded-lg object-cover shrink-0" />
+                            : <div className={`w-11 h-11 rounded-lg flex items-center justify-center text-xl shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>{isBooked ? '✓' : '📷'}</div>
+                          }
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{inquiry.customerName}</h3>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[inquiry.status] || statusColors.new}`}>
+                                {inquiry.status.charAt(0).toUpperCase() + inquiry.status.slice(1)}
+                              </span>
+                            </div>
+                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{inquiry.eventType}{inquiry.eventDate ? ` — ${formatDate(inquiry.eventDate)}` : ''}</p>
+                            {inquiry.email && <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{inquiry.email}</p>}
+                            {inquiry.phone && <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{inquiry.phone}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {/* Inquiry cards — pipeline (non-booked) */}
-          {pipelineInquiries.map(inquiry => {
+          {!crmSearch.trim() && pipelineInquiries.map(inquiry => {
             const daysSince = Math.floor((currentTime - new Date(inquiry.submittedDate)) / (1000 * 60 * 60 * 24));
             const needsResponse = inquiry.status === 'new' && daysSince > 1;
             const daysSinceQuoted = inquiry.status === 'quoted' && inquiry.quotedDate 
@@ -17925,7 +17994,7 @@ www.eyeconmoments.co.uk`;
           })}
 
           {/* Booked — collapsible fold */}
-          {bookedInquiries.length > 0 && (
+          {!crmSearch.trim() && bookedInquiries.length > 0 && (
             <div className={`rounded-lg shadow overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
               <button
                 onClick={() => setShowBookedSection(v => !v)}
