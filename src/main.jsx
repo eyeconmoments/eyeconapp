@@ -8797,16 +8797,19 @@ Notes: ${j.notes || 'none'}`;
 
             // Regular save for existing job
             if (!backupForm.drive && !backupForm.backedUpBy) { alert('Please fill in at least a drive and who backed it up.'); return; }
+            // Strip bulky scan data before writing to DB — keep only summary counts
+            const fcSummary = fc ? { total: fc.total, photos: fc.photos, videos: fc.videos, other: fc.other, folder: fc.folder, fromQc: fc.fromQc } : null;
             let newLocs = [...(job.fileLocations || [])];
             if (organised && (fc.photos > 0 || fc.videos > 0)) {
               if (fc.photos > 0)
-                newLocs.push({ ...base, path: basePath ? `${basePath}\\Pictures` : 'Pictures', mediaType: 'photo', fileCheck: fc });
+                newLocs.push({ ...base, path: basePath ? `${basePath}\\Pictures` : 'Pictures', mediaType: 'photo', fileCheck: fcSummary });
               if (fc.videos > 0)
-                newLocs.push({ ...base, path: basePath ? `${basePath}\\Videos` : 'Videos', mediaType: 'video', fileCheck: fc });
+                newLocs.push({ ...base, path: basePath ? `${basePath}\\Videos` : 'Videos', mediaType: 'video', fileCheck: fcSummary });
             } else {
-              newLocs.push({ ...base, path: basePath, fileCheck: fc || null });
+              newLocs.push({ ...base, path: basePath, fileCheck: fcSummary });
             }
-            await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
+            const { error: saveErr } = await db.from('jobs').update({ file_locations: newLocs }).eq('id', job.id);
+            if (saveErr) { alert('Failed to save backup: ' + saveErr.message); return; }
             setEditingJobs(prev => prev.map(j => String(j.id) === String(backupModal.jobId) ? { ...j, fileLocations: newLocs } : j));
             setBackupModal(null); setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
           };
@@ -9485,7 +9488,7 @@ Notes: ${j.notes || 'none'}`;
             );
           })()}
 
-          {/* Backup prompts — lapsed jobs with no backup logged */}
+          {/* Backup panel — unlogged jobs + logged backup log */}
           {(() => {
             if (homePanel !== 'backup') return null;
             const today = new Date(); today.setHours(0,0,0,0);
@@ -9493,38 +9496,77 @@ Notes: ${j.notes || 'none'}`;
               if (j.archived) return false;
               if (!j.shootDate) return false;
               const shootDay = new Date(j.shootDate); shootDay.setHours(0,0,0,0);
-              if (shootDay > today) return false; // hasn't happened yet
-              const hasBackup = (j.fileLocations || []).some(l => l.isBackup || l.drive);
-              return !hasBackup;
+              if (shootDay > today) return false;
+              return !(j.fileLocations || []).some(l => l.isBackup || l.drive);
             }).sort((a, b) => new Date(b.shootDate) - new Date(a.shootDate));
-            if (needsBackup.length === 0) return null;
+            const loggedJobs = editingJobs
+              .filter(j => !j.archived && (j.fileLocations || []).some(l => l.isBackup || l.drive))
+              .sort((a, b) => new Date(b.shootDate || 0) - new Date(a.shootDate || 0));
             return (
-              <div className="rounded-lg border-l-4 border-blue-500 bg-blue-900/20 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xl">💾</span>
-                  <p className="font-semibold text-blue-400">Backup needed — {needsBackup.length} job{needsBackup.length > 1 ? 's' : ''} with no storage logged</p>
-                </div>
-                <div className="space-y-1.5">
-                  {needsBackup.map(j => (
-                    <div key={j.id} className="flex justify-between items-center">
-                      <div>
-                        <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{j.jobName}</p>
-                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : ''}</p>
-                      </div>
-                      <button onClick={async () => {
-                        setBackupModal({ jobId: j.id });
-                        setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
-                        // The QC app already recorded where this job's footage
-                        // went, who put it there and when. Ask it, rather than
-                        // asking the person.
-                        const data = await lookUpQcIngest(j.id);
-                        applyQcIngest(data);
-                      }}
-                        className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg font-semibold shrink-0">
-                        💾 Log Backup
-                      </button>
+              <div className="space-y-3">
+                {needsBackup.length > 0 && (
+                  <div className="rounded-lg border-l-4 border-blue-500 bg-blue-900/20 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xl">💾</span>
+                      <p className="font-semibold text-blue-400">Backup needed — {needsBackup.length} job{needsBackup.length > 1 ? 's' : ''} with no storage logged</p>
                     </div>
-                  ))}
+                    <div className="space-y-1.5">
+                      {needsBackup.map(j => (
+                        <div key={j.id} className="flex justify-between items-center">
+                          <div>
+                            <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{j.jobName}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : ''}</p>
+                          </div>
+                          <button onClick={async () => {
+                            setBackupModal({ jobId: j.id });
+                            setBackupForm({ drive: '', path: '', backedUpBy: '', notes: '', jobName: '', fileCheck: null, importedJob: null });
+                            const data = await lookUpQcIngest(j.id);
+                            applyQcIngest(data);
+                          }}
+                            className="text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg font-semibold shrink-0">
+                            💾 Log Backup
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {needsBackup.length === 0 && (
+                  <div className="rounded-lg border-l-4 border-green-500 bg-green-900/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">✅</span>
+                      <p className="font-semibold text-green-400">All past jobs have backups logged</p>
+                    </div>
+                  </div>
+                )}
+                <div className="rounded-lg border border-white/10 p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📋</span>
+                      <p className="font-semibold text-sm" style={{color:'rgba(255,255,255,0.7)'}}>Backup Log — {loggedJobs.length} job{loggedJobs.length !== 1 ? 's' : ''}</p>
+                    </div>
+                    <button onClick={refreshJobs} className="text-xs px-2 py-1 rounded font-semibold" style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.5)'}}>↻ Refresh</button>
+                  </div>
+                  {loggedJobs.length === 0 ? (
+                    <p className="text-xs text-gray-500 text-center py-2">No backups logged yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {loggedJobs.map(j => {
+                        const backupLocs = (j.fileLocations || []).filter(l => l.isBackup || l.drive);
+                        return (
+                          <div key={j.id} className="border-t border-white/5 pt-2 first:border-0 first:pt-0">
+                            <p className="text-sm font-semibold text-white">{j.jobName}</p>
+                            <p className="text-xs text-gray-400 mb-1">{j.shootDate ? new Date(j.shootDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : 'No date'}</p>
+                            {backupLocs.map((loc, i) => (
+                              <p key={i} className="text-xs text-gray-300 ml-2 mb-0.5">
+                                💾 {[loc.drive, loc.path, loc.backedUpBy && `by ${loc.backedUpBy}`, loc.setAt && new Date(loc.setAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'}), loc.notes].filter(Boolean).join(' · ')}
+                              </p>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             );
