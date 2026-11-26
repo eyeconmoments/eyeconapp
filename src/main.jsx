@@ -171,6 +171,7 @@ const Edit = () => <span>✏️</span>;
 // ── StudentDashboardView ─────────────────────────────────────────────────────
 function StudentDashboardView({ currentUser, activeEntry, todayEntries, recentEntries, onClockIn, onClockOut, onLogout, fmtTime, fmtDate, darkMode }) {
   const [logNote, setLogNote] = React.useState('');
+  const [skillsNote, setSkillsNote] = React.useState('');
   const [clockingOut, setClockingOut] = React.useState(false);
   const [elapsed, setElapsed] = React.useState('');
 
@@ -195,8 +196,12 @@ function StudentDashboardView({ currentUser, activeEntry, todayEntries, recentEn
 
   const handleClockOut = async () => {
     setClockingOut(false);
-    await onClockOut(logNote);
+    const parts = [];
+    if (logNote.trim()) parts.push('What I did:\n' + logNote.trim());
+    if (skillsNote.trim()) parts.push('Key skills learned:\n' + skillsNote.trim());
+    await onClockOut(parts.join('\n\n') || null);
     setLogNote('');
+    setSkillsNote('');
   };
 
   return (
@@ -232,6 +237,14 @@ function StudentDashboardView({ currentUser, activeEntry, todayEntries, recentEn
                   onChange={e => setLogNote(e.target.value)}
                   placeholder="Briefly describe what you did today..."
                   rows={4}
+                  style={{ width: '100%', borderRadius: 10, border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#111827' : '#f9fafb', color: textPrimary, padding: '10px 12px', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', marginBottom: 10 }}
+                />
+                <label style={{ color: textSecondary, fontSize: 13, display: 'block', marginBottom: 6, textAlign: 'left' }}>Key skills learned today (1–2 skills, optional)</label>
+                <textarea
+                  value={skillsNote}
+                  onChange={e => setSkillsNote(e.target.value)}
+                  placeholder="e.g. Shot composition, colour grading"
+                  rows={2}
                   style={{ width: '100%', borderRadius: 10, border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#111827' : '#f9fafb', color: textPrimary, padding: '10px 12px', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', marginBottom: 10 }}
                 />
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -1066,6 +1079,11 @@ function EyeconMoments() {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginPin, setLoginPin] = useState('');
+  const [showStudentRegister, setShowStudentRegister] = useState(false);
+  const [studentRegName, setStudentRegName] = useState('');
+  const [studentRegPin, setStudentRegPin] = useState('');
+  const [studentRegPinConfirm, setStudentRegPinConfirm] = useState('');
+  const [studentRegError, setStudentRegError] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpInput, setHelpInput] = useState('');
   const [helpMessages, setHelpMessages] = useState([{ role:'assistant', content:'👋 Hi! I\'m your Eyecon Moments assistant. Ask me anything about using the app — clocking in, sharing itineraries, creating quotes, managing jobs, or anything else!' }]);
@@ -1999,7 +2017,36 @@ function EyeconMoments() {
     await db.from('jobs').update({ itinerary: { ...(job.itinerary || {}), isLive: newIsLive } }).eq('id', jobId);
   };
 
+  const handleStudentRegister = async () => {
+    setStudentRegError('');
+    if (!studentRegName.trim()) { setStudentRegError('Please enter your full name.'); return; }
+    if (!/^\d{4}$/.test(studentRegPin)) { setStudentRegError('PIN must be exactly 4 digits.'); return; }
+    if (studentRegPin !== studentRegPinConfirm) { setStudentRegError('PINs do not match.'); return; }
+    const username = studentRegName.trim().split(' ')[0] + '_' + Date.now().toString().slice(-4);
+    const newEmp = {
+      name: studentRegName.trim(), username, password: '', pin: studentRegPin,
+      role: 'student', hourly_rate: 0, phone: '', emergency_contact: '',
+      emergency_phone: '', address: '', can_be_assigned: false
+    };
+    const { data, error } = await db.from('employees').insert([newEmp]).select();
+    if (error) { setStudentRegError('Could not create account: ' + error.message); return; }
+    if (data?.[0]) {
+      const student = rowToEmployee(data[0]);
+      setEmployees(prev => [...prev, student]);
+      setCurrentUser(student);
+      try { sessionStorage.setItem('eyecon_saved_user', String(student.id)); } catch(_) {}
+      setCurrentView('student-dashboard');
+      setShowStudentRegister(false);
+      setStudentRegName(''); setStudentRegPin(''); setStudentRegPinConfirm('');
+    }
+  };
+
   const handleLogin = async () => {
+    if (loginUsername.trim().toUpperCase() === 'BBCOL') {
+      setShowStudentRegister(true);
+      setLoginUsername(''); setLoginPin('');
+      return;
+    }
     const employee = employees.find(e =>
       e.username.toLowerCase() === loginUsername.toLowerCase() &&
       e.pin === loginPin
@@ -4678,6 +4725,49 @@ function EyeconMoments() {
   }
 
   if (currentView === 'login' && !showEmergencyContactModal) {
+    if (showStudentRegister) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4" style={{background:'linear-gradient(160deg,#0f1923 0%,#1a2535 60%,#0f1923 100%)'}}>
+          <div className="w-full max-w-sm">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4 gold-gradient shadow-lg">
+                <span className="text-white font-bold text-2xl" style={{fontFamily:'Cormorant Garamond, serif', letterSpacing:'2px'}}>EM</span>
+              </div>
+              <h1 className="text-3xl font-bold text-white mb-1" style={{fontFamily:'Cormorant Garamond, serif', letterSpacing:'1px'}}>Eyecon Moments</h1>
+              <p style={{color:'var(--gold)', fontSize:'12px', letterSpacing:'3px', textTransform:'uppercase'}}>Student Registration</p>
+            </div>
+            <div className="rounded-2xl p-6 shadow-2xl" style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(193,167,106,0.25)', backdropFilter:'blur(10px)'}}>
+              <h2 className="text-white font-semibold text-lg mb-2 text-center">Create Your Account</h2>
+              <p className="text-center mb-5" style={{color:'rgba(255,255,255,0.5)', fontSize:13}}>Enter your name and choose a 4-digit PIN</p>
+              <div className="space-y-3">
+                <input type="text" value={studentRegName} onChange={e => setStudentRegName(e.target.value)}
+                  onKeyPress={e => e.key === 'Enter' && handleStudentRegister()}
+                  className="w-full px-4 py-3 rounded-xl outline-none text-white placeholder-gray-400"
+                  style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.3)', fontSize:'16px'}}
+                  placeholder="Your full name" autoFocus />
+                <input type="password" value={studentRegPin} onChange={e => setStudentRegPin(e.target.value.replace(/\D/g,''))}
+                  onKeyPress={e => e.key === 'Enter' && handleStudentRegister()} maxLength={4}
+                  className="w-full px-4 py-3 rounded-xl text-center text-2xl tracking-widest outline-none text-white placeholder-gray-400"
+                  style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.3)', fontSize:'16px'}}
+                  placeholder="Choose a 4-digit PIN" />
+                <input type="password" value={studentRegPinConfirm} onChange={e => setStudentRegPinConfirm(e.target.value.replace(/\D/g,''))}
+                  onKeyPress={e => e.key === 'Enter' && handleStudentRegister()} maxLength={4}
+                  className="w-full px-4 py-3 rounded-xl text-center text-2xl tracking-widest outline-none text-white placeholder-gray-400"
+                  style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.3)', fontSize:'16px'}}
+                  placeholder="Confirm PIN" />
+                {studentRegError && <p style={{color:'#f87171', fontSize:13, textAlign:'center'}}>{studentRegError}</p>}
+                <button onClick={handleStudentRegister} className="w-full py-3 rounded-xl font-semibold text-white mt-2 btn-gold">
+                  Create Account & Sign In
+                </button>
+                <button onClick={() => { setShowStudentRegister(false); setStudentRegError(''); }} className="w-full py-2 rounded-xl text-sm" style={{background:'transparent', color:'rgba(255,255,255,0.4)', border:'none', cursor:'pointer'}}>
+                  ← Back to sign in
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{background:'linear-gradient(160deg,#0f1923 0%,#1a2535 60%,#0f1923 100%)'}}>
         <div className="w-full max-w-sm">
