@@ -168,6 +168,137 @@ const Calendar = () => <span>📅</span>;
 const AlertTriangle = () => <span>⚠️</span>;
 const Video = () => <span>🎥</span>;
 const Edit = () => <span>✏️</span>;
+// ── StudentDashboardView ─────────────────────────────────────────────────────
+function StudentDashboardView({ currentUser, activeEntry, todayEntries, recentEntries, onClockIn, onClockOut, onLogout, fmtTime, fmtDate, darkMode }) {
+  const [logNote, setLogNote] = React.useState('');
+  const [clockingOut, setClockingOut] = React.useState(false);
+  const [elapsed, setElapsed] = React.useState('');
+
+  React.useEffect(() => {
+    if (!activeEntry) { setElapsed(''); return; }
+    const tick = () => {
+      const ms = Date.now() - new Date(activeEntry.clockIn).getTime();
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      const s = Math.floor((ms % 60000) / 1000);
+      setElapsed(`${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [activeEntry?.id]);
+
+  const bg = darkMode ? '#111827' : '#f9fafb';
+  const card = darkMode ? { background: '#1f2937', border: '1px solid #374151', borderRadius: 16, padding: 20 } : { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, padding: 20 };
+  const textPrimary = darkMode ? '#f9fafb' : '#111827';
+  const textSecondary = darkMode ? '#9ca3af' : '#6b7280';
+
+  const handleClockOut = async () => {
+    setClockingOut(false);
+    await onClockOut(logNote);
+    setLogNote('');
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: bg, padding: '16px', maxWidth: 480, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <div style={{ color: textSecondary, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>Eyecon Moments</div>
+          <h1 style={{ color: textPrimary, fontSize: 22, fontWeight: 700, margin: 0 }}>Hi, {currentUser.name} 👋</h1>
+        </div>
+        <button onClick={onLogout} style={{ background: 'transparent', border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`, borderRadius: 8, padding: '6px 12px', color: textSecondary, cursor: 'pointer', fontSize: 13 }}>Log out</button>
+      </div>
+
+      {/* Clock status card */}
+      <div style={{ ...card, marginBottom: 16, textAlign: 'center' }}>
+        {activeEntry ? (
+          <>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>⏱️</div>
+            <div style={{ color: '#10b981', fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Clocked In</div>
+            <div style={{ color: textSecondary, fontSize: 14, marginBottom: 4 }}>Since {fmtTime(activeEntry.clockIn)}</div>
+            <div style={{ color: textPrimary, fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 20 }}>{elapsed}</div>
+
+            {!clockingOut ? (
+              <button onClick={() => setClockingOut(true)}
+                style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
+                Clock Out
+              </button>
+            ) : (
+              <div>
+                <label style={{ color: textSecondary, fontSize: 13, display: 'block', marginBottom: 6, textAlign: 'left' }}>What did you work on today? (optional)</label>
+                <textarea
+                  value={logNote}
+                  onChange={e => setLogNote(e.target.value)}
+                  placeholder="Briefly describe what you did today..."
+                  rows={4}
+                  style={{ width: '100%', borderRadius: 10, border: `1px solid ${darkMode ? '#374151' : '#d1d5db'}`, background: darkMode ? '#111827' : '#f9fafb', color: textPrimary, padding: '10px 12px', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', marginBottom: 10 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setClockingOut(false)}
+                    style={{ flex: 1, background: darkMode ? '#374151' : '#e5e7eb', color: textPrimary, border: 'none', borderRadius: 10, padding: '12px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={handleClockOut}
+                    style={{ flex: 2, background: '#ef4444', color: '#fff', border: 'none', borderRadius: 10, padding: '12px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                    Confirm Clock Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>☀️</div>
+            <div style={{ color: textSecondary, fontSize: 16, marginBottom: 20 }}>You are not clocked in</div>
+            <button onClick={onClockIn}
+              style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
+              Clock In
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Today's entries */}
+      {todayEntries.length > 0 && (
+        <div style={{ ...card, marginBottom: 16 }}>
+          <h2 style={{ color: textPrimary, fontSize: 15, fontWeight: 700, marginBottom: 12, marginTop: 0 }}>Today</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {todayEntries.map(e => (
+              <div key={e.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: textPrimary, fontWeight: 600, fontSize: 14 }}>{fmtTime(e.clockIn)} → {e.clockOut ? fmtTime(e.clockOut) : 'In progress'}</span>
+                  {e.hoursWorked != null && <span style={{ color: '#6366f1', fontWeight: 700, fontSize: 14 }}>{e.hoursWorked.toFixed(1)}h</span>}
+                </div>
+                {e.progressNote && <div style={{ color: textSecondary, fontSize: 13, fontStyle: 'italic' }}>"{e.progressNote}"</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent history */}
+      {recentEntries.filter(e => new Date(e.clockIn).toDateString() !== new Date().toDateString()).length > 0 && (
+        <div style={card}>
+          <h2 style={{ color: textPrimary, fontSize: 15, fontWeight: 700, marginBottom: 12, marginTop: 0 }}>Recent</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {recentEntries.filter(e => new Date(e.clockIn).toDateString() !== new Date().toDateString()).slice(0, 10).map(e => (
+              <div key={e.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: textSecondary, fontSize: 13 }}>{fmtDate(e.clockIn)}</span>
+                  {e.hoursWorked != null && <span style={{ color: '#6366f1', fontWeight: 600, fontSize: 13 }}>{e.hoursWorked.toFixed(1)}h</span>}
+                </div>
+                <div style={{ color: textPrimary, fontSize: 13 }}>{fmtTime(e.clockIn)} → {e.clockOut ? fmtTime(e.clockOut) : '—'}</div>
+                {e.progressNote && <div style={{ color: textSecondary, fontSize: 12, fontStyle: 'italic' }}>"{e.progressNote}"</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const X = () => <span>❌</span>;
 const FolderOpen = () => <span>📁</span>;
 const Mail = () => <span>📧</span>;
@@ -1756,13 +1887,13 @@ function EyeconMoments() {
 
         // Auto-login: if this device has a saved user, skip the login screen
         try {
-          const savedId = localStorage.getItem('eyecon_saved_user');
+          const savedId = localStorage.getItem('eyecon_saved_user') || sessionStorage.getItem('eyecon_saved_user');
           if (savedId) {
             const saved = (empRes.data || []).find(e => String(e.id) === savedId);
             if (saved) {
               const resolvedUser = saved.username?.toLowerCase() === 'sam' ? { ...saved, role: 'admin' } : saved;
               setCurrentUser(resolvedUser);
-              setCurrentView(resolvedUser.role === 'admin' || resolvedUser.role === 'manager' ? 'dashboard' : 'employee-dashboard');
+              setCurrentView(resolvedUser.role === 'admin' || resolvedUser.role === 'manager' ? 'dashboard' : resolvedUser.role === 'student' ? 'student-dashboard' : 'employee-dashboard');
               setShowClockInPrompt(true);
               if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
                 Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(() => subscribeToPush(resolvedUser.id), 1000); }).catch(() => {});
@@ -1771,6 +1902,7 @@ function EyeconMoments() {
               }
             } else {
               localStorage.removeItem('eyecon_saved_user');
+              try { sessionStorage.removeItem('eyecon_saved_user'); } catch(_) {}
             }
           }
         } catch(_) {}
@@ -1782,6 +1914,24 @@ function EyeconMoments() {
     };
     loadAll();
   }, []);
+
+  // Idle auto-logout for students (30 min of inactivity)
+  React.useEffect(() => {
+    if (currentUser?.role !== 'student') return;
+    let timer;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setCurrentUser(null);
+        try { sessionStorage.removeItem('eyecon_saved_user'); } catch(_) {}
+        setCurrentView('login');
+      }, 30 * 60 * 1000);
+    };
+    const events = ['mousemove','keydown','touchstart','click'];
+    events.forEach(ev => window.addEventListener(ev, reset));
+    reset();
+    return () => { clearTimeout(timer); events.forEach(ev => window.removeEventListener(ev, reset)); };
+  }, [currentUser?.id]);
 
   // Real-time sync: time_entries and jobs update live across all devices/tabs
   useEffect(() => {
@@ -1862,7 +2012,11 @@ function EyeconMoments() {
         setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, role: 'admin' } : e));
       }
       setCurrentUser(resolvedUser);
-      try { localStorage.setItem('eyecon_saved_user', String(resolvedUser.id)); } catch(_) {}
+      if (resolvedUser.role === 'student') {
+        try { sessionStorage.setItem('eyecon_saved_user', String(resolvedUser.id)); } catch(_) {}
+      } else {
+        try { localStorage.setItem('eyecon_saved_user', String(resolvedUser.id)); } catch(_) {}
+      }
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().then(perm => { if (perm === 'granted') setTimeout(() => subscribeToPush(resolvedUser.id), 1000); }).catch(() => {});
       } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -1895,9 +2049,9 @@ function EyeconMoments() {
       // Show clock-in prompt for all users
       setShowClockInPrompt(true);
 
-      setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : 'employee-dashboard');
+      setCurrentView(resolvedUser.role === 'admin' ? 'dashboard' : resolvedUser.role === 'student' ? 'student-dashboard' : 'employee-dashboard');
       if (resolvedUser.role === 'admin') setShowRundownModal(true);
-      if (resolvedUser.role !== 'admin') {
+      if (resolvedUser.role !== 'admin' && resolvedUser.role !== 'student') {
         const unread = (resolvedUser.feedback || []).filter(f => !f.acknowledgedAt);
         if (unread.length > 0) setShowFeedbackPopup(true);
       }
@@ -4476,6 +4630,53 @@ function EyeconMoments() {
     );
   }
 
+
+  // ── STUDENT DASHBOARD ──────────────────────────────────────────────────────────
+  if (currentView === 'student-dashboard' && currentUser?.role === 'student') {
+    const studentEntries = timeEntries
+      .filter(e => e.employeeId === currentUser.id)
+      .sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn));
+    const activeEntry = studentEntries.find(e => !e.clockOut);
+    const todayStr = new Date().toDateString();
+    const todayEntries = studentEntries.filter(e => new Date(e.clockIn).toDateString() === todayStr);
+
+    const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—';
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
+
+    const handleStudentClockIn = async () => {
+      if (activeEntry) return;
+      const entry = { id: Date.now(), employee_id: currentUser.id, job_id: null, clock_in: new Date().toISOString(), clock_out: null, description: null };
+      const { data } = await db.from('time_entries').insert([entry]).select();
+      if (data?.[0]) {
+        const r = data[0];
+        setTimeEntries(prev => [{ id: r.id, employeeId: r.employee_id, jobId: r.job_id, clockIn: new Date(r.clock_in), clockOut: null, hoursWorked: null, description: r.description, progressPercent: null, progressNote: null }, ...prev]);
+      }
+    };
+
+    const handleStudentClockOut = async (note) => {
+      if (!activeEntry) return;
+      const clockOut = new Date();
+      const hoursWorked = Math.round(((clockOut - new Date(activeEntry.clockIn)) / (1000 * 60 * 60)) * 10) / 10;
+      await db.from('time_entries').update({ clock_out: clockOut.toISOString(), hours_worked: hoursWorked, progress_note: note || null }).eq('id', activeEntry.id);
+      setTimeEntries(prev => prev.map(e => e.id === activeEntry.id ? { ...e, clockOut, hoursWorked, progressNote: note || null } : e));
+    };
+
+    return (
+      <StudentDashboardView
+        currentUser={currentUser}
+        activeEntry={activeEntry}
+        todayEntries={todayEntries}
+        recentEntries={studentEntries.slice(0, 20)}
+        onClockIn={handleStudentClockIn}
+        onClockOut={handleStudentClockOut}
+        onLogout={() => { setCurrentUser(null); try { sessionStorage.removeItem('eyecon_saved_user'); } catch(_) {} try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }}
+        fmtTime={fmtTime}
+        fmtDate={fmtDate}
+        darkMode={darkMode}
+      />
+    );
+  }
+
   if (currentView === 'login' && !showEmergencyContactModal) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{background:'linear-gradient(160deg,#0f1923 0%,#1a2535 60%,#0f1923 100%)'}}>
@@ -4615,7 +4816,7 @@ function EyeconMoments() {
           <button
             onClick={() => {
               setCurrentUser(null);
-              try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {}
+              try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} try { sessionStorage.removeItem('eyecon_saved_user'); } catch(_) {}
               setShowEmergencyContactModal(false);
               setCurrentView('login');
             }}
@@ -6343,7 +6544,7 @@ Notes: ${j.notes || 'none'}`;
               <div className="flex items-center gap-2">
                 <button onClick={() => setHelpOpen(true)} title="Help" className={`w-9 h-9 rounded-lg text-sm font-bold ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-yellow-600 hover:bg-gray-200'}`}>?</button>
                 <button onClick={refreshJobs} title="Refresh data" className={`px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>🔄</button>
-                <button onClick={() => { setCurrentUser(null); try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }} className={`px-4 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                <button onClick={() => { setCurrentUser(null); try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} try { sessionStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }} className={`px-4 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>
                   <LogOut /> Logout
                 </button>
               </div>
@@ -7931,7 +8132,7 @@ Notes: ${j.notes || 'none'}`;
                 style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
-              <button onClick={() => { setCurrentUser(null); try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }}
+              <button onClick={() => { setCurrentUser(null); try { localStorage.removeItem('eyecon_saved_user'); } catch(_) {} try { sessionStorage.removeItem('eyecon_saved_user'); } catch(_) {} setCurrentView('login'); }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium"
                 style={{background:'rgba(193,167,106,0.15)', color:'var(--gold)'}}>
                 Logout
@@ -19323,6 +19524,7 @@ Eyecon Moments
                       <option value="employee">Employee</option>
                       <option value="manager">Manager</option>
                       <option value="admin">Admin</option>
+                      <option value="student">Student</option>
                     </select>
                   </div>
                   <div>
@@ -19475,7 +19677,7 @@ Eyecon Moments
                       </div>
                     ) : (
                       <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        {employee.role === 'admin' ? 'Administrator' : employee.role === 'manager' ? 'Manager' : 'Employee'}
+                        {employee.role === 'admin' ? 'Administrator' : employee.role === 'manager' ? 'Manager' : employee.role === 'student' ? 'Student' : 'Employee'}
                       </p>
                     )}
                     <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>@{employee.username}</p>
