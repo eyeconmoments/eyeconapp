@@ -2050,6 +2050,10 @@ function EyeconMoments() {
     const employee = employees.find(e =>
       e.username.toLowerCase() === loginUsername.toLowerCase() &&
       e.pin === loginPin
+    ) || employees.find(e =>
+      e.role === 'student' &&
+      e.name.toLowerCase() === loginUsername.trim().toLowerCase() &&
+      e.pin === loginPin
     );
     if (employee) {
       const isSam = employee.username?.toLowerCase() === 'sam';
@@ -4787,7 +4791,7 @@ function EyeconMoments() {
               onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
               className="w-full px-4 py-3 rounded-xl outline-none text-white placeholder-gray-400"
               style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(193,167,106,0.3)', fontSize:'16px'}}
-              placeholder="Username" />
+              placeholder="Username or full name (students)" />
             <input type="password" value={loginPin} onChange={(e) => setLoginPin(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleLogin()} maxLength={4}
               className="w-full px-4 py-3 rounded-xl text-center text-2xl tracking-widest outline-none text-white placeholder-gray-400"
